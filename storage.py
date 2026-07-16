@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import logic
@@ -99,6 +99,14 @@ CREATE TABLE IF NOT EXISTS gossip_drafts (
     created_at TEXT,
     published_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_id INTEGER,
+    action TEXT,
+    detail TEXT,
+    created_at TEXT
+);
 """
 
 
@@ -117,6 +125,8 @@ class Storage:
             ("investor_amount", "TEXT"),
             ("investor_needs", "TEXT"),
             ("sheet_synced", "INTEGER DEFAULT 0"),
+            ("contacted", "INTEGER DEFAULT 0"),
+            ("blocked", "INTEGER DEFAULT 0"),
         ):
             self._ensure_column("profiles", col, ddl)
         self._ensure_column("group_mutes", "prompt_msg_id", "INTEGER")
@@ -373,6 +383,88 @@ class Storage:
 
     def count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM profiles").fetchone()[0]
+
+    def count_since(self, hours: int) -> int:
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM profiles WHERE created_at>=?", (since,)
+        ).fetchone()
+        return row["n"]
+
+    def get_profile(self, profile_id: int) -> sqlite3.Row | None:
+        return self._conn.execute(
+            "SELECT * FROM profiles WHERE id=?", (profile_id,)
+        ).fetchone()
+
+    def profiles_page(self, offset: int, limit: int) -> list[sqlite3.Row]:
+        return list(self._conn.execute(
+            "SELECT * FROM profiles ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)
+        ))
+
+    def search_profiles(self, query: str, limit: int = 20) -> list[sqlite3.Row]:
+        q = query.strip().lstrip("@")
+        like = f"%{q}%"
+        rows = self._conn.execute(
+            "SELECT * FROM profiles WHERE "
+            "CAST(user_id AS TEXT)=? OR CAST(id AS TEXT)=? OR "
+            "username LIKE ? OR name LIKE ? OR vertical LIKE ? OR company LIKE ? "
+            "ORDER BY id DESC LIMIT ?",
+            (q, q, like, like, like, like, limit),
+        )
+        return list(rows)
+
+    def set_contacted(self, profile_id: int, value: bool) -> None:
+        self._conn.execute(
+            "UPDATE profiles SET contacted=? WHERE id=?", (int(value), profile_id)
+        )
+        self._conn.commit()
+
+    def mark_blocked(self, user_id: int) -> None:
+        self._conn.execute(
+            "UPDATE profiles SET blocked=1 WHERE user_id=?", (user_id,)
+        )
+        self._conn.commit()
+
+    def user_mute_chats(self, user_id: int) -> list[int]:
+        """Чаты, где юзер сейчас замучен гейтом (не удаляет записи, в отличие от pop_group_mutes)."""
+        return [
+            r["chat_id"] for r in self._conn.execute(
+                "SELECT chat_id FROM group_mutes WHERE user_id=?", (user_id,)
+            )
+        ]
+
+    def profiles_for_broadcast(self, vertical: str | None = None,
+                               grade: str | None = None) -> list[sqlite3.Row]:
+        """Уникальные (user_id, username) анкет, подходящих под фильтр, без заблокировавших бота."""
+        sql = "SELECT DISTINCT user_id, username FROM profiles WHERE blocked=0"
+        params: list = []
+        if vertical:
+            sql += " AND vertical=?"
+            params.append(vertical)
+        if grade:
+            sql += " AND grade=?"
+            params.append(grade)
+        return list(self._conn.execute(sql, params))
+
+    # --- журнал админ-действий -------------------------------------------
+
+    def log_action(self, admin_id: int, action: str, detail: str = "") -> None:
+        self._conn.execute(
+            "INSERT INTO admin_audit_log (admin_id, action, detail, created_at) "
+            "VALUES (?,?,?,?)",
+            (admin_id, action, detail,
+             datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        self._conn.commit()
+
+    def audit_log_page(self, offset: int, limit: int) -> list[sqlite3.Row]:
+        return list(self._conn.execute(
+            "SELECT * FROM admin_audit_log ORDER BY id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ))
+
+    def audit_log_count(self) -> int:
+        return self._conn.execute("SELECT COUNT(*) FROM admin_audit_log").fetchone()[0]
 
     def export_csv(self) -> str:
         import csv

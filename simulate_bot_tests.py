@@ -107,6 +107,67 @@ def test_gossip_storage():
         st.close()
 
 
+def test_admin_panel_storage():
+    print("== admin panel storage (профили/журнал) ==")
+    with tempfile.TemporaryDirectory() as d:
+        st = Storage(Path(d) / "ap.sqlite3")
+        for i in range(3):
+            st.save_profile({
+                "user_id": 100 + i, "username": f"u{i}", "vertical": "Gambling",
+                "grade": "C-Level" if i else "Инвестор", "profession": "CEO",
+                "request": "r", "name": f"Name{i}", "company": "Acme", "linkedin": "-",
+            })
+        st.save_profile({
+            "user_id": 200, "username": "other", "vertical": "Betting",
+            "grade": "Senior", "profession": "Manager", "request": "r",
+            "name": "Другой", "company": "OtherCo", "linkedin": "-",
+        })
+        check(st.count() == 4, "admin: count всего")
+        check(st.count_since(24) == 4, "admin: count_since включает свежие")
+        page = st.profiles_page(0, 2)
+        check(len(page) == 2 and page[0]["id"] == 4, "admin: profiles_page — сначала свежие")
+        found = st.search_profiles("Другой")
+        check(len(found) == 1 and found[0]["id"] == 4, "admin: search по имени")
+        found = st.search_profiles("200")
+        check(len(found) == 1 and found[0]["user_id"] == 200, "admin: search по user_id")
+        found = st.search_profiles("@u1")
+        check(len(found) == 1 and found[0]["username"] == "u1", "admin: search по @username")
+        found = st.search_profiles("Betting")
+        check(len(found) == 1, "admin: search по вертикали")
+
+        check(st.user_mute_chats(999) == [], "admin: user_mute_chats пусто без мутов")
+        st.add_group_mute(-500, 999)
+        check(st.user_mute_chats(999) == [-500], "admin: user_mute_chats видит мут (peek, не удаляет)")
+        check(st.user_mute_chats(999) == [-500], "admin: повторный вызов не удаляет запись")
+
+        # аудитория рассылки — до блокировки никто не потерян
+        check(len(st.profiles_for_broadcast()) == 4, "admin: profiles_for_broadcast(all) до блокировки")
+        check(len(st.profiles_for_broadcast(vertical="Gambling")) == 3,
+              "admin: profiles_for_broadcast по вертикали")
+        check(len(st.profiles_for_broadcast(grade="Инвестор")) == 1,
+              "admin: profiles_for_broadcast по грейду")
+
+        r1 = st.get_profile(1)
+        check(r1["contacted"] == 0 and r1["blocked"] == 0, "admin: contacted/blocked дефолт 0")
+        st.set_contacted(1, True)
+        check(st.get_profile(1)["contacted"] == 1, "admin: set_contacted")
+        st.mark_blocked(100)  # user_id профиля #1
+        check(st.get_profile(1)["blocked"] == 1, "admin: mark_blocked")
+
+        # заблокировавший бота больше не попадает в выборку для рассылки
+        blocked_ids = {r["user_id"] for r in st.profiles_for_broadcast()}
+        check(100 not in blocked_ids, "admin: mark_blocked исключает юзера из рассылки")
+        check(len(st.profiles_for_broadcast()) == 3, "admin: profiles_for_broadcast(all) после блокировки")
+
+        check(st.audit_log_count() == 0, "admin: журнал пуст изначально")
+        st.log_action(42, "contacted", "анкета #1: отмечена")
+        st.log_action(42, "broadcast", "все: получателей 3")
+        check(st.audit_log_count() == 2, "admin: log_action пишет записи")
+        rows = st.audit_log_page(0, 10)
+        check(rows[0]["action"] == "broadcast", "admin: audit_log_page — сначала свежие")
+        st.close()
+
+
 # --- 4. Сценарная симуляция флоу (fake Telegram) --------------------------
 
 class FakeFile:
@@ -172,6 +233,7 @@ class FakeBot:
     async def edit_message_text(self, text, chat_id=None, message_id=None, **kw):
         self.edits += 1
         self.last_text = text
+        self.last_markup = kw.get("reply_markup")
         return True
 
     async def edit_message_media(self, media=None, chat_id=None, message_id=None, **kw):
@@ -200,6 +262,16 @@ class FakeBot:
         self.sent.append((chat_id, "[video]"))
         return FakeMessage(caption, chat_id)
 
+    async def restrict_chat_member(self, chat_id, user_id, permissions=None, **kw):
+        self.restricts = getattr(self, "restricts", [])
+        self.restricts.append((chat_id, user_id, permissions))
+        return True
+
+    async def get_chat(self, chat_id):
+        class _FakeChat:
+            permissions = None
+        return _FakeChat()
+
 
 class FakeUser:
     def __init__(self, uid=42, username="tester"):
@@ -222,12 +294,33 @@ class FakeUpdate:
         self.effective_chat = FakeChat(chat_id)
 
 
+class FakeApplication:
+    """create_task как в PTB, но с сохранением task'ов — тест может дождаться
+    фоновой рассылки через asyncio.gather(*ctx.application.created_tasks)."""
+
+    def __init__(self):
+        self.created_tasks = []
+
+    def create_task(self, coro, **kw):
+        task = asyncio.ensure_future(coro)
+        self.created_tasks.append(task)
+        return task
+
+
+def kb_texts(markup) -> list[str]:
+    """Плоский список подписей кнопок клавиатуры — для проверки, что кнопка есть/нет."""
+    if markup is None:
+        return []
+    return [btn.text for row in markup.inline_keyboard for btn in row]
+
+
 class FakeContext:
     def __init__(self, bot_data):
         self.bot = FakeBot()
         self.bot_data = bot_data
         self.user_data = {}
         self.chat_data = {}
+        self.application = FakeApplication()
 
 
 def _bot_data(tmpdir):
@@ -1082,6 +1175,137 @@ async def _run_gossip_sim():
         G.format_with_gpt = orig_format
 
 
+async def _run_admin_panel_sim():
+    print("== admin panel (dashboard/анкеты/рассылка/журнал) simulation ==")
+    import handlers.admin_cms as A
+    import handlers.admin_broadcast as BC
+    import handlers.admin_log as LOGV
+    import handlers.admin_profiles as PF
+    from telegram.ext import ConversationHandler
+
+    with tempfile.TemporaryDirectory() as d:
+        bd = _bot_data(d)
+        storage = bd["storage"]
+        ctx = FakeContext(bd)
+
+        # --- dashboard ---
+        st = await A.admin_open(FakeUpdate(message=FakeMessage("/admin"), user=FakeUser(42)), ctx)
+        check(st == A.BROWSE, "panel: admin_open -> BROWSE")
+        check("Админ-панель" in ctx.bot.last_text, "panel: dashboard показан по /admin")
+        check("Анкет всего: <b>0</b>" in ctx.bot.last_text, "panel: dashboard считает 0 анкет")
+        await A.nav_menu(FakeUpdate(query=FakeQuery("acms_menu")), ctx)
+        check("Управление контентом" in ctx.bot.last_text, "panel: раздел Контент открывается")
+        await A.nav_home(FakeUpdate(query=FakeQuery("acms_home")), ctx)
+        check("Админ-панель" in ctx.bot.last_text, "panel: возврат на dashboard")
+
+        # тумблер режима теперь логируется в журнал
+        await A.nav_modes(FakeUpdate(query=FakeQuery("acms_modes")), ctx)
+        await A.toggle_mode(FakeUpdate(query=FakeQuery("acms_tgl:greet"), user=FakeUser(42)), ctx)
+        check(storage.audit_log_count() == 1, "panel: toggle_mode пишет действие в журнал")
+        check(storage.audit_log_page(0, 10)[0]["action"] == "greeting_toggle",
+              "panel: залогировано именно переключение приветствия")
+
+        # анкеты для дальнейших тестов
+        storage.save_profile({
+            "user_id": 300, "username": "vasya", "vertical": "Gambling",
+            "grade": "C-Level", "profession": "CEO", "request": "networking",
+            "name": "Вася", "company": "Acme", "linkedin": "-",
+        })
+        storage.save_profile({
+            "user_id": 301, "username": "petya", "vertical": "Betting",
+            "grade": "Senior", "profession": "Manager", "request": "r",
+            "name": "Петя", "company": "OtherCo", "linkedin": "-",
+        })
+
+        # --- раздел «Анкеты» ---
+        st = await PF.nav_profiles(FakeUpdate(query=FakeQuery("acms_pf")), ctx)
+        check(st == A.BROWSE and "Анкеты" in ctx.bot.last_text, "panel: список анкет открыт")
+        st = await PF.pf_open(FakeUpdate(query=FakeQuery("acms_pf_open:1")), ctx)
+        check("Анкета #1" in ctx.bot.last_text and "Вася" in ctx.bot.last_text,
+              "panel: карточка анкеты открыта")
+        await PF.pf_toggle_contact(
+            FakeUpdate(query=FakeQuery("acms_pf_contact:1"), user=FakeUser(42)), ctx)
+        check(storage.get_profile(1)["contacted"] == 1, "panel: отметка «связались» сохранена")
+        check(storage.audit_log_count() == 2, "panel: отметка залогирована в журнал")
+
+        st = await PF.pf_search_start(FakeUpdate(query=FakeQuery("acms_pf_search")), ctx)
+        check(st == PF.WAIT_SEARCH, "panel: поиск анкет -> WAIT_SEARCH")
+        st = await PF.pf_search_text(FakeUpdate(message=FakeMessage("Петя")), ctx)
+        check(st == A.BROWSE and "Петя" in ctx.bot.last_text, "panel: поиск по имени нашёл анкету")
+
+        # мут + принудительный размут
+        storage.add_group_mute(-777, 300)
+        check(storage.user_mute_chats(300) == [-777], "panel: мут записан для теста unmute")
+        await PF.pf_open(FakeUpdate(query=FakeQuery("acms_pf_open:1")), ctx)
+        check(any("Размутить" in t for t in kb_texts(ctx.bot.last_markup)),
+              "panel: кнопка размута видна при активном муте")
+        await PF.pf_unmute(FakeUpdate(query=FakeQuery("acms_pf_unmute:1"), user=FakeUser(42)), ctx)
+        check(storage.user_mute_chats(300) == [], "panel: принудительный размут снял запись мута")
+        check(any(cid == -777 and uid == 300 for cid, uid, _perm in getattr(ctx.bot, "restricts", [])),
+              "panel: restrict_chat_member вызван для размута")
+
+        # --- раздел «Рассылка» ---
+        st = await BC.nav_broadcast(FakeUpdate(query=FakeQuery("acms_bc")), ctx)
+        check(st == A.BROWSE and "Выберите аудиторию" in ctx.bot.last_text,
+              "panel: рассылка — меню аудитории")
+        await BC.bc_audience_vertical_menu(FakeUpdate(query=FakeQuery("acms_bc_aud:vertical")), ctx)
+        check("вертикаль" in ctx.bot.last_text.lower(), "panel: выбор вертикали показан")
+        await BC.bc_pick_vertical(FakeUpdate(query=FakeQuery("acms_bc_vert:0")), ctx)  # Gambling
+        check(ctx.user_data["bc"]["audience"]["value"] == "Gambling", "panel: аудитория = вертикаль")
+        check("Сообщений пока нет" in ctx.bot.last_text, "panel: конструктор без сообщений")
+
+        st = await BC.bc_add_item_start(FakeUpdate(query=FakeQuery("acms_bc_additem")), ctx)
+        check(st == BC.WAIT_TEXT, "panel: добавление сообщения -> WAIT_TEXT")
+        st = await BC.bc_item_text(FakeUpdate(message=FakeMessage("Привет, у нас новости!")), ctx)
+        check(st == A.BROWSE and "кнопку-ссылку" in ctx.bot.last_text,
+              "panel: текст сохранён, спрашиваем про кнопку")
+        st = await BC.bc_btn_choice(FakeUpdate(query=FakeQuery("acms_bc_btn:yes")), ctx)
+        check(st == BC.WAIT_BTN_LABEL, "panel: да -> ждём текст кнопки")
+        st = await BC.bc_btn_label(FakeUpdate(message=FakeMessage("Перейти")), ctx)
+        check(st == BC.WAIT_BTN_URL, "panel: label сохранён -> ждём url")
+        st = await BC.bc_btn_url(FakeUpdate(message=FakeMessage("не-ссылка")), ctx)
+        check(st == BC.WAIT_BTN_URL, "panel: невалидный url -> остаёмся ждать")
+        st = await BC.bc_btn_url(FakeUpdate(message=FakeMessage("https://example.com")), ctx)
+        check(st == A.BROWSE and len(ctx.user_data["bc"]["items"]) == 1,
+              "panel: сообщение с кнопкой добавлено в конструктор")
+
+        q_count = FakeQuery("acms_bc_count")
+        await BC.bc_audience_count(FakeUpdate(query=q_count, user=FakeUser(42)), ctx)
+        check(q_count.last_answer_text and "1" in q_count.last_answer_text,
+              "panel: подсчёт получателей (1 анкета Gambling)")
+
+        # второе сообщение, без кнопки, потом удаляем последнее
+        await BC.bc_add_item_start(FakeUpdate(query=FakeQuery("acms_bc_additem")), ctx)
+        await BC.bc_item_text(FakeUpdate(message=FakeMessage("Второе сообщение")), ctx)
+        await BC.bc_btn_choice(FakeUpdate(query=FakeQuery("acms_bc_btn:no")), ctx)
+        check(len(ctx.user_data["bc"]["items"]) == 2, "panel: второе сообщение добавлено")
+        await BC.bc_remove_last(FakeUpdate(query=FakeQuery("acms_bc_removelast")), ctx)
+        check(len(ctx.user_data["bc"]["items"]) == 1, "panel: удаление последнего сообщения")
+
+        q_send = FakeQuery("acms_bc_send", message=FakeMessage("stub"))
+        await BC.bc_send(FakeUpdate(query=q_send, user=FakeUser(42)), ctx)
+        check("bc" not in ctx.user_data, "panel: конструктор очищен после отправки")
+        await asyncio.gather(*ctx.application.created_tasks)
+        report = [t for cid, t in ctx.bot.sent if cid == 42 and "Рассылка завершена" in t]
+        check(len(report) == 1, "panel: отчёт о рассылке пришёл админу")
+        check("успешно: 1" in report[0].lower(), "panel: отчёт содержит успешную доставку")
+        check(storage.audit_log_count() == 4, "panel: рассылка залогирована в журнал "
+              "(greeting_toggle+contacted+force_unmute+broadcast)")
+
+        # отмена конструктора без отправки
+        await BC.bc_audience_all(FakeUpdate(query=FakeQuery("acms_bc_aud:all")), ctx)
+        check("bc" in ctx.user_data, "panel: новый конструктор создан")
+        await BC.bc_cancel(FakeUpdate(query=FakeQuery("acms_bc_cancel"), user=FakeUser(42)), ctx)
+        check("bc" not in ctx.user_data, "panel: отмена очищает конструктор")
+
+        # --- раздел «Журнал» ---
+        st = await LOGV.nav_log(FakeUpdate(query=FakeQuery("acms_log")), ctx)
+        check(st == A.BROWSE and "Журнал действий" in ctx.bot.last_text, "panel: журнал открыт")
+        check("рассылка" in ctx.bot.last_text.lower(), "panel: журнал видит запись о рассылке")
+
+        storage.close()
+
+
 def test_persistence():
     print("== persistence wiring ==")
     import tempfile as _tf
@@ -1110,6 +1334,7 @@ def main():
     test_logic()
     test_storage()
     test_gossip_storage()
+    test_admin_panel_storage()
     test_cms_storage()
     test_captcha_logic()
     test_menu()
@@ -1119,6 +1344,7 @@ def main():
     asyncio.run(_run_admin_cms())
     asyncio.run(_run_captcha_sim())
     asyncio.run(_run_gossip_sim())
+    asyncio.run(_run_admin_panel_sim())
     print(f"\nPASS={PASS} FAIL={FAIL}")
     raise SystemExit(1 if FAIL else 0)
 

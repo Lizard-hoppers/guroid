@@ -199,6 +199,7 @@ async def on_gossip_decision(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if action == "rej":
         storage.gossip_set_status(draft_id, "rejected")
+        storage.log_action(update.effective_user.id, "gossip_reject", f"черновик #{draft_id}")
         await q.answer("Отклонено")
         await _strip_and_note(q, "\n\n❌ Отклонено")
         return
@@ -220,6 +221,7 @@ async def on_gossip_decision(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     storage.gossip_set_status(draft_id, "published", published=True)
+    storage.log_action(update.effective_user.id, "gossip_publish", f"черновик #{draft_id}")
     await q.answer("Опубликовано ✅")
     await _strip_and_note(q, "\n\n✅ Опубликовано в группу")
 

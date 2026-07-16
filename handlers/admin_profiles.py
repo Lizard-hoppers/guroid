@@ -1,0 +1,213 @@
+"""Раздел /admin «Анкеты»: постраничный список + поиск + карточка анкеты
+с действиями (замена голому /export для повседневной работы с заявками).
+
+WAIT_SEARCH — собственная строковая константа состояния ConversationHandler
+(не пересекается с int-состояниями admin_cms.py; PTB допускает произвольные
+hashable-ключи состояний).
+"""
+from __future__ import annotations
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import ContextTypes
+
+import logic
+from handlers import admin_ui
+from handlers import group_captcha as gate
+from handlers.admin_ui import BROWSE
+
+PAGE_SIZE = 8
+WAIT_SEARCH = "pf:search"
+
+
+class _MinimalUser:
+    """Достаточно полей для _mention()/_send_greeting() в group_captcha.py."""
+
+    def __init__(self, user_id: int, username: str):
+        self.id = user_id
+        self.username = username
+        self.full_name = username or str(user_id)
+
+
+def _line(r) -> str:
+    name = r["name"] or "—"
+    mark = "✅" if r["contacted"] else ""
+    return f"{mark}#{r['id']} · {name} · {r['vertical']}/{r['grade']}"
+
+
+def _list_kb(rows, page: int, total: int, query: str | None) -> InlineKeyboardMarkup:
+    kb_rows = [
+        [InlineKeyboardButton(_line(r), callback_data=f"acms_pf_open:{r['id']}")]
+        for r in rows
+    ]
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("← Назад", callback_data=f"acms_pf_list:{page - 1}"))
+    if (page + 1) * PAGE_SIZE < total:
+        nav.append(InlineKeyboardButton("Вперёд →", callback_data=f"acms_pf_list:{page + 1}"))
+    if nav:
+        kb_rows.append(nav)
+    if not query:
+        kb_rows.append([InlineKeyboardButton("🔍 Поиск", callback_data="acms_pf_search")])
+    else:
+        kb_rows.append([InlineKeyboardButton("✖ Сбросить поиск", callback_data="acms_pf")])
+    kb_rows.append([InlineKeyboardButton("‹ Панель управления", callback_data="acms_home")])
+    return InlineKeyboardMarkup(kb_rows)
+
+
+async def _show_list(context: ContextTypes.DEFAULT_TYPE, page: int,
+                      query: str | None = None) -> None:
+    storage = context.bot_data["storage"]
+    context.user_data["pf_page"] = page
+    context.user_data["pf_query"] = query
+    if query:
+        rows = storage.search_profiles(query)
+        total = len(rows)
+        rows = rows[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
+        header = f"📋 <b>Анкеты</b> — поиск «{logic.html_escape(query)}» ({total}):"
+        if not rows:
+            header = f"📋 По запросу «{logic.html_escape(query)}» ничего не найдено."
+    else:
+        total = storage.count()
+        rows = storage.profiles_page(page * PAGE_SIZE, PAGE_SIZE)
+        header = f"📋 <b>Анкеты</b> (всего {total}):"
+    await admin_ui.edit_screen(context, header, _list_kb(rows, page, total, query))
+
+
+async def nav_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await _show_list(context, 0, None)
+    return BROWSE
+
+
+async def pf_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    page = int(update.callback_query.data.split(":", 1)[1])
+    await _show_list(context, page, context.user_data.get("pf_query"))
+    return BROWSE
+
+
+async def pf_search_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await admin_ui.edit_screen(
+        context,
+        "🔍 Пришлите ID анкеты, Telegram ID, @username, имя, вертикаль или "
+        "компанию для поиска.",
+        InlineKeyboardMarkup([[InlineKeyboardButton("‹ Назад", callback_data="acms_pf")]]),
+    )
+    return WAIT_SEARCH
+
+
+async def pf_search_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = (update.message.text or "").strip()
+    try:
+        await update.message.delete()
+    except Exception:  # noqa: BLE001
+        pass
+    if not query:
+        return BROWSE
+    await _show_list(context, 0, query)
+    return BROWSE
+
+
+def _card_text(r, mute_chats: list[int]) -> str:
+    lines = [
+        f"📋 <b>Анкета #{r['id']}</b>\n",
+        f"Дата: {r['created_at']}",
+        f"Telegram: <code>{r['user_id']}</code>"
+        + (f" (@{logic.html_escape(r['username'])})" if r["username"] else ""),
+        f"Вертикаль/грейд: {logic.html_escape(r['vertical'])} / {logic.html_escape(r['grade'])}",
+        f"Профессия: {logic.html_escape(r['profession'] or '—')}",
+    ]
+    if r["investor_type"]:
+        lines.append(f"Инвестор: {logic.html_escape(r['investor_type'])}")
+        lines.append(f"Сумма: {logic.html_escape(r['investor_amount'] or '—')}")
+        lines.append(f"Интересы: {logic.html_escape(r['investor_needs'] or '—')}")
+    lines += [
+        f"Запрос: {logic.html_escape(r['request'] or '—')}",
+        f"Имя: {logic.html_escape(r['name'] or '—')}",
+        f"Компания: {logic.html_escape(r['company'] or '—')}",
+        f"LinkedIn: {logic.html_escape(r['linkedin'] or '—')}",
+        "",
+        f"Связались: {'✅ да' if r['contacted'] else '⬜ нет'}",
+    ]
+    if mute_chats:
+        lines.append(f"🔒 Замучен гейтом в {len(mute_chats)} чате(ах)")
+    if r["blocked"]:
+        lines.append("🚫 Заблокировал бота (рассылки пропускают)")
+    return "\n".join(lines)
+
+
+def _card_kb(r, mute_chats: list[int], sheets_url: str | None, back_page: int) -> InlineKeyboardMarkup:
+    rows = []
+    contact_label = "⬜ Пометить: связались" if not r["contacted"] else "✅ Связались (убрать отметку)"
+    rows.append([InlineKeyboardButton(contact_label, callback_data=f"acms_pf_contact:{r['id']}")])
+    if mute_chats:
+        rows.append([InlineKeyboardButton("🔓 Размутить в группе", callback_data=f"acms_pf_unmute:{r['id']}")])
+    action_row = [InlineKeyboardButton("📩 Написать", url=f"tg://user?id={r['user_id']}")]
+    if sheets_url:
+        action_row.append(InlineKeyboardButton("📊 Sheets", url=sheets_url))
+    rows.append(action_row)
+    rows.append([InlineKeyboardButton("‹ К списку", callback_data=f"acms_pf_list:{back_page}")])
+    return InlineKeyboardMarkup(rows)
+
+
+async def _show_card(context, profile_id: int):
+    storage = context.bot_data["storage"]
+    r = storage.get_profile(profile_id)
+    if r is None:
+        await admin_ui.edit_screen(
+            context, "Анкета не найдена (возможно, удалена).",
+            InlineKeyboardMarkup([[InlineKeyboardButton("‹ К списку", callback_data="acms_pf")]]),
+        )
+        return
+    mute_chats = storage.user_mute_chats(r["user_id"])
+    settings = context.bot_data["settings"]
+    sheets_url = None
+    if settings.google_sheets_enabled and settings.google_sheets_spreadsheet_id:
+        sheets_url = f"https://docs.google.com/spreadsheets/d/{settings.google_sheets_spreadsheet_id}"
+    back_page = context.user_data.get("pf_page", 0)
+    await admin_ui.edit_screen(
+        context, _card_text(r, mute_chats), _card_kb(r, mute_chats, sheets_url, back_page),
+    )
+
+
+async def pf_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    pid = int(update.callback_query.data.split(":", 1)[1])
+    await _show_card(context, pid)
+    return BROWSE
+
+
+async def pf_toggle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    pid = int(q.data.split(":", 1)[1])
+    storage = context.bot_data["storage"]
+    r = storage.get_profile(pid)
+    if r is None:
+        await q.answer("Анкета не найдена", show_alert=True)
+        return BROWSE
+    new_val = not bool(r["contacted"])
+    storage.set_contacted(pid, new_val)
+    storage.log_action(
+        update.effective_user.id, "contacted",
+        f"анкета #{pid}: {'отмечена как связались' if new_val else 'снята отметка'}",
+    )
+    await q.answer("Отмечено" if new_val else "Отметка снята")
+    await _show_card(context, pid)
+    return BROWSE
+
+
+async def pf_unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    pid = int(q.data.split(":", 1)[1])
+    storage = context.bot_data["storage"]
+    r = storage.get_profile(pid)
+    if r is None:
+        await q.answer("Анкета не найдена", show_alert=True)
+        return BROWSE
+    user = _MinimalUser(r["user_id"], r["username"] or "")
+    await gate.unmute_after_profile(context, user)
+    storage.log_action(update.effective_user.id, "force_unmute", f"анкета #{pid}, user_id={r['user_id']}")
+    await q.answer("Размучен ✅")
+    await _show_card(context, pid)
+    return BROWSE

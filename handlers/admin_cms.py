@@ -8,8 +8,6 @@ from __future__ import annotations
 import logging
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.constants import ParseMode
-from telegram.error import BadRequest
 from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
@@ -22,11 +20,19 @@ from telegram.ext import (
 import constants as C
 import logic
 import ui
+from handlers import admin_broadcast as BC
+from handlers import admin_log as LOG
+from handlers import admin_profiles as PF
+from handlers import admin_ui
 from handlers import group_captcha as gate
 
 logger = logging.getLogger(__name__)
 
-BROWSE, WAIT_TEXT, WAIT_MEDIA, WAIT_GM_TEXT, WAIT_GM_EMOJI = range(5)
+BROWSE = admin_ui.BROWSE
+WAIT_TEXT, WAIT_MEDIA, WAIT_GM_TEXT, WAIT_GM_EMOJI = range(1, 5)
+# Состояния разделов «Анкеты»/«Рассылка» — собственные строковые константы в
+# их модулях (PF.WAIT_SEARCH, BC.WAIT_*), чтобы не заводить циклический импорт
+# с admin_cms.py; ConversationHandler допускает произвольные hashable-ключи.
 
 _MEDIA_LABELS = {"animation": "GIF/анимация", "photo": "фото", "video": "видео"}
 
@@ -49,26 +55,11 @@ def _short(s: str, n: int = 40) -> str:
 
 
 async def _store(context, msg) -> None:
-    context.user_data["adm_chat"] = msg.chat_id
-    context.user_data["adm_mid"] = msg.message_id
+    await admin_ui.store_screen(context, msg)
 
 
 async def _edit(context, text: str, kb=None) -> bool:
-    try:
-        await context.bot.edit_message_text(
-            text,
-            chat_id=context.user_data["adm_chat"],
-            message_id=context.user_data["adm_mid"],
-            reply_markup=kb,
-            parse_mode=ParseMode.HTML,
-            disable_web_page_preview=True,
-        )
-        return True
-    except BadRequest as exc:
-        if "not modified" in str(exc).lower():
-            return True
-        logger.debug("adm edit failed", exc_info=True)
-        return False
+    return await admin_ui.edit_screen(context, text, kb)
 
 
 # --- keyboards ------------------------------------------------------------
@@ -80,6 +71,16 @@ def _menu_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🖼 Медиа", callback_data="acms_media")],
         [InlineKeyboardButton("🔗 Меню группы", callback_data="acms_gm")],
         [InlineKeyboardButton("⚙️ Режимы", callback_data="acms_modes")],
+        [InlineKeyboardButton("‹ Панель управления", callback_data="acms_home")],
+    ])
+
+
+def _dashboard_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📋 Анкеты", callback_data="acms_pf"),
+         InlineKeyboardButton("📢 Рассылка", callback_data="acms_bc")],
+        [InlineKeyboardButton("📝 Журнал", callback_data="acms_log"),
+         InlineKeyboardButton("🎛 Контент", callback_data="acms_menu")],
         [InlineKeyboardButton("✖ Выход", callback_data="acms_exit")],
     ])
 
@@ -134,6 +135,24 @@ def _edit_kb(target_kind: str, overridden: bool, back_cb: str) -> InlineKeyboard
 
 
 # --- screens --------------------------------------------------------------
+
+async def _show_dashboard(context) -> int:
+    storage = context.bot_data["storage"]
+    settings = context.bot_data["settings"]
+    gate_on = storage.get_flag("gate_enabled", settings.captcha_enabled)
+    greet_on = storage.get_flag("greeting_enabled", True)
+    gossip_on = storage.get_flag("gossip_enabled", True)
+    text = (
+        "🛠 <b>Админ-панель</b>\n\n"
+        f"Анкет всего: <b>{storage.count()}</b> (+{storage.count_since(24)} за 24ч)\n"
+        f"Сплетни на модерации: <b>{storage.gossip_pending_count()}</b>\n"
+        f"Новости на модерации: <b>{storage.news_pending_count()}</b>\n\n"
+        f"Режимы: гейт {'🟢' if gate_on else '⚪'} · приветствие {'🟢' if greet_on else '⚪'} · "
+        f"сплетни {'🟢' if gossip_on else '⚪'}"
+    )
+    await _edit(context, text, _dashboard_kb())
+    return BROWSE
+
 
 async def _show_menu(context) -> int:
     await _edit(
@@ -232,7 +251,12 @@ async def admin_open(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return ConversationHandler.END
     msg = await context.bot.send_message(chat_id, "…")
     await _store(context, msg)
-    return await _show_menu(context)
+    return await _show_dashboard(context)
+
+
+async def nav_home(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.callback_query.answer()
+    return await _show_dashboard(context)
 
 
 async def nav_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -316,6 +340,7 @@ async def toggle_mode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     if which == "gate":
         new = not storage.get_flag("gate_enabled", settings.captcha_enabled)
         storage.set_flag("gate_enabled", new)
+        storage.log_action(update.effective_user.id, "gate_toggle", "вкл" if new else "выкл")
         if new:
             await q.answer("Гейт включён: без анкеты — мут")
         else:
@@ -326,10 +351,12 @@ async def toggle_mode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     elif which == "greet":
         new = not storage.get_flag("greeting_enabled", True)
         storage.set_flag("greeting_enabled", new)
+        storage.log_action(update.effective_user.id, "greeting_toggle", "вкл" if new else "выкл")
         await q.answer("Приветствие включено" if new else "Приветствие выключено")
     else:
         new = not storage.get_flag("gossip_enabled", True)
         storage.set_flag("gossip_enabled", new)
+        storage.log_action(update.effective_user.id, "gossip_toggle", "вкл" if new else "выкл")
         await q.answer("Приём сплетен включён" if new else "Приём сплетен выключен")
     await _edit(context, _MODES_TEXT, _modes_kb(context))
     return BROWSE
@@ -641,6 +668,7 @@ async def gm_save_emoji(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 def build_admin_cms() -> ConversationHandler:
     nav = [
+        CallbackQueryHandler(nav_home, pattern=r"^acms_home$"),
         CallbackQueryHandler(nav_menu, pattern=r"^acms_menu$"),
         CallbackQueryHandler(nav_texts, pattern=r"^acms_texts$"),
         CallbackQueryHandler(nav_btns, pattern=r"^acms_btns$"),
@@ -663,6 +691,29 @@ def build_admin_cms() -> ConversationHandler:
         CallbackQueryHandler(gm_toggle, pattern=r"^acms_gmtoggle:\d+$"),
         CallbackQueryHandler(gm_reset, pattern=r"^acms_gmreset:\d+$"),
         CallbackQueryHandler(admin_exit, pattern=r"^acms_exit$"),
+        # раздел «Анкеты»
+        CallbackQueryHandler(PF.nav_profiles, pattern=r"^acms_pf$"),
+        CallbackQueryHandler(PF.pf_page, pattern=r"^acms_pf_list:\d+$"),
+        CallbackQueryHandler(PF.pf_search_start, pattern=r"^acms_pf_search$"),
+        CallbackQueryHandler(PF.pf_open, pattern=r"^acms_pf_open:\d+$"),
+        CallbackQueryHandler(PF.pf_toggle_contact, pattern=r"^acms_pf_contact:\d+$"),
+        CallbackQueryHandler(PF.pf_unmute, pattern=r"^acms_pf_unmute:\d+$"),
+        # раздел «Рассылка» (Live Broadcast Builder)
+        CallbackQueryHandler(BC.nav_broadcast, pattern=r"^acms_bc$"),
+        CallbackQueryHandler(BC.bc_audience_all, pattern=r"^acms_bc_aud:all$"),
+        CallbackQueryHandler(BC.bc_audience_vertical_menu, pattern=r"^acms_bc_aud:vertical$"),
+        CallbackQueryHandler(BC.bc_audience_grade_menu, pattern=r"^acms_bc_aud:grade$"),
+        CallbackQueryHandler(BC.bc_pick_vertical, pattern=r"^acms_bc_vert:\d+$"),
+        CallbackQueryHandler(BC.bc_pick_grade, pattern=r"^acms_bc_grade:\d+$"),
+        CallbackQueryHandler(BC.bc_audience_count, pattern=r"^acms_bc_count$"),
+        CallbackQueryHandler(BC.bc_add_item_start, pattern=r"^acms_bc_additem$"),
+        CallbackQueryHandler(BC.bc_btn_choice, pattern=r"^acms_bc_btn:(yes|no)$"),
+        CallbackQueryHandler(BC.bc_remove_last, pattern=r"^acms_bc_removelast$"),
+        CallbackQueryHandler(BC.bc_send, pattern=r"^acms_bc_send$"),
+        CallbackQueryHandler(BC.bc_cancel, pattern=r"^acms_bc_cancel$"),
+        # раздел «Журнал»
+        CallbackQueryHandler(LOG.nav_log, pattern=r"^acms_log$"),
+        CallbackQueryHandler(LOG.log_page, pattern=r"^acms_log_p:\d+$"),
     ]
     media_filter = filters.ANIMATION | filters.PHOTO | filters.VIDEO | filters.Document.ALL
     return ConversationHandler(
@@ -686,6 +737,22 @@ def build_admin_cms() -> ConversationHandler:
             WAIT_GM_EMOJI: [
                 *nav,
                 MessageHandler(filters.TEXT & ~filters.COMMAND, gm_save_emoji),
+            ],
+            PF.WAIT_SEARCH: [
+                *nav,
+                MessageHandler(filters.TEXT & ~filters.COMMAND, PF.pf_search_text),
+            ],
+            BC.WAIT_TEXT: [
+                *nav,
+                MessageHandler(filters.TEXT & ~filters.COMMAND, BC.bc_item_text),
+            ],
+            BC.WAIT_BTN_LABEL: [
+                *nav,
+                MessageHandler(filters.TEXT & ~filters.COMMAND, BC.bc_btn_label),
+            ],
+            BC.WAIT_BTN_URL: [
+                *nav,
+                MessageHandler(filters.TEXT & ~filters.COMMAND, BC.bc_btn_url),
             ],
         },
         fallbacks=[CommandHandler("admin", admin_open)],

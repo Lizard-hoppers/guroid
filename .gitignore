@@ -1,0 +1,11 @@
+.venv/
+.env
+google-service-account.json
+google-service-account.json.ostrovbot.bak
+bot_persistence.pkl
+*.sqlite3
+__pycache__/
+*.pyc
+*.bak
+*.bak-*
+*_candidate/

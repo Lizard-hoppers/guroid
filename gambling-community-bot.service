@@ -1,0 +1,15 @@
+[Unit]
+Description=Gambling Community Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/gambling_community_bot
+EnvironmentFile=/opt/gambling_community_bot/.env
+ExecStart=/opt/gambling_community_bot/.venv/bin/python /opt/gambling_community_bot/bot.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

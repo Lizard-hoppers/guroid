@@ -70,7 +70,6 @@ def _menu_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🎛 Кнопки", callback_data="acms_btns")],
         [InlineKeyboardButton("🖼 Медиа", callback_data="acms_media")],
         [InlineKeyboardButton("🔗 Меню группы", callback_data="acms_gm")],
-        [InlineKeyboardButton("⚙️ Режимы", callback_data="acms_modes")],
         [InlineKeyboardButton("‹ Панель управления", callback_data="acms_home")],
     ])
 
@@ -80,7 +79,8 @@ def _dashboard_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("📋 Анкеты", callback_data="acms_pf"),
          InlineKeyboardButton("📢 Рассылка", callback_data="acms_bc")],
         [InlineKeyboardButton("📝 Журнал", callback_data="acms_log"),
-         InlineKeyboardButton("🎛 Контент", callback_data="acms_menu")],
+         InlineKeyboardButton("⚙️ Режимы", callback_data="acms_modes")],
+        [InlineKeyboardButton("🎛 Контент", callback_data="acms_menu")],
         [InlineKeyboardButton("✖ Выход", callback_data="acms_exit")],
     ])
 
@@ -307,7 +307,7 @@ def _modes_kb(context) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(
             f"\U0001f5e3 Сплетни от участников · {'вкл' if gossip_on else 'выкл'}",
             callback_data="acms_tgl:gossip")],
-        [InlineKeyboardButton("‹ Назад", callback_data="acms_menu")],
+        [InlineKeyboardButton("‹ Панель управления", callback_data="acms_home")],
     ])
 
 

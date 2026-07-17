@@ -355,7 +355,7 @@ async def _run_scenarios():
     with tempfile.TemporaryDirectory() as d:
         bd = _bot_data(d)
         ctx = FakeContext(bd)
-        u = FakeUpdate(message=FakeMessage("/start"))
+        u = FakeUpdate(message=FakeMessage("/start"), user=FakeUser(999))
         st = await F.start(u, ctx)
         check(st == F.S.LANG, "A: start->LANG (выбор языка)")
         check(u.message.deleted, "A: команда /start удалена (Clean Chat)")
@@ -405,7 +405,7 @@ async def _run_scenarios():
     with tempfile.TemporaryDirectory() as d:
         bd = _bot_data(d)
         ctx = FakeContext(bd)
-        await F.start(FakeUpdate(message=FakeMessage("/start")), ctx)
+        await F.start(FakeUpdate(message=FakeMessage("/start"), user=FakeUser(999)), ctx)
         await F.choose_lang(FakeUpdate(query=FakeQuery("lang:ru")), ctx)
         await F.begin_form(FakeUpdate(query=FakeQuery("start_form")), ctx)
         await F.pick_vertical(FakeUpdate(query=FakeQuery("v:0")), ctx)
@@ -436,7 +436,7 @@ async def _run_scenarios():
     with tempfile.TemporaryDirectory() as d:
         bd = _bot_data(d)
         ctx = FakeContext(bd)
-        await F.start(FakeUpdate(message=FakeMessage("/start")), ctx)
+        await F.start(FakeUpdate(message=FakeMessage("/start"), user=FakeUser(999)), ctx)
         await F.choose_lang(FakeUpdate(query=FakeQuery("lang:ru")), ctx)
         await F.begin_form(FakeUpdate(query=FakeQuery("start_form")), ctx)
         st = await F.pick_vertical(FakeUpdate(query=FakeQuery("v:7")), ctx)
@@ -477,7 +477,7 @@ async def _run_scenarios():
         bd = _bot_data(d)
         bd["storage"].set_media("ask_vertical", "GIFV", "animation")
         ctx = FakeContext(bd)
-        await F.start(FakeUpdate(message=FakeMessage("/start")), ctx)
+        await F.start(FakeUpdate(message=FakeMessage("/start"), user=FakeUser(999)), ctx)
         await F.choose_lang(FakeUpdate(query=FakeQuery("lang:ru")), ctx)
         check(ctx.user_data.get("screen_kind") == "text", "D: welcome — текстовый экран")
         await F.begin_form(FakeUpdate(query=FakeQuery("start_form")), ctx)
@@ -485,6 +485,19 @@ async def _run_scenarios():
         check(any(s[1] == "[animation]" for s in ctx.bot.sent), "D: отправлена анимация")
         await F.pick_vertical(FakeUpdate(query=FakeQuery("v:1")), ctx)
         check(ctx.user_data.get("screen_kind") == "text", "D: грейд — снова текстовый экран")
+
+    # --- сценарий E: админ жмёт /start — сразу справка, анкета не показывается ---
+    with tempfile.TemporaryDirectory() as d:
+        bd = _bot_data(d)  # admin_ids=(42,) — дефолтный FakeUser() как раз id=42
+        ctx = FakeContext(bd)
+        u = FakeUpdate(message=FakeMessage("/start"))
+        st = await F.start(u, ctx)
+        from telegram.ext import ConversationHandler
+        check(st == ConversationHandler.END, "E: админ /start -> END, без анкеты")
+        check(u.message.deleted, "E: команда /start у админа тоже удаляется (Clean Chat)")
+        admin_texts = [t for cid, t in ctx.bot.sent if "/admin" in t]
+        check(len(admin_texts) == 1, "E: админу прислана справка с командами")
+        check(bd["storage"].count() == 0, "E: анкета за админом не создалась")
 
 
 def test_cms_storage():
@@ -532,7 +545,7 @@ async def _run_lang():
     with tempfile.TemporaryDirectory() as d:
         bd = _bot_data(d)
         ctx = FakeContext(bd)
-        await F.start(FakeUpdate(message=FakeMessage("/start")), ctx)
+        await F.start(FakeUpdate(message=FakeMessage("/start"), user=FakeUser(999)), ctx)
         st = await F.choose_lang(FakeUpdate(query=FakeQuery("lang:en")), ctx)
         check(st == F.S.WELCOME and ctx.user_data["lang"] == "en", "EN: язык en -> WELCOME")
 

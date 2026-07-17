@@ -180,8 +180,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.clear()
     context.user_data["screen_chat"] = update.effective_chat.id
     await _delete_user_msg(update)  # Clean Chat: убираем /start
+    user = update.effective_user
+    settings = context.bot_data["settings"]
+    # админам анкета не нужна — сразу доступ к панели управления
+    if settings.is_admin(user.id):
+        await delete_gate_prompts(context, user.id)
+        await context.bot.send_message(
+            update.effective_chat.id,
+            "👋 Вы администратор — анкету заполнять не нужно.\n\n"
+            "/admin — панель управления\n"
+            "/export — выгрузить анкеты (CSV)\n"
+            "/stats — статистика",
+        )
+        return ConversationHandler.END
     # гейт группы: юзер пришёл в бота — подчищаем просьбу «пройди анкету» в группе
-    await delete_gate_prompts(context, update.effective_user.id)
+    await delete_gate_prompts(context, user.id)
     await _show(context, "lang_select", ui.lang_kb(_content(context)))
     return S.LANG
 

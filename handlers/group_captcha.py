@@ -129,25 +129,43 @@ def _build_screen(context, user) -> tuple[str, InlineKeyboardMarkup, int]:
     return text, _options_kb(user.id, options), answer
 
 
-async def _send_screen(context, chat_id: int, text: str, kb, key: str = "captcha_welcome"):
-    """Отправляет экран: с медиа (CMS) — видео/гиф/фото+подпись, иначе текст."""
-    media = _content(context).media(key)
+async def _send_screen(context, chat_id: int, text: str, kb, key: str = "captcha_welcome",
+                        message_thread_id: int | None = None, media_override=None,
+                        reply_to_message_id: int | None = None):
+    """Отправляет экран: с медиа (CMS) — видео/гиф/фото+подпись, иначе текст.
+
+    message_thread_id — топик форума (EN-приветствие уходит в свою тему,
+    см. _send_greeting; гейт-промпт — топик, где юзер написал), None — топик
+    по умолчанию (текущее поведение).
+    media_override — (file_id, media_type) в обход CMS-медиа по key (см.
+    _send_greeting: ротация из пула greeting_videos вместо статичного видео).
+    reply_to_message_id — ответом на сообщение юзера (гейт-промпт под ним),
+    allow_sending_without_reply — если то сообщение уже удалено, шлём как
+    обычное, а не роняем гейт с ошибкой."""
+    media = media_override if media_override is not None else _content(context).media(key)
     if media:
         file_id, mtype = media
         if mtype == "animation":
             return await context.bot.send_animation(
-                chat_id, file_id, caption=text, reply_markup=kb, parse_mode=ParseMode.HTML
+                chat_id, file_id, caption=text, reply_markup=kb, parse_mode=ParseMode.HTML,
+                message_thread_id=message_thread_id, reply_to_message_id=reply_to_message_id,
+                allow_sending_without_reply=True,
             )
         if mtype == "video":
             return await context.bot.send_video(
-                chat_id, file_id, caption=text, reply_markup=kb, parse_mode=ParseMode.HTML
+                chat_id, file_id, caption=text, reply_markup=kb, parse_mode=ParseMode.HTML,
+                message_thread_id=message_thread_id, reply_to_message_id=reply_to_message_id,
+                allow_sending_without_reply=True,
             )
         return await context.bot.send_photo(
-            chat_id, file_id, caption=text, reply_markup=kb, parse_mode=ParseMode.HTML
+            chat_id, file_id, caption=text, reply_markup=kb, parse_mode=ParseMode.HTML,
+            message_thread_id=message_thread_id, reply_to_message_id=reply_to_message_id,
+            allow_sending_without_reply=True,
         )
     return await context.bot.send_message(
         chat_id, text, reply_markup=kb, parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True,
+        disable_web_page_preview=True, message_thread_id=message_thread_id,
+        reply_to_message_id=reply_to_message_id, allow_sending_without_reply=True,
     )
 
 
@@ -270,12 +288,83 @@ async def _safe_delete(q) -> None:
         pass
 
 
+async def post_singleton_group_message(context, chat_id: int, category: str, sender) -> None:
+    """Clean Chat в группе: один активный слот на (chat_id, category) — новое
+    сообщение этой категории удаляет предыдущее вместо накопления в чате.
+    Слот хранится в БД (Storage.get/set_singleton_message), переживает
+    рестарт бота — в отличие от прежнего TTL-таймера."""
+    storage = context.bot_data["storage"]
+    old_id = storage.get_singleton_message(chat_id, category)
+    if old_id:
+        try:
+            await context.bot.delete_message(chat_id, old_id)
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "singleton: не удалось удалить старое сообщение %s/%s", chat_id, category, exc_info=True
+            )
+    msg = await sender()
+    if msg is not None:
+        storage.set_singleton_message(chat_id, category, msg.message_id)
+
+
+def spawn_background(context, coro) -> None:
+    """Настоящий fire-and-forget: НЕ через context.application.create_task —
+    PTB явно AWAIT-ит все такие задачи при Application.stop() (см. исходник
+    _application.py: `await asyncio.gather(*self.__create_task_tasks)`), а
+    значит часовой asyncio.sleep вешает КАЖДЫЙ рестарт/деплой бота на 90 сек
+    до принудительного SIGKILL от systemd (так и было обнаружено 20.07.2026 —
+    админка «зависала» из-за этого). Используем голый asyncio.create_task и
+    сами держим ссылку в bot_data, чтобы GC не прибил задачу раньше времени."""
+    task = asyncio.create_task(coro)
+    tasks = context.bot_data.setdefault("_bg_tasks", set())
+    tasks.add(task)
+    task.add_done_callback(tasks.discard)
+
+
 async def _send_greeting(context, chat_id: int, user) -> None:
-    """Приветствие прошедшему анкету: CMS-медиа + текст + панель ссылок."""
-    text = f"{_mention(user)}\n{_content(context).txt('captcha_welcome')}"
-    kb = ui.group_menu_kb(context.bot_data["storage"])
-    await _send_screen(context, chat_id, text, kb)
-    logger.info("welcome: greeting sent to user %s in chat %s", user.id, chat_id)
+    """Приветствие прошедшему анкету: CMS-медиа + текст + панель ссылок.
+
+    Локализовано по языку анкеты (profiles.lang, 24.07.2026): RU уходит в
+    основной топик чата, EN — в COMMUNITY_EN_TOPIC_ID (свой англоязычный
+    топик того же форума). Профиля/lang нет (старые анкеты) — фолбэк на ru.
+
+    Свой singleton-слот НА ТОПИК (суффикс категории) — иначе RU- и
+    EN-приветствия делили бы один слот на chat_id и удаляли бы друг друга
+    при каждом новом участнике, хотя физически лежат в разных темах."""
+    storage = context.bot_data["storage"]
+    profile = storage.get_profile_by_telegram_id(user.id)
+    lang = profile["lang"] if profile and profile["lang"] else "ru"
+    settings = context.bot_data["settings"]
+    thread_id = settings.community_en_topic_id if lang == "en" else None
+    cat_suffix = f"_{thread_id}" if thread_id else ""
+
+    text = f"{_mention(user)}\n{_content(context).view(lang).txt('group_greeting')}"
+    kb = ui.group_menu_kb(storage, lang=lang)
+    # Разнообразие (24.07.2026): видео по кругу из пула greeting_videos вместо
+    # одного статичного CMS-медиа; пул пуст -> _send_screen сам упадёт на
+    # обычный CMS-лукап по key="captcha_welcome" (текущее поведение).
+    video = storage.greeting_video_next()
+    await post_singleton_group_message(
+        context, chat_id, f"greeting{cat_suffix}",
+        lambda: _send_screen(context, chat_id, text, kb, message_thread_id=thread_id, media_override=video),
+    )
+    logger.info("welcome: greeting sent to user %s in chat %s (lang=%s)", user.id, chat_id, lang)
+
+    # Reply-клавиатура (ui.group_reply_kb) — отдельным сообщением, т.к. Telegram
+    # не даёт совместить inline- и reply-разметку в одном; переустанавливается
+    # при каждом новом участнике, чтобы дошла и до тех, кто вступил позже.
+    invite_label = C.GROUP_KB_INVITE_TEXT_EN if lang == "en" else C.GROUP_KB_INVITE_TEXT
+    hint = (
+        f"👋 Want to invite a friend? Tap «{invite_label}» below."
+        if lang == "en" else
+        f"👋 Хотите пригласить друга? Жмите «{invite_label}» внизу."
+    )
+    await post_singleton_group_message(
+        context, chat_id, f"invite_keyboard{cat_suffix}",
+        lambda: context.bot.send_message(
+            chat_id, hint, reply_markup=ui.group_reply_kb(lang=lang), message_thread_id=thread_id,
+        ),
+    )
 
 
 def _gate_kb(context) -> InlineKeyboardMarkup:
@@ -286,8 +375,43 @@ def _gate_kb(context) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[ui.link_button(label, url, emoji_id=C.GATE_BUTTON_EMOJI_ID)]])
 
 
-async def _gate_mute(context, chat_id: int, user) -> None:
-    """Мутит участника без анкеты; просьбу пройти анкету шлёт один раз на юзера."""
+GATE_PROMPT_TTL_SECONDS = 1800  # 30 минут — не увидел юзер, просьба сама уберётся
+
+
+async def _expire_gate_prompt(context, chat_id: int, user_id: int, message_id: int,
+                               delay: int = GATE_PROMPT_TTL_SECONDS) -> None:
+    """Через delay секунд удаляет просьбу, ЕСЛИ это ещё тот же промпт (не был
+    уже снят через /start — delete_gate_prompts) — иначе ничего не делает.
+    delay параметризован ради тестов (реальный вызов всегда с дефолтом)."""
+    await asyncio.sleep(delay)
+    storage = context.bot_data["storage"]
+    if storage.get_gate_prompt(chat_id, user_id) != message_id:
+        return
+    try:
+        await context.bot.delete_message(chat_id, message_id)
+        logger.info("gate: prompt %s истёк по таймауту в чате %s", message_id, chat_id)
+    except Exception:  # noqa: BLE001
+        logger.debug("gate: не удалось удалить просроченную просьбу %s в %s", message_id, chat_id, exc_info=True)
+    storage.clear_gate_prompt(chat_id, user_id)
+
+
+async def _gate_mute(context, chat_id: int, user, message_thread_id: int | None = None,
+                      reply_to_message_id: int | None = None) -> None:
+    """Мутит участника без анкеты; просьбу пройти анкету шлёт один раз на юзера
+    — в ТОЙ теме форума, где он написал, ответом под его сообщением (если это
+    вход в группу, а не сообщение — message_thread_id/reply_to_message_id нет,
+    просьба уходит в топик по умолчанию, как раньше).
+
+    Забаненного администратором (storage.is_banned) НЕ трогаем через обычный
+    гейт-мут: не пишем в group_mutes (иначе заполнение анкеты автоматически
+    снимет бан через unmute_after_profile) и не шлём бесполезную для него
+    просьбу пройти анкету — ограничение и так уже действует."""
+    if context.bot_data["storage"].is_banned(user.id):
+        try:
+            await context.bot.restrict_chat_member(chat_id, user.id, permissions=_MUTED)
+        except Exception:  # noqa: BLE001
+            logger.warning("gate: не удалось замутить забаненного %s в %s", user.id, chat_id, exc_info=True)
+        return
     try:
         await context.bot.restrict_chat_member(chat_id, user.id, permissions=_MUTED)
     except Exception:  # noqa: BLE001
@@ -302,11 +426,15 @@ async def _gate_mute(context, chat_id: int, user) -> None:
     prompted.append(user.id)
     text = f"{_mention(user)}\n{_content(context).txt('gate_prompt')}"
     try:
-        msg = await _send_screen(context, chat_id, text, _gate_kb(context), key="gate_prompt")
+        msg = await _send_screen(
+            context, chat_id, text, _gate_kb(context), key="gate_prompt",
+            message_thread_id=message_thread_id, reply_to_message_id=reply_to_message_id,
+        )
     except Exception:  # noqa: BLE001
         logger.warning("gate: просьба для %s в %s не отправлена", user.id, chat_id, exc_info=True)
         return
     context.bot_data["storage"].set_gate_prompt(chat_id, user.id, msg.message_id)
+    spawn_background(context, _expire_gate_prompt(context, chat_id, user.id, msg.message_id))
 
 
 async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -341,7 +469,11 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         cache[user.id] = status
     if status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER):
         return
-    await _gate_mute(context, chat.id, user)
+    await _gate_mute(
+        context, chat.id, user,
+        message_thread_id=getattr(msg, "message_thread_id", None),
+        reply_to_message_id=msg.message_id,
+    )
 
 
 async def delete_gate_prompts(context, user_id: int) -> None:

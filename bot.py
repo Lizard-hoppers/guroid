@@ -3,19 +3,26 @@ from __future__ import annotations
 
 import logging
 
-from telegram import Update
+from telegram import MenuButtonWebApp, Update, WebAppInfo
 from telegram.ext import Application, ContextTypes, PersistenceInput, PicklePersistence
 
 from config import Settings
 from content import Content
 from google_sheets_sync import SheetSync
+from guro_storage import GuroStorage
 from handlers import (
     build_admin_cms,
     build_admin_handlers,
+    build_admin_profiles_handlers,
+    build_admin_users_handlers,
     build_conversation,
     build_gossip_handlers,
     build_group_captcha,
+    build_guro_partnerships_handlers,
+    build_guro_payments_handlers,
     build_news_handlers,
+    build_referral_group_handlers,
+    build_referral_handlers,
 )
 from storage import Storage
 
@@ -29,6 +36,18 @@ logger = logging.getLogger("gambling_community_bot")
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.exception("Unhandled error", exc_info=context.error)
+
+
+async def _post_init(app: Application) -> None:
+    """Menu Button (кнопка слева от поля ввода в личке) открывает GURO ID
+    Mini App напрямую — идемпотентно, безопасно вызывать при каждом старте."""
+    settings: Settings = app.bot_data["settings"]
+    try:
+        await app.bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(text="GURO ID", web_app=WebAppInfo(url=settings.guro_id_webapp_url))
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("guro_id: не удалось установить Menu Button")
 
 
 def main() -> None:
@@ -50,23 +69,42 @@ def main() -> None:
         Application.builder()
         .token(settings.bot_token)
         .persistence(persistence)
+        .post_init(_post_init)
         .build()
     )
     app.bot_data["settings"] = settings
     app.bot_data["storage"] = storage
     app.bot_data["sheet"] = sheet
     app.bot_data["content"] = Content(storage)
+    # GURO ID: своё соединение к тому же sqlite-файлу (второй писатель — тот
+    # же процесс, что и guro_id_api.py; WAL включается один раз в GuroStorage).
+    app.bot_data["guro_storage"] = GuroStorage(settings.database_path)
 
-    app.add_handler(build_admin_cms())
+    app.add_handler(build_admin_cms(settings.admin_ids))
     app.add_handler(build_conversation())
     for h in build_admin_handlers():
         app.add_handler(h)
+    # Reply-клавиатура в группе (кнопка «Пригласить/Invite»): регистрируем
+    # ДО гейта капчи, в том же group=1 — гейт слушает ЛЮБОЕ текстовое
+    # сообщение в группе широким фильтром, и в пределах одной PTB-группы
+    # выигрывает первый совпавший хендлер (порядок регистрации решает).
+    for h in build_referral_group_handlers():
+        app.add_handler(h, group=1)
     # Второй уровень: гейт группы — без анкеты мут (на входе и по первому
     # сообщению), после анкеты автоматический размут + приветствие.
     # group=1, чтобы MessageHandler гейта не конкурировал с ConversationHandler.
     if settings.captcha_enabled:
         for h in build_group_captcha():
             app.add_handler(h, group=1)
+    # Быстрая карточка участника: админ форвардит в личку любое сообщение из
+    # группы -> сразу открывается карточка (мут/бан), без захода в /admin.
+    # group=1 — не конкурирует с ConversationHandler-ами (те же соображения).
+    for h in build_admin_users_handlers():
+        app.add_handler(h, group=1)
+    # Кнопки карточки анкеты (contact/unmute) — тоже вне ConversationHandler,
+    # чтобы работали при открытии карточки по deep-link (?start=p_<id>).
+    for h in build_admin_profiles_handlers():
+        app.add_handler(h, group=1)
     # Новости индустрии: кнопки шлёт отдельный процесс news_poster.py (cron),
     # а публикует/отклоняет — вот этот хендлер (только он слушает getUpdates).
     for h in build_news_handlers():
@@ -74,6 +112,15 @@ def main() -> None:
     # Сплетни/инсайды от участников: /gossip в личке -> GPT -> модерация ->
     # публикация в тот же чат, что и новости.
     for h in build_gossip_handlers():
+        app.add_handler(h)
+    # Реф-система: /invite в личке + кнопка «Получить реф-ссылку» в панели группы.
+    for h in build_referral_handlers():
+        app.add_handler(h)
+    # GURO ID: кнопки Подтвердить/Отклонить под уведомлением о партнёрстве
+    # (уведомление шлёт guro_id_api.py) + оплата подписки через Telegram Stars.
+    for h in build_guro_partnerships_handlers():
+        app.add_handler(h)
+    for h in build_guro_payments_handlers():
         app.add_handler(h)
     app.add_error_handler(on_error)
 

@@ -7,9 +7,12 @@ Clean Chat: у пользователя всегда один активный �
 from __future__ import annotations
 
 import logging
+import time
 from enum import IntEnum, auto
+from pathlib import Path
 
 from telegram import (
+    InlineKeyboardMarkup,
     InputMediaAnimation,
     InputMediaPhoto,
     InputMediaVideo,
@@ -29,9 +32,15 @@ from telegram.ext import (
 import constants as C
 import logic
 import ui
-from handlers.group_captcha import delete_gate_prompts, unmute_after_profile
+from country_formatter import normalize_country
+from handlers import admin_ui
+from handlers.admin_profiles import send_card_message as _open_profile_card
+from handlers.admin_users import send_card_message as _open_user_card
+from handlers.group_captcha import delete_gate_prompts, post_singleton_group_message, unmute_after_profile
 
 logger = logging.getLogger(__name__)
+
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class S(IntEnum):
@@ -50,6 +59,8 @@ class S(IntEnum):
     LINKEDIN = auto()
     # выбор языка; в КОНЦЕ enum, чтобы не сдвинуть значения persisted-состояний
     LANG = auto()
+    # страна; тоже в КОНЦЕ enum по той же причине (не сдвигать persisted-состояния)
+    COUNTRY = auto()
 
 
 # --- helpers --------------------------------------------------------------
@@ -91,14 +102,18 @@ async def _send_media(context, chat, file_id, mtype, caption, kb):
     )
 
 
-async def _show(context, key: str, kb=None) -> None:
+async def _show(context, key: str, kb=None, text_vars: dict[str, str] | None = None) -> None:
     """Единственный экран Clean Chat. С медиа — фото/гиф/видео + подпись, иначе текст.
 
     Переход text↔media пересоздаёт сообщение (Telegram не редактирует тип); внутри
-    одного типа — редактирование на месте (без мигания).
+    одного типа — редактирование на месте (без мигания). text_vars — подстановка
+    плейсхолдеров вида {ключ} в CMS-тексте (например {members} — живой счётчик).
     """
     c = _content(context)
     text = c.txt(key)
+    if text_vars:
+        for placeholder, value in text_vars.items():
+            text = text.replace(placeholder, value)
     media = c.media(key)
     chat = context.user_data.get("screen_chat")
     mid = context.user_data.get("screen_id")
@@ -177,33 +192,123 @@ async def _delete_user_msg(update: Update) -> None:
 # --- Блок 1: приветствие --------------------------------------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data.clear()
-    context.user_data["screen_chat"] = update.effective_chat.id
     await _delete_user_msg(update)  # Clean Chat: убираем /start
     user = update.effective_user
     settings = context.bot_data["settings"]
-    # админам анкета не нужна — сразу доступ к панели управления
-    if settings.is_admin(user.id):
-        await delete_gate_prompts(context, user.id)
-        await context.bot.send_message(
-            update.effective_chat.id,
-            "👋 Вы администратор — анкету заполнять не нужно.\n\n"
-            "/admin — панель управления\n"
-            "/export — выгрузить анкеты (CSV)\n"
-            "/stats — статистика",
+
+    # /start прямо в группе (не по deep-link — те всегда открывают личку) не
+    # должен разворачивать анкету/админ-панель на виду у всех. Один активный
+    # слот на чат (post_singleton_group_message) — повторные попытки не копятся.
+    if update.effective_chat.type != "private":
+        chat_id = update.effective_chat.id
+        await post_singleton_group_message(
+            context, chat_id, "start_redirect",
+            lambda: context.bot.send_message(
+                chat_id,
+                "Анкету нужно проходить в личном сообщении с ботом — нажмите кнопку ниже 👇",
+                reply_markup=InlineKeyboardMarkup([[ui.link_button(
+                    "➡️ Перейти к боту", f"https://t.me/{context.bot.username}", style="primary",
+                )]]),
+            ),
         )
         return ConversationHandler.END
+
+    # Всё для админов проверяем ДО user_data.clear() ниже — иначе
+    # delete_previous_screen не найдёт adm_chat/adm_mid (текущий экран
+    # /admin), и старое меню-список останется висеть в чате рядом с новым.
+    if settings.is_admin(user.id):
+        await delete_gate_prompts(context, user.id)
+
+        # deep-link из списка «Анкеты»/«Пользователи» (клик по ID) -> сразу карточка
+        args = getattr(context, "args", None) or []
+        payload = args[0] if args else ""
+        target = payload.split("_", 1)[1] if "_" in payload else ""
+        if target.isdigit() and (payload.startswith("u_") or payload.startswith("p_")):
+            if payload.startswith("u_"):
+                await _open_user_card(context, update.effective_chat.id, int(target))
+            else:
+                await _open_profile_card(context, update.effective_chat.id, int(target))
+            return ConversationHandler.END
+
+        # обычный /start админа — сразу открываем панель управления, без
+        # промежуточного «наберите /admin». ВАЖНО: admin_cms.admin_open() тут
+        # вызывается напрямую, в обход диспетчера gambling_admin_cms — если
+        # это первое ЛИЧНОЕ обращение админа к боту вообще (ни разу не жал
+        # /admin), у gambling_admin_cms ещё нет активной сессии для этого
+        # чата, и кнопки на дашборде не сработают, пока админ не откроет
+        # /admin один раз (та же оговорка, что и у карточек по
+        # forward/deep-link — см. admin_users.py). Для уже когда-либо
+        # открывавших /admin (обычный случай) работает сразу.
+        from handlers.admin_cms import admin_open
+        await admin_ui.delete_previous_screen(context)
+        await admin_open(update, context)
+        return ConversationHandler.END
+
+    context.user_data.clear()
+    context.user_data["screen_chat"] = update.effective_chat.id
+
+    _consume_referral_payload(context, user)
+
     # гейт группы: юзер пришёл в бота — подчищаем просьбу «пройди анкету» в группе
     await delete_gate_prompts(context, user.id)
     await _show(context, "lang_select", ui.lang_kb(_content(context)))
     return S.LANG
 
 
+def _consume_referral_payload(context: ContextTypes.DEFAULT_TYPE, user) -> None:
+    """Реф-ссылка `?start=ref_<referrer_id>_<slot>` — привязывает слот к
+    ЭТОМУ юзеру, только если он новый (без анкеты) и ещё не привязан к
+    другому рефереру (первая ссылка выигрывает, повторные /start её не
+    перезапишут)."""
+    args = getattr(context, "args", None) or []
+    payload = args[0] if args else ""
+    if not payload.startswith("ref_"):
+        return
+    parts = payload[len("ref_"):].split("_")
+    if len(parts) != 2 or not all(p.isdigit() for p in parts):
+        return
+    referrer_id, slot = int(parts[0]), int(parts[1])
+    if referrer_id == user.id:
+        return
+    storage = context.bot_data["storage"]
+    if storage.has_profile(user.id) or storage.get_referrer_of(user.id):
+        return
+    storage.consume_referral_link(referrer_id, slot, user.id, user.username)
+
+
+_MEMBER_COUNT_TTL = 300  # сек — не дёргать API на каждый /start
+_MEMBER_COUNT_FALLBACK = 4000
+
+
+async def _member_count(context) -> int:
+    """Живое кол-во участников группы сообщества, с кэшем на 5 минут.
+
+    Без COMMUNITY_CHAT_ID или при ошибке API — последнее известное значение,
+    изначально статичная оценка (как было в тексте раньше)."""
+    settings = context.bot_data["settings"]
+    cache = context.bot_data.setdefault(
+        "member_count_cache", {"value": _MEMBER_COUNT_FALLBACK, "ts": 0.0}
+    )
+    now = time.monotonic()
+    if now - cache["ts"] < _MEMBER_COUNT_TTL or not settings.community_chat_id:
+        return cache["value"]
+    try:
+        cache["value"] = await context.bot.get_chat_member_count(settings.community_chat_id)
+        cache["ts"] = now
+    except Exception:  # noqa: BLE001
+        logger.debug("member count fetch failed", exc_info=True)
+    return cache["value"]
+
+
 async def choose_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     q = update.callback_query
     await q.answer()
     context.user_data["lang"] = "en" if q.data == "lang:en" else "ru"
-    await _show(context, "welcome", ui.welcome_kb(_content(context)))
+    count = await _member_count(context)
+    await _show(
+        context, "welcome", ui.welcome_kb(_content(context)),
+        text_vars={"{members}": str(count)},
+    )
     return S.WELCOME
 
 
@@ -430,6 +535,25 @@ async def name_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await _show(context, "ask_name")
         return S.NAME
     _profile(context)["name"] = text
+    await _show(context, "ask_country")
+    return S.COUNTRY
+
+
+async def country_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = (update.message.text or "").strip()
+    await _delete_user_msg(update)
+    if not text:
+        await _show(context, "ask_country")
+        return S.COUNTRY
+    settings = context.bot_data["settings"]
+    country, iso2 = text, ""
+    if settings.openai_api_key:
+        normalized = await normalize_country(settings.openai_api_key, settings.openai_model, text)
+        if normalized is not None:
+            country, iso2 = normalized.country_ru, normalized.iso2
+    p = _profile(context)
+    p["country"] = country
+    p["country_iso2"] = iso2
     await _show(context, "ask_company")
     return S.COMPANY
 
@@ -471,6 +595,7 @@ async def _finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     profile = _profile(context)
     profile["user_id"] = user.id
     profile["username"] = user.username or ""
+    profile["lang"] = context.user_data.get("lang", "ru")
 
     settings = context.bot_data["settings"]
     storage = context.bot_data["storage"]
@@ -485,14 +610,20 @@ async def _finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     except Exception:  # noqa: BLE001
         logger.exception("sheet append failed for profile %s", profile_id)
 
+    # Забанен администратором (storage.banned_users, отдельно от group_mutes) —
+    # анкета НЕ должна снимать бан и НЕ должна выдавать доступ в группу.
+    banned = storage.is_banned(user.id)
+
     # гейт группы: анкета пройдена — размучиваем и шлём приветствие в группах
-    try:
-        await unmute_after_profile(context, user)
-    except Exception:  # noqa: BLE001
-        logger.exception("gate: unmute after profile failed for %s", user.id)
+    # (кроме забаненных — их ограничение должно остаться в силе)
+    if not banned:
+        try:
+            await unmute_after_profile(context, user)
+        except Exception:  # noqa: BLE001
+            logger.exception("gate: unmute after profile failed for %s", user.id)
 
     # уведомление админам
-    card = logic.profile_to_admin_card(profile)
+    card = logic.profile_to_admin_card(profile, banned=banned)
     for admin_id in settings.admin_ids:
         try:
             await context.bot.send_message(
@@ -501,9 +632,58 @@ async def _finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         except Exception:  # noqa: BLE001
             logger.debug("notify admin %s failed", admin_id, exc_info=True)
 
-    await _show(context, "final", ui.final_kb(c, settings.community_invite_url))
+    if banned:
+        await _show(context, "banned_notice")
+    else:
+        await _send_media_kit(context, user, c)
+        invite_url = await _make_invite_link(context, user)
+        await _show(context, "final", ui.final_kb(c, invite_url, settings.guro_id_webapp_url))
     context.user_data.clear()
     return ConversationHandler.END
+
+
+async def _send_media_kit(context, user, c) -> None:
+    """Медиакит GURO (PDF) — отдельным документом, до финального экрана с инвайтом.
+
+    Показывает ценность сообщества (аудитория, «Гэмблинговый суд», спонсорские тарифы)
+    в момент максимальной вовлечённости, сразу после анкеты. Best-effort: сбой отправки
+    не должен блокировать выдачу инвайта.
+    """
+    lang = context.user_data.get("lang", "ru")
+    rel_path = C.MEDIA_KIT_EN_PATH if lang == "en" else C.MEDIA_KIT_RU_PATH
+    path = BASE_DIR / rel_path
+    if not path.is_file():
+        logger.warning("media kit file missing: %s", path)
+        return
+    chat_id = context.user_data.get("screen_chat") or user.id
+    try:
+        with path.open("rb") as f:
+            await context.bot.send_document(
+                chat_id=chat_id,
+                document=f,
+                filename=path.name,
+                caption=c.txt("media_kit_caption"),
+                parse_mode=ParseMode.HTML,
+            )
+    except Exception:  # noqa: BLE001
+        logger.exception("media kit send failed for %s", user.id)
+
+
+async def _make_invite_link(context, user) -> str:
+    """Одноразовая инвайт-ссылка в группу сообщества (member_limit=1 — сгорает после
+    первого использования). Без community_chat_id или при ошибке API — статичная
+    ссылка-заглушка community_invite_url (как раньше)."""
+    settings = context.bot_data["settings"]
+    if not settings.community_chat_id:
+        return settings.community_invite_url
+    try:
+        link = await context.bot.create_chat_invite_link(
+            settings.community_chat_id, member_limit=1, name=f"pgc_{user.id}"[:32],
+        )
+        return link.invite_link
+    except Exception:  # noqa: BLE001
+        logger.exception("invite: не удалось создать одноразовую ссылку для %s", user.id)
+        return settings.community_invite_url
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -553,6 +733,7 @@ def build_conversation() -> ConversationHandler:
             ],
             S.REQUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, request_text)],
             S.NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, name_text)],
+            S.COUNTRY: [MessageHandler(filters.TEXT & ~filters.COMMAND, country_text)],
             S.COMPANY: [MessageHandler(filters.TEXT & ~filters.COMMAND, company_text)],
             S.LINKEDIN: [
                 CallbackQueryHandler(linkedin_skip, pattern=r"^skip_li$"),

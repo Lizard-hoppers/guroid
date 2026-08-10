@@ -18,8 +18,10 @@ from telegram.ext import ContextTypes
 
 import constants as C
 import logic
+from country_formatter import flag_from_iso2
 from handlers import admin_ui
 from handlers.admin_ui import BROWSE
+from handlers.group_captcha import spawn_background
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,9 @@ WAIT_BTN_LABEL = "bc:btnlabel"
 WAIT_BTN_URL = "bc:btnurl"
 
 MAX_ITEM_LEN = 4000
+# сколько стран-кнопок показываем как есть, остальные — одной кнопкой «Остальные»
+# (тот же приём, что и в island_summary_bot BROADCAST_COUNTRY_BUTTON_LIMIT)
+COUNTRY_BUTTON_LIMIT = 20
 
 
 def _bc(context) -> dict | None:
@@ -39,6 +44,7 @@ def _audience_menu_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("👥 Все анкеты", callback_data="acms_bc_aud:all")],
         [InlineKeyboardButton("📊 По вертикали", callback_data="acms_bc_aud:vertical")],
         [InlineKeyboardButton("🎯 По грейду", callback_data="acms_bc_aud:grade")],
+        [InlineKeyboardButton("🌍 По странам", callback_data="acms_bc_aud:country")],
         [InlineKeyboardButton("‹ Панель управления", callback_data="acms_home")],
     ])
 
@@ -61,6 +67,33 @@ def _grade_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(g, callback_data=f"acms_bc_grade:{i}")]
         for i, g in enumerate(_grade_options())
     ]
+    rows.append([InlineKeyboardButton("‹ Назад", callback_data="acms_bc")])
+    return InlineKeyboardMarkup(rows)
+
+
+def _country_kb(context) -> InlineKeyboardMarkup:
+    storage = context.bot_data["storage"]
+    segments = storage.country_broadcast_segments()  # уже отсортированы: n desc, потом имя
+    visible = segments[:COUNTRY_BUTTON_LIMIT]
+    overflow = segments[COUNTRY_BUTTON_LIMIT:]
+    # индекс кнопки -> имя страны, для короткого callback_data (bc_pick_country)
+    context.user_data["bc_countries"] = [row["country"] for row in visible]
+
+    buttons = []
+    for i, row in enumerate(visible):
+        flag = flag_from_iso2(row["country_iso2"])
+        label = f"{flag} {row['country']} — {row['n']}".strip()
+        buttons.append(InlineKeyboardButton(label, callback_data=f"acms_bc_country:{i}"))
+
+    columns = 2 if len(buttons) > 8 else 1
+    rows = [buttons[i:i + columns] for i in range(0, len(buttons), columns)]
+
+    if overflow:
+        overflow_n = sum(row["n"] for row in overflow)
+        rows.append([InlineKeyboardButton(
+            f"🌐 Остальные страны — {overflow_n}", callback_data="acms_bc_country_other",
+        )])
+
     rows.append([InlineKeyboardButton("‹ Назад", callback_data="acms_bc")])
     return InlineKeyboardMarkup(rows)
 
@@ -143,6 +176,17 @@ async def bc_audience_grade_menu(update: Update, context: ContextTypes.DEFAULT_T
     return BROWSE
 
 
+async def bc_audience_country_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    storage = context.bot_data["storage"]
+    if not storage.country_broadcast_segments():
+        await q.answer("Пока никто не указал страну в анкете", show_alert=True)
+        return BROWSE
+    await q.answer()
+    await admin_ui.edit_screen(context, "🌍 Выберите страну:", _country_kb(context))
+    return BROWSE
+
+
 async def bc_pick_vertical(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     idx = int(update.callback_query.data.split(":", 1)[1])
@@ -167,6 +211,33 @@ async def bc_pick_grade(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return BROWSE
 
 
+async def bc_pick_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    idx = int(update.callback_query.data.split(":", 1)[1])
+    countries = context.user_data.get("bc_countries", [])
+    if idx >= len(countries):
+        return BROWSE
+    country = countries[idx]
+    context.user_data["bc"] = {
+        "audience": {"mode": "country", "value": country, "label": f"Страна: {country}"},
+        "items": [],
+    }
+    await _show_builder(context)
+    return BROWSE
+
+
+async def bc_pick_country_other(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    storage = context.bot_data["storage"]
+    overflow = [row["country"] for row in storage.country_broadcast_segments()[COUNTRY_BUTTON_LIMIT:]]
+    context.user_data["bc"] = {
+        "audience": {"mode": "country_other", "value": overflow, "label": "Остальные страны"},
+        "items": [],
+    }
+    await _show_builder(context)
+    return BROWSE
+
+
 def _targets(context, bc: dict) -> list:
     storage = context.bot_data["storage"]
     mode = bc["audience"]["mode"]
@@ -174,6 +245,10 @@ def _targets(context, bc: dict) -> list:
         return storage.profiles_for_broadcast(vertical=bc["audience"]["value"])
     if mode == "grade":
         return storage.profiles_for_broadcast(grade=bc["audience"]["value"])
+    if mode == "country":
+        return storage.profiles_for_broadcast(country=bc["audience"]["value"])
+    if mode == "country_other":
+        return storage.profiles_for_broadcast(country_in=bc["audience"]["value"])
     return storage.profiles_for_broadcast()
 
 
@@ -366,7 +441,10 @@ async def bc_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     label = bc["audience"]["label"]
     context.user_data.pop("bc", None)
     context.user_data.pop("bc_draft_item", None)
-    context.application.create_task(run_broadcast(context, admin_id, items, targets, label))
+    # НЕ context.application.create_task — PTB ждёт такие задачи при
+    # остановке (стоп/деплой завис бы до конца рассылки; на большую
+    # аудиторию — минуты). Настоящий fire-and-forget.
+    spawn_background(context, run_broadcast(context, admin_id, items, targets, label))
     await q.answer(f"Рассылка запущена, получателей: {len(targets)}. Отчёт придёт по готовности.",
                    show_alert=True)
     await _show_dashboard(context)

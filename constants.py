@@ -78,7 +78,7 @@ WELCOME_TEXT = (
     "<b>Добро пожаловать в Private Gambling Community</b>\n\n"
     "<blockquote>Private Gambling Community — международное профессиональное сообщество "
     "специалистов из Gambling, Betting, Crypto, Payments и других направлений.\n\n"
-    "В сообществе более 4000 участников: владельцы компаний, C-level, "
+    "В сообществе {members}+ участников: владельцы компаний, C-level, "
     "руководители направлений и специалисты разных уровней.\n\n"
     "PGC используется для нетворкинга, поиска партнёров, сотрудников, работы "
     "и обмена опытом внутри индустрии.\n\n"
@@ -121,6 +121,8 @@ ASK_REQUEST = (
 
 ASK_NAME = "<tg-emoji emoji-id=\"5348246615901624312\">😎</tg-emoji> Как вас зовут?"
 
+ASK_COUNTRY = "<tg-emoji emoji-id=\"5247013300432019467\">🌐</tg-emoji> В какой стране вы находитесь?"
+
 ASK_COMPANY = (
     "<tg-emoji emoji-id=\"5431646131941556182\">🏪</tg-emoji> В какой компании (продукте) или проекте вы работаете?\n"
     "<blockquote>Нам часто поступают обращения, и если мы будем понимать, какой у вас продукт — "
@@ -144,6 +146,24 @@ FINAL_TEXT = (
     "Лично обсудим варианты стратегического участия и приоритетного позиционирования.</blockquote>"
 )
 
+# Медиакит (PDF) — отправляется отдельным документом перед FINAL_TEXT/final_en, чтобы
+# показать ценность сообщества до выдачи инвайта. Путь — статический ассет деплоя (не CMS).
+MEDIA_KIT_RU_PATH = "assets/media_kit/GURO-Mediakit-RU.pdf"
+MEDIA_KIT_EN_PATH = "assets/media_kit/GURO-Media-Kit-EN.pdf"
+
+MEDIA_KIT_CAPTION = (
+    "📎 Медиакит GURO — коротко о сообществе: аудитория, «Гэмблинговый суд» "
+    "(уже вернул участникам $500K+) и тарифы для брендов-спонсоров."
+)
+
+# Показывается вместо FINAL_TEXT, если анкету заполнил забаненный администратором
+# юзер (storage.is_banned) — доступ НЕ открывается, инвайт-ссылка не выдаётся.
+BANNED_NOTICE_TEXT = (
+    "🚫 <b>Доступ к сообществу ограничен администрацией.</b>\n\n"
+    "Анкета сохранена, но автоматического вступления не будет.\n\n"
+    "<blockquote>Если считаете это ошибкой — напишите администратору.</blockquote>"
+)
+
 # =========================================================================
 # EN-версии текстов и кнопок анкеты (выбор языка на старте).
 # Данные анкеты (вертикали/грейды/должности) НЕ переводятся — единый список.
@@ -161,7 +181,7 @@ WELCOME_TEXT_EN = (
     "<b>Welcome to Private Gambling Community</b>\n\n"
     "<blockquote>Private Gambling Community is an international professional community of "
     "specialists in Gambling, Betting, Crypto, Payments and other verticals.\n\n"
-    "The community unites 4000+ members: company owners, C-level executives, "
+    "The community unites {members}+ members: company owners, C-level executives, "
     "heads of departments and specialists of all levels.\n\n"
     "PGC is used for networking, finding partners and employees, job search "
     "and sharing expertise within the industry.\n\n"
@@ -204,6 +224,8 @@ ASK_REQUEST_EN = (
 
 ASK_NAME_EN = "<tg-emoji emoji-id=\"5348246615901624312\">😎</tg-emoji> What is your name?"
 
+ASK_COUNTRY_EN = "<tg-emoji emoji-id=\"5247013300432019467\">🌐</tg-emoji> Which country are you based in?"
+
 ASK_COMPANY_EN = (
     "<tg-emoji emoji-id=\"5431646131941556182\">🏪</tg-emoji> What company (product) or project do you work at?\n"
     "<blockquote>We receive many requests, and knowing your product makes it easier to "
@@ -225,6 +247,17 @@ FINAL_TEXT_EN = (
     "visibility and strengthen their reputation within the Guro professional "
     "community.\n"
     "Let\'s discuss options for strategic participation and priority positioning.</blockquote>"
+)
+
+MEDIA_KIT_CAPTION_EN = (
+    "📎 GURO media kit — a quick look at the community: audience, the Gambling Court "
+    "(already recovered $500K+ for members), and rates for sponsor brands."
+)
+
+BANNED_NOTICE_TEXT_EN = (
+    "🚫 <b>Your access to the community has been restricted by the administration.</b>\n\n"
+    "Your form has been saved, but access will not be granted automatically.\n\n"
+    "<blockquote>If you believe this is a mistake, please contact an administrator.</blockquote>"
 )
 
 # Кнопки выбора языка. ВАЖНО: русский — БЕЗ флага (требование владельца).
@@ -286,6 +319,28 @@ CAPTCHA_SUCCESS_TEXT = (
     "✅ Верификация пройдена. Полезные ссылки сообщества — ниже 👇"
 )
 
+# Приветствие в группе ПОСЛЕ анкеты (handlers/group_captcha._send_greeting) —
+# 24.07.2026: разведено по языку анкеты (profiles.lang), в отличие от
+# CAPTCHA_WELCOME_TEXT/CAPTCHA_SUCCESS_TEXT выше (капча на входе, отдельная
+# функция, туда не лезем) — RU уходит в основной топик (СНГ), EN — в топик
+# COMMUNITY_EN_TOPIC_ID. Каждый вариант ссылается только на СВОЙ чат.
+GROUP_GREETING_TEXT_RU = (
+    'Представьтесь в <a href="https://t.me/c/1924507124/1">'
+    f'<tg-emoji emoji-id="{_CAPTCHA_DOT_EMOJI_ID}">🟡</tg-emoji> <b>Главный чат (СНГ)</b></a> '
+    "в течение 15 минут\n\n"
+    "<blockquote>30+ разделов (свайп слева направо)</blockquote>\n\n"
+    '<tg-emoji emoji-id="5332565591519670753">🔗</tg-emoji> Полезные ссылки сообщества — ниже 👇'
+)
+
+GROUP_GREETING_TEXT_EN = (
+    'Introduce yourself in <a href="https://t.me/c/1924507124/35226">'
+    f'<tg-emoji emoji-id="{_CAPTCHA_EU_EMOJI_ID}">🇪🇺</tg-emoji>'
+    f'<tg-emoji emoji-id="{_CAPTCHA_GB_EMOJI_ID}">🇬🇧</tg-emoji> <b>Main Chat ENG</b></a> '
+    "within 15 min\n\n"
+    "<blockquote>30+ sections (swipe from left to right)</blockquote>\n\n"
+    '<tg-emoji emoji-id="5332565591519670753">🔗</tg-emoji> Useful community links — below 👇'
+)
+
 # Гейт группы: сообщение участнику без анкеты (он замучен до прохождения).
 GATE_PROMPT_TEXT = (
     "<tg-emoji emoji-id=\"5226935195906620050\">🔐</tg-emoji> Access to the chat opens after a short form — tap the button below.\n"
@@ -299,6 +354,13 @@ LANG_RU_EMOJI_ID = "5247013300432019467"  # 🌐 глобус (GTAOnlineIcons, �
 START_BUTTON_EMOJI_ID = "5318898653396485988"  # ⭐ звезда (InterfaceElements)
 GATE_BUTTON_EMOJI_ID = "5199880874786588162"   # ✍️ перо (InterfaceElements)
 JOIN_BUTTON_EMOJI_ID = "5368842040647919004"   # 🚀 ракета (Rich369)
+INVITE_BUTTON_EMOJI_ID = "5467450727372693938"  # реф-кнопка «Пригласить/Invite» в группе
+
+# Постоянная reply-клавиатура в группе (заменяет клавиатуру ввода у ВСЕХ
+# участников) — plain-текст, Telegram не поддерживает цвет/premium-эмодзи
+# для reply-кнопок (это только для inline).
+GROUP_KB_INVITE_TEXT = "➕ Пригласить/Invite"
+GROUP_KB_INVITE_TEXT_EN = "➕ Invite"  # для EN-приветствия (group_greeting_en)
 
 # Иконки кнопок вертикалей (Блок 2), по индексу VERTICALS. 16.07.2026.
 VERTICAL_EMOJI_IDS: tuple[str, ...] = (
@@ -310,6 +372,18 @@ VERTICAL_EMOJI_IDS: tuple[str, ...] = (
     "5244669145936570101",  # FinTech 🏦 (GTAOnlineIcons)
     "5377753109944610780",  # Nutra 💊 (GTAOnlineIcons)
     "5201979339972836348",  # Other ❔ (InterfaceElements)
+)
+
+# Цвета кнопок вертикалей (Блок 2), по индексу VERTICALS (решение владельца 20.07.2026).
+VERTICAL_STYLES: tuple[str, ...] = (
+    "primary",  # Gambling
+    "success",  # Betting
+    "success",  # Crypto
+    "primary",  # Dating
+    "primary",  # E-Commerce
+    "success",  # FinTech
+    "success",  # Nutra
+    "primary",  # Other
 )
 
 # Стили (цвета) кнопок Telegram. Прокидываются в API через api_kwargs["style"].
@@ -348,6 +422,7 @@ BUTTON_DEFAULTS: dict[str, str] = {
     "prev": BTN_PREV,
     "next": BTN_NEXT,
     "g_inv": INVESTOR_GRADE,
+    "guro_id": "🪪 Открыть GURO ID",
 }
 for _i, _v in enumerate(VERTICALS):
     BUTTON_DEFAULTS[f"v_{_i}"] = _v
@@ -372,6 +447,7 @@ BUTTON_DEFAULTS.update({
     "join_en": "Join the community",
     "g_inv_en": "Investor",
     "gate": GATE_BUTTON_LABEL,
+    "guro_id_en": "🪪 Open GURO ID",
 })
 for _i, _v in enumerate(INVESTOR_TYPES_EN):
     BUTTON_DEFAULTS[f"it_{_i}_en"] = _v
@@ -382,9 +458,9 @@ for _i, _n in enumerate(INVESTOR_NEEDS_EN):
 
 # Группы для админ-каталога кнопок: (заголовок, [ключи])
 BUTTON_CATALOG: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Основные", ("start", "join", "skip", "other", "back", "done", "prev", "next",
+    ("Основные", ("start", "join", "guro_id", "skip", "other", "back", "done", "prev", "next",
                   "lang_en", "lang_ru", "gate")),
-    ("Основные (EN)", ("start_en", "join_en", "skip_en", "other_en", "back_en", "done_en")),
+    ("Основные (EN)", ("start_en", "join_en", "guro_id_en", "skip_en", "other_en", "back_en", "done_en")),
     ("Вертикали", tuple(f"v_{i}" for i in range(len(VERTICALS)))),
     ("Грейды", tuple(f"g_{i}" for i in range(len(GRADES))) + ("g_inv", "g_inv_en")),
     ("Инвестор", tuple(
@@ -411,9 +487,12 @@ TEXT_DEFAULTS: dict[str, str] = {
     "ask_profession_other": ASK_PROFESSION_OTHER,
     "ask_request": ASK_REQUEST,
     "ask_name": ASK_NAME,
+    "ask_country": ASK_COUNTRY,
     "ask_company": ASK_COMPANY,
     "ask_linkedin": ASK_LINKEDIN,
     "final": FINAL_TEXT,
+    "media_kit_caption": MEDIA_KIT_CAPTION,
+    "banned_notice": BANNED_NOTICE_TEXT,
     "lang_select": LANG_SELECT_TEXT,
     "welcome_en": WELCOME_TEXT_EN,
     "ask_vertical_en": ASK_VERTICAL_EN,
@@ -426,12 +505,17 @@ TEXT_DEFAULTS: dict[str, str] = {
     "ask_profession_other_en": ASK_PROFESSION_OTHER_EN,
     "ask_request_en": ASK_REQUEST_EN,
     "ask_name_en": ASK_NAME_EN,
+    "ask_country_en": ASK_COUNTRY_EN,
     "ask_company_en": ASK_COMPANY_EN,
     "ask_linkedin_en": ASK_LINKEDIN_EN,
     "final_en": FINAL_TEXT_EN,
+    "media_kit_caption_en": MEDIA_KIT_CAPTION_EN,
+    "banned_notice_en": BANNED_NOTICE_TEXT_EN,
     "captcha_welcome": CAPTCHA_WELCOME_TEXT,
     "captcha_success": CAPTCHA_SUCCESS_TEXT,
     "gate_prompt": GATE_PROMPT_TEXT,
+    "group_greeting": GROUP_GREETING_TEXT_RU,
+    "group_greeting_en": GROUP_GREETING_TEXT_EN,
 }
 
 # Список текстов для админ-каталога: (ключ, человекочитаемая подпись)
@@ -448,11 +532,16 @@ TEXT_CATALOG: tuple[tuple[str, str], ...] = (
     ("ask_profession_other", "Должность: своё описание"),
     ("ask_request", "Вопрос: что актуально (блок 3)"),
     ("ask_name", "Вопрос: имя (блок 4)"),
+    ("ask_country", "Вопрос: страна"),
     ("ask_company", "Вопрос: компания (блок 5)"),
     ("ask_linkedin", "Вопрос: LinkedIn (блок 6)"),
     ("final", "Финал (блок 7)"),
+    ("media_kit_caption", "Финал: подпись к медиакиту (PDF перед инвайтом)"),
+    ("banned_notice", "Финал: юзер забанен админом (доступ не открыт)"),
     ("captcha_welcome", "Приветствие в группе (текст + видео + кнопки)"),
     ("gate_prompt", "Гейт: мут до анкеты (просьба пройти)"),
+    ("group_greeting", "Приветствие в группе ПОСЛЕ анкеты — RU (по анкете на русском)"),
+    ("group_greeting_en", "EN: Приветствие в группе ПОСЛЕ анкеты (анкета на английском)"),
     ("welcome_en", "EN: Приветствие (блок 1)"),
     ("ask_vertical_en", "EN: Вопрос: вертикаль"),
     ("ask_vertical_other_en", "EN: Вертикаль: своё описание"),
@@ -464,7 +553,10 @@ TEXT_CATALOG: tuple[tuple[str, str], ...] = (
     ("ask_profession_other_en", "EN: Должность: своё описание"),
     ("ask_request_en", "EN: Вопрос: что актуально"),
     ("ask_name_en", "EN: Вопрос: имя"),
+    ("ask_country_en", "EN: Вопрос: страна"),
     ("ask_company_en", "EN: Вопрос: компания"),
     ("ask_linkedin_en", "EN: Вопрос: LinkedIn"),
     ("final_en", "EN: Финал"),
+    ("media_kit_caption_en", "EN: Финал: подпись к медиакиту"),
+    ("banned_notice_en", "EN: Финал: юзер забанен админом"),
 )

@@ -9,3 +9,5 @@ __pycache__/
 *.bak
 *.bak-*
 *_candidate/
+*.sqlite3-shm
+*.sqlite3-wal

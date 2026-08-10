@@ -1,0 +1,247 @@
+"""SQLite-хранилище модуля GURO ID (партнёрства/репутация). Пишет в ТОТ ЖЕ
+файл gambling_community.sqlite3, что и основной storage.py, но в свои
+таблицы — profiles не трогаем. Инстанцируется отдельно в каждом процессе
+(bot.py и guro_id_api.py — два процесса, каждому своё соединение)."""
+from __future__ import annotations
+
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+
+import guro_constants as GC
+import guro_logic as GL
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS guro_users (
+    user_id INTEGER PRIMARY KEY,
+    reputation_score REAL DEFAULT 50,
+    subscription_status TEXT DEFAULT 'inactive',
+    subscription_expires_at TEXT,
+    updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS partnerships (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    initiator_id INTEGER,
+    confirmer_id INTEGER,
+    status TEXT DEFAULT 'pending',
+    vertical TEXT,
+    geo TEXT,
+    counts_toward_rating INTEGER DEFAULT 1,
+    visible_publicly INTEGER DEFAULT 1,
+    created_at TEXT,
+    confirmed_at TEXT
+);
+"""
+
+
+class GuroStorage:
+    def __init__(self, db_path: Path):
+        self.db_path = Path(db_path)
+        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row
+        self._init()
+
+    def _init(self) -> None:
+        # WAL — свойство самого файла БД, переживает процесс; включаем один раз,
+        # снижает "database is locked" теперь, когда файл пишут 2 процесса
+        # (bot.py и guro_id_api.py).
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.executescript(_SCHEMA)
+        self._conn.commit()
+
+    @staticmethod
+    def _now() -> datetime:
+        return datetime.now(timezone.utc)
+
+    @staticmethod
+    def _now_str() -> str:
+        return GL.format_db_datetime(GuroStorage._now())
+
+    # --- profiles (только чтение, таблица чужая) ------------------------
+
+    def get_profile(self, user_id: int) -> sqlite3.Row | None:
+        return self._conn.execute(
+            "SELECT * FROM profiles WHERE user_id=? ORDER BY id DESC LIMIT 1", (user_id,)
+        ).fetchone()
+
+    def find_profile_by_username(self, username: str) -> sqlite3.Row | None:
+        username = username.lstrip("@").strip().lower()
+        if not username:
+            return None
+        return self._conn.execute(
+            "SELECT * FROM profiles WHERE LOWER(username)=? ORDER BY id DESC LIMIT 1",
+            (username,),
+        ).fetchone()
+
+    # --- guro_users -------------------------------------------------------
+
+    def get_or_create_guro_user(self, user_id: int) -> sqlite3.Row:
+        row = self._conn.execute("SELECT * FROM guro_users WHERE user_id=?", (user_id,)).fetchone()
+        if row is not None:
+            return row
+        profile = self.get_profile(user_id)
+        created_at = GL.parse_db_datetime(profile["created_at"]) if profile else None
+        score = GL.initial_reputation(profile is not None, created_at, self._now())
+        self._conn.execute(
+            "INSERT INTO guro_users (user_id, reputation_score, updated_at) VALUES (?,?,?)",
+            (user_id, score, self._now_str()),
+        )
+        self._conn.commit()
+        return self._conn.execute("SELECT * FROM guro_users WHERE user_id=?", (user_id,)).fetchone()
+
+    def get_subscription(self, user_id: int) -> tuple[str, datetime | None]:
+        row = self.get_or_create_guro_user(user_id)
+        return row["subscription_status"], GL.parse_db_datetime(row["subscription_expires_at"])
+
+    def is_subscribed(self, user_id: int) -> bool:
+        status, expires_at = self.get_subscription(user_id)
+        return GL.subscription_active(status, expires_at, self._now())
+
+    def list_guro_user_ids(self) -> list[int]:
+        """Для периодической синхронизации статус-тегов (guro_tags_sync.py) —
+        только те, кто хоть раз коснулся GURO ID, не вся группа."""
+        rows = self._conn.execute("SELECT user_id FROM guro_users").fetchall()
+        return [row["user_id"] for row in rows]
+
+    def activate_subscription(self, user_id: int) -> str:
+        self.get_or_create_guro_user(user_id)
+        expires_at = GL.subscription_expires_at(self._now())
+        self._conn.execute(
+            "UPDATE guro_users SET subscription_status=?, subscription_expires_at=?, updated_at=? "
+            "WHERE user_id=?",
+            (GC.SUBSCRIPTION_ACTIVE, GL.format_db_datetime(expires_at), self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return GL.format_db_datetime(expires_at)
+
+    # --- partnerships -------------------------------------------------------
+
+    def count_confirmed_partnerships(self, user_id: int) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM partnerships WHERE status=? AND (initiator_id=? OR confirmer_id=?)",
+            (GC.PARTNERSHIP_STATUS_CONFIRMED, user_id, user_id),
+        ).fetchone()
+        return row["n"]
+
+    def list_confirmed_partnerships(self, user_id: int) -> list[sqlite3.Row]:
+        return self._conn.execute(
+            "SELECT * FROM partnerships WHERE status=? AND (initiator_id=? OR confirmer_id=?) "
+            "AND visible_publicly=1 ORDER BY confirmed_at DESC",
+            (GC.PARTNERSHIP_STATUS_CONFIRMED, user_id, user_id),
+        ).fetchall()
+
+    def _last_request_between(self, user_a: int, user_b: int) -> datetime | None:
+        row = self._conn.execute(
+            "SELECT MAX(created_at) AS latest FROM partnerships WHERE "
+            "(initiator_id=? AND confirmer_id=?) OR (initiator_id=? AND confirmer_id=?)",
+            (user_a, user_b, user_b, user_a),
+        ).fetchone()
+        return GL.parse_db_datetime(row["latest"]) if row else None
+
+    def create_partnership(
+        self, initiator_id: int, confirmer_id: int, vertical: str | None, geo: str | None,
+    ) -> sqlite3.Row:
+        """Поднимает ValueError с понятным кодом-строкой при нарушении правил
+        (see ТЗ п.4/п.8): NO_CONFIRMER_PROFILE / SELF_PARTNERSHIP / RATE_LIMITED."""
+        if initiator_id == confirmer_id:
+            raise ValueError("SELF_PARTNERSHIP")
+        confirmer_profile = self.get_profile(confirmer_id)
+        if confirmer_profile is None:
+            # Bot API не может написать юзеру, который никогда не писал боту.
+            raise ValueError("NO_CONFIRMER_PROFILE")
+
+        now = self._now()
+        if GL.rate_limited(self._last_request_between(initiator_id, confirmer_id), now):
+            raise ValueError("RATE_LIMITED")
+
+        initiator_profile = self.get_profile(initiator_id)
+        counts = GL.counts_toward_rating(
+            GL.parse_db_datetime(initiator_profile["created_at"]) if initiator_profile else None,
+            GL.parse_db_datetime(confirmer_profile["created_at"]),
+            now,
+        )
+        cur = self._conn.execute(
+            "INSERT INTO partnerships (initiator_id, confirmer_id, status, vertical, geo, "
+            "counts_toward_rating, created_at) VALUES (?,?,?,?,?,?,?)",
+            (initiator_id, confirmer_id, GC.PARTNERSHIP_STATUS_PENDING, vertical, geo,
+             1 if counts else 0, GL.format_db_datetime(now)),
+        )
+        self._conn.commit()
+        return self._conn.execute("SELECT * FROM partnerships WHERE id=?", (cur.lastrowid,)).fetchone()
+
+    def get_partnership(self, partnership_id: int) -> sqlite3.Row | None:
+        return self._conn.execute("SELECT * FROM partnerships WHERE id=?", (partnership_id,)).fetchone()
+
+    def respond_partnership(self, partnership_id: int, responder_id: int, accept: bool) -> sqlite3.Row:
+        """Поднимает ValueError: NOT_FOUND / NOT_YOUR_REQUEST / ALREADY_RESOLVED."""
+        row = self.get_partnership(partnership_id)
+        if row is None:
+            raise ValueError("NOT_FOUND")
+        if row["confirmer_id"] != responder_id:
+            raise ValueError("NOT_YOUR_REQUEST")
+        if row["status"] != GC.PARTNERSHIP_STATUS_PENDING:
+            raise ValueError("ALREADY_RESOLVED")
+
+        if not accept:
+            self._conn.execute(
+                "UPDATE partnerships SET status=? WHERE id=?",
+                (GC.PARTNERSHIP_STATUS_DECLINED, partnership_id),
+            )
+            self._conn.commit()
+            return self.get_partnership(partnership_id)
+
+        now = self._now()
+        # Снимок ОБЕИХ репутаций до апдейта — симметричный взаимный прирост не
+        # должен зависеть от порядка обновления строк.
+        a = self.get_or_create_guro_user(row["initiator_id"])
+        b = self.get_or_create_guro_user(row["confirmer_id"])
+        if row["counts_toward_rating"]:
+            new_a = a["reputation_score"] + GL.confirmation_gain(b["reputation_score"])
+            new_b = b["reputation_score"] + GL.confirmation_gain(a["reputation_score"])
+            self._conn.execute(
+                "UPDATE guro_users SET reputation_score=?, updated_at=? WHERE user_id=?",
+                (new_a, self._now_str(), row["initiator_id"]),
+            )
+            self._conn.execute(
+                "UPDATE guro_users SET reputation_score=?, updated_at=? WHERE user_id=?",
+                (new_b, self._now_str(), row["confirmer_id"]),
+            )
+        self._conn.execute(
+            "UPDATE partnerships SET status=?, confirmed_at=? WHERE id=?",
+            (GC.PARTNERSHIP_STATUS_CONFIRMED, GL.format_db_datetime(now), partnership_id),
+        )
+        self._conn.commit()
+        return self.get_partnership(partnership_id)
+
+    # --- статистика для /admin ------------------------------------------
+
+    def dashboard_stats(self) -> dict:
+        today_start = self._now().strftime("%Y-%m-%d 00:00:00")
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS total, "
+            "SUM(CASE WHEN status=? THEN 1 ELSE 0 END) AS confirmed, "
+            "SUM(CASE WHEN status=? THEN 1 ELSE 0 END) AS pending, "
+            "SUM(CASE WHEN status=? THEN 1 ELSE 0 END) AS declined, "
+            "SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS created_today "
+            "FROM partnerships",
+            (GC.PARTNERSHIP_STATUS_CONFIRMED, GC.PARTNERSHIP_STATUS_PENDING,
+             GC.PARTNERSHIP_STATUS_DECLINED, today_start),
+        ).fetchone()
+        rep_row = self._conn.execute(
+            "SELECT AVG(reputation_score) AS avg_rep, COUNT(*) AS n FROM guro_users"
+        ).fetchone()
+        active_subs = self._conn.execute(
+            "SELECT COUNT(*) FROM guro_users WHERE subscription_status=? AND subscription_expires_at > ?",
+            (GC.SUBSCRIPTION_ACTIVE, self._now_str()),
+        ).fetchone()[0]
+        return {
+            "total": row["total"] or 0,
+            "confirmed": row["confirmed"] or 0,
+            "pending": row["pending"] or 0,
+            "declined": row["declined"] or 0,
+            "created_today": row["created_today"] or 0,
+            "tracked_users": rep_row["n"] or 0,
+            "avg_reputation": rep_row["avg_rep"] or 0.0,
+            "active_subscriptions": active_subs,
+        }

@@ -3,7 +3,13 @@ from __future__ import annotations
 
 import re
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    WebAppInfo,
+)
 
 import constants as C
 import logic
@@ -46,8 +52,28 @@ def link_button(label: str, url: str, style: str | None = None,
     return InlineKeyboardButton(**kwargs)
 
 
-def group_menu_kb(storage, per_row: int = 2) -> InlineKeyboardMarkup | None:
-    """Панель ссылок в группе из включённых menu_buttons (по per_row кнопок в ряд).
+def callback_button(label: str, callback_data: str, style: str | None = None,
+                     emoji_id: str | None = None) -> InlineKeyboardButton:
+    """Callback-кнопка с опциональным цветом (style) и premium-эмодзи-иконкой
+    (emoji_id) — то же самое, что link_button, но для callback_data вместо url."""
+    extra: dict = {}
+    if style and style != "default":
+        extra["style"] = style
+    if emoji_id:
+        extra["icon_custom_emoji_id"] = str(emoji_id)
+        label = _strip_leading_emoji(label)
+    kwargs: dict = {"text": label, "callback_data": callback_data}
+    if extra:
+        kwargs["api_kwargs"] = extra
+    return InlineKeyboardButton(**kwargs)
+
+
+def group_menu_kb(storage, per_row: int = 2, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Панель ссылок в группе из включённых menu_buttons (по per_row кнопок в ряд)
+    + фиксированная реф-кнопка (не из CMS, всегда присутствует).
+
+    lang — только подпись реф-кнопки (RU/EN); остальные вызовы (например,
+    капча-успех) не передают lang и получают прежнее двуязычное поведение.
 
     Цвет, если не задан в CMS, — шахматный порядок синий/зелёный по позиции
     (решение владельца 15.07.2026: «много синего»), CMS-выбор приоритетнее."""
@@ -61,10 +87,24 @@ def group_menu_kb(storage, per_row: int = 2) -> InlineKeyboardMarkup | None:
         buttons.append(
             link_button(b["label"] or b["url"], b["url"], b["style"] or chess, b["emoji_id"])
         )
-    if not buttons:
-        return None
     rows = [buttons[i:i + per_row] for i in range(0, len(buttons), per_row)]
+    invite_label = C.GROUP_KB_INVITE_TEXT_EN if lang == "en" else "Пригласить/Invite"
+    rows.append([callback_button(
+        invite_label, "ref_get_link", style="primary", emoji_id=C.INVITE_BUTTON_EMOJI_ID,
+    )])
     return InlineKeyboardMarkup(rows)
+
+
+def group_reply_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Постоянная reply-клавиатура в группе — заменяет клавиатуру ввода у ВСЕХ
+    участников (не только у нажавшего), пока не будет заменена/убрана.
+    resize_keyboard — компактный размер, is_persistent — не сворачивается
+    в иконку рядом с полем ввода."""
+    text = C.GROUP_KB_INVITE_TEXT_EN if lang == "en" else C.GROUP_KB_INVITE_TEXT
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(text)]],
+        resize_keyboard=True, is_persistent=True, one_time_keyboard=False,
+    )
 
 
 def lang_kb(content: Content) -> InlineKeyboardMarkup:
@@ -94,9 +134,15 @@ def vertical_kb(content: Content) -> InlineKeyboardMarkup:
     rows, row = [], []
     for i in range(len(C.VERTICALS)):
         eid = C.VERTICAL_EMOJI_IDS[i] if i < len(C.VERTICAL_EMOJI_IDS) else None
+        style = C.VERTICAL_STYLES[i] if i < len(C.VERTICAL_STYLES) else None
         kw = {"text": content.btn(f"v_{i}"), "callback_data": f"v:{i}"}
+        extra = {}
+        if style:
+            extra["style"] = style
         if eid:
-            kw["api_kwargs"] = {"icon_custom_emoji_id": eid}
+            extra["icon_custom_emoji_id"] = eid
+        if extra:
+            kw["api_kwargs"] = extra
         row.append(InlineKeyboardButton(**kw))
         if len(row) == 2:
             rows.append(row)
@@ -186,7 +232,10 @@ def linkedin_kb(content: Content) -> InlineKeyboardMarkup:
     )
 
 
-def final_kb(content: Content, invite_url: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[link_button(
+def final_kb(content: Content, invite_url: str, guro_id_url: str | None = None) -> InlineKeyboardMarkup:
+    rows = [[link_button(
         content.btn("join"), invite_url, emoji_id=C.JOIN_BUTTON_EMOJI_ID
-    )]])
+    )]]
+    if guro_id_url:
+        rows.append([InlineKeyboardButton(content.btn("guro_id"), web_app=WebAppInfo(url=guro_id_url))])
+    return InlineKeyboardMarkup(rows)

@@ -209,8 +209,8 @@ async def on_gossip_decision(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     try:
         kwargs = {}
-        if settings.news_topic_id:
-            kwargs["message_thread_id"] = settings.news_topic_id
+        if settings.gossip_topic_id:
+            kwargs["message_thread_id"] = settings.gossip_topic_id
         await context.bot.send_message(
             settings.news_chat_id, draft["text"], parse_mode=ParseMode.HTML,
             disable_web_page_preview=True, **kwargs,

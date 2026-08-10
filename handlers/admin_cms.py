@@ -21,9 +21,11 @@ import constants as C
 import logic
 import ui
 from handlers import admin_broadcast as BC
+from handlers import admin_guro as GURO
 from handlers import admin_log as LOG
 from handlers import admin_profiles as PF
 from handlers import admin_ui
+from handlers import admin_users as US
 from handlers import group_captcha as gate
 
 logger = logging.getLogger(__name__)
@@ -77,10 +79,12 @@ def _menu_kb() -> InlineKeyboardMarkup:
 def _dashboard_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📋 Анкеты", callback_data="acms_pf"),
-         InlineKeyboardButton("📢 Рассылка", callback_data="acms_bc")],
-        [InlineKeyboardButton("📝 Журнал", callback_data="acms_log"),
-         InlineKeyboardButton("⚙️ Режимы", callback_data="acms_modes")],
-        [InlineKeyboardButton("🎛 Контент", callback_data="acms_menu")],
+         InlineKeyboardButton("👤 Пользователи", callback_data="acms_users")],
+        [InlineKeyboardButton("📢 Рассылка", callback_data="acms_bc"),
+         InlineKeyboardButton("📝 Журнал", callback_data="acms_log")],
+        [InlineKeyboardButton("⚙️ Режимы", callback_data="acms_modes"),
+         InlineKeyboardButton("🎛 Контент", callback_data="acms_menu")],
+        [InlineKeyboardButton("🪪 GURO ID", callback_data="acms_guro")],
         [InlineKeyboardButton("✖ Выход", callback_data="acms_exit")],
     ])
 
@@ -240,15 +244,76 @@ def _media_edit_kb(have: bool) -> InlineKeyboardMarkup:
 
 # --- handlers -------------------------------------------------------------
 
+async def _redirect_if_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Админ-панель не должна разворачиваться в группе на виду у всех. Тот же
+    singleton-слот "start_redirect", что и у flow.start() — оба редиректа
+    взаимоисключающие (один физический /start обрабатывает либо этот
+    ConversationHandler, либо gambling_form, не оба). True — редирект
+    отправлен, вызывающий код должен сразу вернуть ConversationHandler.END."""
+    if update.effective_chat.type == "private":
+        return False
+    chat_id = update.effective_chat.id
+    await gate.post_singleton_group_message(
+        context, chat_id, "start_redirect",
+        lambda: context.bot.send_message(
+            chat_id,
+            "Админ-панель открывается только в личном сообщении с ботом — нажмите кнопку ниже 👇",
+            reply_markup=InlineKeyboardMarkup([[ui.link_button(
+                "➡️ Перейти к боту", f"https://t.me/{context.bot.username}", style="primary",
+            )]]),
+        ),
+    )
+    return True
+
+
 async def admin_open(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     chat_id = update.effective_chat.id
     try:
         await update.message.delete()  # Clean Chat: убираем /admin
     except Exception:  # noqa: BLE001
         pass
+    if await _redirect_if_group(update, context):
+        return ConversationHandler.END
     if not _is_admin(update, context):
         await context.bot.send_message(chat_id, "Команда доступна только администратору.")
         return ConversationHandler.END
+    msg = await context.bot.send_message(chat_id, "…")
+    await _store(context, msg)
+    return await _show_dashboard(context)
+
+
+async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """/start для админа — ВТОРОЙ entry_point ЭТОГО ConversationHandler (не
+    admin_open внутри flow.start()!). Это принципиально: только через entry_point
+    самого gambling_admin_cms (с allow_reentry=True) PTB по-настоящему проставляет
+    conversation state. Раньше flow.start() вызывал admin_open() напрямую в обход
+    диспетчера — рендерилась панель, но состояние диалога не проставлялось, и
+    если у админа не было уже АКТИВНОЙ сессии /admin (например, только что вышел
+    через «✖ Выход», который явно завершает диалог) — все кнопки дашборда молча
+    переставали отвечать (баг найден 20.07.2026 — «зависание админки»)."""
+    user = update.effective_user
+    chat_id = update.effective_chat.id
+    try:
+        await update.message.delete()  # Clean Chat: убираем /start
+    except Exception:  # noqa: BLE001
+        pass
+    if await _redirect_if_group(update, context):
+        return ConversationHandler.END
+    await gate.delete_gate_prompts(context, user.id)
+
+    # deep-link из списка «Анкеты»/«Пользователи» (клик по ID) -> сразу карточка
+    args = context.args or []
+    payload = args[0] if args else ""
+    target = payload.split("_", 1)[1] if "_" in payload else ""
+    if target.isdigit() and (payload.startswith("u_") or payload.startswith("p_")):
+        await admin_ui.delete_previous_screen(context)
+        if payload.startswith("u_"):
+            await US.send_card_message(context, chat_id, int(target))
+        else:
+            await PF.send_card_message(context, chat_id, int(target))
+        return ConversationHandler.END
+
+    await admin_ui.delete_previous_screen(context)
     msg = await context.bot.send_message(chat_id, "…")
     await _store(context, msg)
     return await _show_dashboard(context)
@@ -291,6 +356,10 @@ async def nav_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return BROWSE
 
 
+def _mode_dot(on: bool) -> str:
+    return "🟢" if on else "🔴"
+
+
 def _modes_kb(context) -> InlineKeyboardMarkup:
     storage = context.bot_data["storage"]
     settings = context.bot_data["settings"]
@@ -299,13 +368,13 @@ def _modes_kb(context) -> InlineKeyboardMarkup:
     gossip_on = storage.get_flag("gossip_enabled", True)
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(
-            f"🔒 Гейт (мут без анкеты) · {'вкл' if gate_on else 'выкл'}",
+            f"{_mode_dot(gate_on)} 🔒 Гейт (мут без анкеты) · {'вкл' if gate_on else 'выкл'}",
             callback_data="acms_tgl:gate")],
         [InlineKeyboardButton(
-            f"👋 Приветствие новичкам · {'вкл' if greet_on else 'выкл'}",
+            f"{_mode_dot(greet_on)} 👋 Приветствие новичкам · {'вкл' if greet_on else 'выкл'}",
             callback_data="acms_tgl:greet")],
         [InlineKeyboardButton(
-            f"\U0001f5e3 Сплетни от участников · {'вкл' if gossip_on else 'выкл'}",
+            f"{_mode_dot(gossip_on)} \U0001f5e3 Сплетни от участников · {'вкл' if gossip_on else 'выкл'}",
             callback_data="acms_tgl:gossip")],
         [InlineKeyboardButton("‹ Панель управления", callback_data="acms_home")],
     ])
@@ -347,7 +416,11 @@ async def toggle_mode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             muted = len(storage.all_group_mutes())
             await q.answer(f"Гейт выключен. Размучиваю замученных: {muted}")
             if muted:
-                context.application.create_task(gate.gate_unmute_all(context))
+                # НЕ context.application.create_task — PTB ждёт такие задачи
+                # при остановке (стоп/деплой висит, пока не размутит всех —
+                # для большой группы это могло бы занять минуты). Настоящий
+                # fire-and-forget, см. group_captcha.spawn_background.
+                gate.spawn_background(context, gate.gate_unmute_all(context))
     elif which == "greet":
         new = not storage.get_flag("greeting_enabled", True)
         storage.set_flag("greeting_enabled", new)
@@ -442,8 +515,7 @@ async def reset_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 async def admin_exit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.callback_query.answer()
     try:
-        await context.bot.edit_message_text(
-            "Готово. Раздел контента закрыт.",
+        await context.bot.delete_message(
             chat_id=context.user_data["adm_chat"],
             message_id=context.user_data["adm_mid"],
         )
@@ -666,7 +738,7 @@ async def gm_save_emoji(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     return await _show_gm_button(context, slot)
 
 
-def build_admin_cms() -> ConversationHandler:
+def build_admin_cms(admin_ids: tuple[int, ...] = ()) -> ConversationHandler:
     nav = [
         CallbackQueryHandler(nav_home, pattern=r"^acms_home$"),
         CallbackQueryHandler(nav_menu, pattern=r"^acms_menu$"),
@@ -691,20 +763,25 @@ def build_admin_cms() -> ConversationHandler:
         CallbackQueryHandler(gm_toggle, pattern=r"^acms_gmtoggle:\d+$"),
         CallbackQueryHandler(gm_reset, pattern=r"^acms_gmreset:\d+$"),
         CallbackQueryHandler(admin_exit, pattern=r"^acms_exit$"),
-        # раздел «Анкеты»
+        # раздел «Анкеты» (карточка: pf_open/pf_toggle_contact/pf_unmute — в
+        # build_admin_profiles_handlers(), group=1, см. докстринг admin_profiles.py)
         CallbackQueryHandler(PF.nav_profiles, pattern=r"^acms_pf$"),
         CallbackQueryHandler(PF.pf_page, pattern=r"^acms_pf_list:\d+$"),
         CallbackQueryHandler(PF.pf_search_start, pattern=r"^acms_pf_search$"),
-        CallbackQueryHandler(PF.pf_open, pattern=r"^acms_pf_open:\d+$"),
-        CallbackQueryHandler(PF.pf_toggle_contact, pattern=r"^acms_pf_contact:\d+$"),
-        CallbackQueryHandler(PF.pf_unmute, pattern=r"^acms_pf_unmute:\d+$"),
+        # раздел «Пользователи» (карточка: usr_* — в build_admin_users_handlers(),
+        # group=1, см. докстринг admin_users.py)
+        CallbackQueryHandler(US.nav_users, pattern=r"^acms_users$"),
+        CallbackQueryHandler(US.usr_list_page, pattern=r"^acms_users_p:\d+$"),
         # раздел «Рассылка» (Live Broadcast Builder)
         CallbackQueryHandler(BC.nav_broadcast, pattern=r"^acms_bc$"),
         CallbackQueryHandler(BC.bc_audience_all, pattern=r"^acms_bc_aud:all$"),
         CallbackQueryHandler(BC.bc_audience_vertical_menu, pattern=r"^acms_bc_aud:vertical$"),
         CallbackQueryHandler(BC.bc_audience_grade_menu, pattern=r"^acms_bc_aud:grade$"),
+        CallbackQueryHandler(BC.bc_audience_country_menu, pattern=r"^acms_bc_aud:country$"),
         CallbackQueryHandler(BC.bc_pick_vertical, pattern=r"^acms_bc_vert:\d+$"),
         CallbackQueryHandler(BC.bc_pick_grade, pattern=r"^acms_bc_grade:\d+$"),
+        CallbackQueryHandler(BC.bc_pick_country, pattern=r"^acms_bc_country:\d+$"),
+        CallbackQueryHandler(BC.bc_pick_country_other, pattern=r"^acms_bc_country_other$"),
         CallbackQueryHandler(BC.bc_audience_count, pattern=r"^acms_bc_count$"),
         CallbackQueryHandler(BC.bc_add_item_start, pattern=r"^acms_bc_additem$"),
         CallbackQueryHandler(BC.bc_btn_choice, pattern=r"^acms_bc_btn:(yes|no)$"),
@@ -714,10 +791,19 @@ def build_admin_cms() -> ConversationHandler:
         # раздел «Журнал»
         CallbackQueryHandler(LOG.nav_log, pattern=r"^acms_log$"),
         CallbackQueryHandler(LOG.log_page, pattern=r"^acms_log_p:\d+$"),
+        # раздел «GURO ID» (статистика, read-only) — handlers/admin_guro.py
+        CallbackQueryHandler(GURO.nav_guro, pattern=r"^acms_guro$"),
     ]
     media_filter = filters.ANIMATION | filters.PHOTO | filters.VIDEO | filters.Document.ALL
     return ConversationHandler(
-        entry_points=[CommandHandler("admin", admin_open)],
+        entry_points=[
+            CommandHandler("admin", admin_open),
+            # /start для админа — тоже entry_point ЭТОГО ConversationHandler
+            # (allow_reentry=True ниже гарантирует, что он сработает даже если
+            # у админа уже была/не была активная сессия — см. докстринг admin_start)
+            *([CommandHandler("start", admin_start, filters=filters.User(user_id=list(admin_ids)))]
+              if admin_ids else []),
+        ],
         states={
             BROWSE: nav,
             WAIT_TEXT: [
@@ -741,6 +827,10 @@ def build_admin_cms() -> ConversationHandler:
             PF.WAIT_SEARCH: [
                 *nav,
                 MessageHandler(filters.TEXT & ~filters.COMMAND, PF.pf_search_text),
+            ],
+            US.WAIT_LOOKUP: [
+                *nav,
+                MessageHandler(filters.TEXT & ~filters.COMMAND, US.lookup_text),
             ],
             BC.WAIT_TEXT: [
                 *nav,

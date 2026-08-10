@@ -25,6 +25,11 @@ from storage import Storage
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("news_poster")
 
+# Сколько черновиков в день максимум показываем админам на выбор (не путать с
+# темпом создания черновиков из RSS — тот не ограничен, лишние просто ждут
+# своей очереди в news_pending_unnotified, старые первыми).
+DAILY_ADMIN_LIMIT = 6
+
 
 def _draft_kb(draft_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
@@ -35,19 +40,31 @@ def _draft_kb(draft_id: int) -> InlineKeyboardMarkup:
 
 async def _notify_admins(bot: Bot, settings: Settings, draft_id: int, text: str,
                           image_url: str | None, storage: Storage) -> None:
-    admin_msg_id = None
-    admin_chat_id = None
+    """Шлёт черновик КАЖДОМУ админу и запоминает ID сообщения у каждого
+    отдельно (news_admin_messages) — иначе при решении по черновику копия
+    остаётся висеть с активными кнопками у всех, кроме того, кто её обработал."""
     for admin_id in settings.admin_ids:
         try:
             msg = await send_news_html(
                 bot, admin_id, text, image_url, ParseMode.HTML,
                 reply_markup=_draft_kb(draft_id),
             )
-            admin_chat_id, admin_msg_id = admin_id, msg.message_id
+            storage.news_add_admin_msg(draft_id, admin_id, msg.message_id)
         except Exception:  # noqa: BLE001
             logger.exception("news: не удалось уведомить админа %s", admin_id)
-    if admin_msg_id:
-        storage.news_set_admin_msg(draft_id, admin_chat_id, admin_msg_id)
+
+
+async def _notify_up_to_quota(bot: Bot, settings: Settings, storage: Storage) -> int:
+    """Дозаполняет дневную квоту показов админам из очереди непоказанных
+    черновиков (старые первыми — честная очередь, а не самые свежие)."""
+    remaining = DAILY_ADMIN_LIMIT - storage.news_notified_today_count()
+    if remaining <= 0:
+        return 0
+    to_notify = storage.news_pending_unnotified(remaining)
+    for draft in to_notify:
+        await _notify_admins(bot, settings, draft["id"], draft["text"], draft["image_url"], storage)
+        storage.news_mark_notified(draft["id"])
+    return len(to_notify)
 
 
 async def main() -> None:
@@ -81,11 +98,14 @@ async def main() -> None:
             item.guid, item.source, item.url, item.title, text, item.image_url,
         )
         storage.news_mark_seen(item.guid, item.source, item.url)
-        await _notify_admins(bot, settings, draft_id, text, item.image_url, storage)
         created += 1
-        logger.info("news: черновик #%s создан (%s)", draft_id, item.source)
+        logger.info("news: черновик #%s создан (%s), в очереди на показ", draft_id, item.source)
 
-    logger.info("news: готово, новых черновиков: %s", created)
+    notified = await _notify_up_to_quota(bot, settings, storage)
+    logger.info(
+        "news: готово, новых черновиков: %s, показано админам сейчас: %s, всего сегодня: %s/%s",
+        created, notified, storage.news_notified_today_count(), DAILY_ADMIN_LIMIT,
+    )
     storage.close()
 
 

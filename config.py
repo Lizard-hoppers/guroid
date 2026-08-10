@@ -35,8 +35,21 @@ class Settings:
     news_enabled: bool = False
     news_chat_id: int = 0
     news_topic_id: int | None = None
+    gossip_topic_id: int | None = None
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+    # Группа сообщества (для одноразовых инвайт-ссылок после анкеты). 0 = не настроено,
+    # тогда финал использует статичный community_invite_url (как раньше).
+    community_chat_id: int = 0
+    # Тема (топик) англоязычного чата в том же форуме — приветствие после
+    # анкеты на английском уходит туда, а не в основной (СНГ) топик.
+    community_en_topic_id: int | None = None
+    # GURO ID Mini App: отдельный aiohttp-процесс guro_id_api.py, порт для
+    # локального биндинга (наружу — через Apache+TLS, см. OPERATIONS.md).
+    guro_id_api_port: int = 8092
+    # Публичный HTTPS-адрес Mini App (тот же порт, но снаружи) — ставится
+    # Menu Button-ом бота при старте (bot.py post_init).
+    guro_id_webapp_url: str = "https://guro-app.193.111.62.16.sslip.io/"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -78,8 +91,23 @@ class Settings:
                 if os.environ.get("NEWS_TOPIC_ID", "").strip()
                 else None
             ),
+            gossip_topic_id=(
+                int(os.environ["GOSSIP_TOPIC_ID"])
+                if os.environ.get("GOSSIP_TOPIC_ID", "").strip()
+                else None
+            ),
             openai_api_key=os.environ.get("OPENAI_API_KEY", "").strip(),
             openai_model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini",
+            community_chat_id=int(os.environ.get("COMMUNITY_CHAT_ID", "0") or 0),
+            community_en_topic_id=(
+                int(os.environ["COMMUNITY_EN_TOPIC_ID"])
+                if os.environ.get("COMMUNITY_EN_TOPIC_ID", "").strip()
+                else None
+            ),
+            guro_id_api_port=int(os.environ.get("GURO_ID_API_PORT", "8092") or 8092),
+            guro_id_webapp_url=os.environ.get(
+                "GURO_ID_WEBAPP_URL", "https://guro-app.193.111.62.16.sslip.io/"
+            ).strip(),
         )
 
     def is_admin(self, user_id: int) -> bool:

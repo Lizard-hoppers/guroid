@@ -44,7 +44,7 @@ async def on_news_decision(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         storage.news_set_status(draft_id, "rejected")
         storage.log_action(update.effective_user.id, "news_reject", f"черновик #{draft_id}")
         await q.answer("Отклонено")
-        await _strip_and_note(q, "\n\n❌ Отклонено")
+        await _delete_admin_copies(context, storage, draft_id)
         return
 
     # action == "pub"
@@ -67,24 +67,21 @@ async def on_news_decision(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     storage.news_set_status(draft_id, "published", published=True)
     storage.log_action(update.effective_user.id, "news_publish", f"черновик #{draft_id}")
     await q.answer("Опубликовано ✅")
-    await _strip_and_note(q, "\n\n✅ Опубликовано в группу")
+    await _delete_admin_copies(context, storage, draft_id)
 
 
-async def _strip_and_note(q, note: str) -> None:
-    """Убирает кнопки решения, дописывает статус к тексту/подписи."""
-    try:
-        if q.message.photo:
-            await q.edit_message_caption(
-                caption=(q.message.caption or "") + note, reply_markup=None,
-                parse_mode=ParseMode.HTML,
+async def _delete_admin_copies(context: ContextTypes.DEFAULT_TYPE, storage, draft_id: int) -> None:
+    """Убирает копию черновика у ВСЕХ админов, не только у того, кто нажал
+    кнопку — news_admin_messages хранит ID сообщения у каждого отдельно."""
+    for row in storage.news_list_admin_msgs(draft_id):
+        try:
+            await context.bot.delete_message(row["admin_chat_id"], row["admin_msg_id"])
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "news: не удалось удалить копию черновика %s у админа %s",
+                draft_id, row["admin_chat_id"], exc_info=True,
             )
-        else:
-            await q.edit_message_text(
-                (q.message.text or "") + note, reply_markup=None,
-                parse_mode=ParseMode.HTML, disable_web_page_preview=True,
-            )
-    except Exception:  # noqa: BLE001
-        logger.debug("news: не удалось обновить сообщение админа", exc_info=True)
+    storage.news_clear_admin_msgs(draft_id)
 
 
 def build_news_handlers() -> list:

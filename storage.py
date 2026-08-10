@@ -59,6 +59,17 @@ CREATE TABLE IF NOT EXISTS group_mutes (
     PRIMARY KEY (chat_id, user_id)
 );
 
+-- Перманентный бан администратором (через /admin -> Пользователи), ОТДЕЛЬНО
+-- от group_mutes (мут гейта за отсутствие анкеты). Разделение принципиально:
+-- заполнение анкеты автоматически снимает мут гейта (unmute_after_profile),
+-- но НЕ должно снимать бан — иначе забаненный человек мог бы выйти-зайти в
+-- группу (гейт замутит его снова и запишет в group_mutes) и, заполнив
+-- анкету, случайно вернуть себе доступ в обход бана.
+CREATE TABLE IF NOT EXISTS banned_users (
+    user_id INTEGER PRIMARY KEY,
+    banned_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS app_flags (
     key TEXT PRIMARY KEY,
     value INTEGER
@@ -86,6 +97,18 @@ CREATE TABLE IF NOT EXISTS news_drafts (
     published_at TEXT
 );
 
+-- По одному черновику новости уведомляются ВСЕ админы (settings.admin_ids) —
+-- каждому своя копия сообщения, отслеживается отдельной строкой, чтобы при
+-- решении (публикация/отклонение) можно было убрать копию у КАЖДОГО, а не
+-- только у того, кто нажал кнопку (news_drafts.admin_chat_id/admin_msg_id —
+-- легаси на одну колонку, перезаписывался последним админом в цикле рассылки).
+CREATE TABLE IF NOT EXISTS news_admin_messages (
+    draft_id INTEGER,
+    admin_chat_id INTEGER,
+    admin_msg_id INTEGER,
+    PRIMARY KEY (draft_id, admin_chat_id)
+);
+
 CREATE TABLE IF NOT EXISTS gossip_drafts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     submitter_id INTEGER,
@@ -107,6 +130,43 @@ CREATE TABLE IF NOT EXISTS admin_audit_log (
     detail TEXT,
     created_at TEXT
 );
+
+-- Реф-система: слот создаётся пригласившим (referrer_id, порядковый slot —
+-- 1,2,3...) и выдаёт ссылку `?start=ref_<referrer_id>_<slot>`. Слот считается
+-- одноразовым: invited_user_id проставляется первому, кто зашёл по этой
+-- ссылке (WHERE invited_user_id IS NULL в consume_referral_link), повторные
+-- попытки по той же ссылке игнорируются. «В ответе за приглашённого» —
+-- get_referrer_of()/list_invited_by() дают админу видимость связи при бане.
+CREATE TABLE IF NOT EXISTS referral_links (
+    referrer_id INTEGER,
+    slot INTEGER,
+    invited_user_id INTEGER,
+    invited_username TEXT,
+    created_at TEXT,
+    used_at TEXT,
+    PRIMARY KEY (referrer_id, slot)
+);
+
+-- Clean Chat в группе: один активный слот на (chat_id, category) —
+-- новое сообщение этой категории (приветствие, реф-подтверждение...)
+-- удаляет предыдущее вместо накопления. В отличие от TTL-таймера, слот
+-- в БД переживает рестарт бота.
+CREATE TABLE IF NOT EXISTS group_singleton_messages (
+    chat_id INTEGER,
+    category TEXT,
+    message_id INTEGER,
+    PRIMARY KEY (chat_id, category)
+);
+
+-- Пул видео для приветствия в группе (разнообразие вместо одного статичного
+-- CMS-медиа) — round-robin по кругу, курсор хранится в app_flags как int
+-- (get_int_flag/set_int_flag, НЕ get_flag/set_flag — те приводят к bool).
+CREATE TABLE IF NOT EXISTS greeting_videos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id TEXT,
+    media_type TEXT DEFAULT 'video',
+    added_at TEXT
+);
 """
 
 
@@ -127,9 +187,13 @@ class Storage:
             ("sheet_synced", "INTEGER DEFAULT 0"),
             ("contacted", "INTEGER DEFAULT 0"),
             ("blocked", "INTEGER DEFAULT 0"),
+            ("country", "TEXT"),
+            ("country_iso2", "TEXT"),
+            ("lang", "TEXT"),
         ):
             self._ensure_column("profiles", col, ddl)
         self._ensure_column("group_mutes", "prompt_msg_id", "INTEGER")
+        self._ensure_column("news_drafts", "notified_at", "TEXT")
         self._conn.commit()
         self._seed_menu_buttons()
 
@@ -160,8 +224,9 @@ class Storage:
             INSERT INTO profiles (
                 user_id, username, vertical, grade, profession,
                 investor_type, investor_amount, investor_needs,
-                request, name, company, linkedin, created_at, sheet_synced
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0)
+                request, name, country, country_iso2, company, linkedin, lang,
+                created_at, sheet_synced
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)
             """,
             (
                 profile.get("user_id"),
@@ -174,8 +239,11 @@ class Storage:
                 profile.get("investor_needs"),
                 profile.get("request"),
                 profile.get("name"),
+                profile.get("country"),
+                profile.get("country_iso2"),
                 profile.get("company"),
                 profile.get("linkedin"),
+                profile.get("lang"),
                 created_at,
             ),
         )
@@ -214,6 +282,85 @@ class Storage:
             self._conn.commit()
         return chats
 
+    def ban_user(self, user_id: int) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO banned_users (user_id, banned_at) VALUES (?,?)",
+            (user_id, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        self._conn.commit()
+
+    def unban_user(self, user_id: int) -> None:
+        self._conn.execute("DELETE FROM banned_users WHERE user_id=?", (user_id,))
+        self._conn.commit()
+
+    def is_banned(self, user_id: int) -> bool:
+        row = self._conn.execute(
+            "SELECT 1 FROM banned_users WHERE user_id=?", (user_id,)
+        ).fetchone()
+        return row is not None
+
+    # --- реф-система ---------------------------------------------------
+
+    def create_referral_link(self, referrer_id: int) -> int:
+        """Резервирует следующий по счёту слот (1,2,3...) для пригласившего."""
+        row = self._conn.execute(
+            "SELECT COALESCE(MAX(slot), 0) + 1 FROM referral_links WHERE referrer_id=?",
+            (referrer_id,),
+        ).fetchone()
+        slot = row[0]
+        self._conn.execute(
+            "INSERT INTO referral_links (referrer_id, slot, created_at) VALUES (?,?,?)",
+            (referrer_id, slot, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        self._conn.commit()
+        return slot
+
+    def consume_referral_link(
+        self, referrer_id: int, slot: int, invited_user_id: int, invited_username: str | None,
+    ) -> bool:
+        """Привязывает слот к первому, кто зашёл по ссылке. False — слот не
+        существует или уже использован (повторный /start по старой ссылке)."""
+        cur = self._conn.execute(
+            "UPDATE referral_links SET invited_user_id=?, invited_username=?, used_at=? "
+            "WHERE referrer_id=? AND slot=? AND invited_user_id IS NULL",
+            (
+                invited_user_id, invited_username,
+                datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                referrer_id, slot,
+            ),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def get_referrer_of(self, user_id: int) -> sqlite3.Row | None:
+        return self._conn.execute(
+            "SELECT * FROM referral_links WHERE invited_user_id=?", (user_id,)
+        ).fetchone()
+
+    def list_invited_by(self, referrer_id: int) -> list[sqlite3.Row]:
+        return list(self._conn.execute(
+            "SELECT * FROM referral_links WHERE referrer_id=? AND invited_user_id IS NOT NULL "
+            "ORDER BY slot",
+            (referrer_id,),
+        ))
+
+    # --- Clean Chat в группе (один активный слот на тип сообщения) --------
+
+    def get_singleton_message(self, chat_id: int, category: str) -> int | None:
+        row = self._conn.execute(
+            "SELECT message_id FROM group_singleton_messages WHERE chat_id=? AND category=?",
+            (chat_id, category),
+        ).fetchone()
+        return row["message_id"] if row else None
+
+    def set_singleton_message(self, chat_id: int, category: str, message_id: int) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO group_singleton_messages (chat_id, category, message_id) "
+            "VALUES (?,?,?)",
+            (chat_id, category, message_id),
+        )
+        self._conn.commit()
+
     def set_gate_prompt(self, chat_id: int, user_id: int, msg_id: int) -> None:
         self._conn.execute(
             "UPDATE group_mutes SET prompt_msg_id=? WHERE chat_id=? AND user_id=?",
@@ -237,6 +384,25 @@ class Storage:
             )
             self._conn.commit()
         return rows
+
+    def get_gate_prompt(self, chat_id: int, user_id: int) -> int | None:
+        """Читает prompt_msg_id БЕЗ очистки — для TTL-удаления: проверить, что
+        это ещё тот же промпт (а не новый/уже снятый через /start)."""
+        row = self._conn.execute(
+            "SELECT prompt_msg_id FROM group_mutes WHERE chat_id=? AND user_id=?",
+            (chat_id, user_id),
+        ).fetchone()
+        return row["prompt_msg_id"] if row else None
+
+    def clear_gate_prompt(self, chat_id: int, user_id: int) -> None:
+        """Снимает ТОЛЬКО отметку о промпте (мут остаётся) — вызывается после
+        TTL-удаления сообщения, чтобы pop_gate_prompts не пытался стереть его
+        повторно, когда юзер всё-таки дойдёт до /start."""
+        self._conn.execute(
+            "UPDATE group_mutes SET prompt_msg_id=NULL WHERE chat_id=? AND user_id=?",
+            (chat_id, user_id),
+        )
+        self._conn.commit()
 
     def all_group_mutes(self) -> list[tuple[int, int, int | None]]:
         return [
@@ -265,6 +431,49 @@ class Storage:
         )
         self._conn.commit()
 
+    def get_int_flag(self, key: str, default: int = 0) -> int:
+        """Как get_flag, но без приведения к bool — для счётчиков/курсоров."""
+        row = self._conn.execute(
+            "SELECT value FROM app_flags WHERE key=?", (key,)
+        ).fetchone()
+        return row["value"] if row is not None else default
+
+    def set_int_flag(self, key: str, value: int) -> None:
+        self._conn.execute(
+            "INSERT INTO app_flags (key, value) VALUES (?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
+        self._conn.commit()
+
+    # --- пул видео приветствия в группе (разнообразие, round-robin) -------
+
+    def greeting_video_add(self, file_id: str, media_type: str = "video") -> int:
+        cur = self._conn.execute(
+            "INSERT INTO greeting_videos (file_id, media_type, added_at) VALUES (?,?,?)",
+            (file_id, media_type, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        self._conn.commit()
+        return cur.lastrowid
+
+    def greeting_video_list(self) -> list[sqlite3.Row]:
+        return list(self._conn.execute("SELECT * FROM greeting_videos ORDER BY id"))
+
+    def greeting_video_clear(self) -> None:
+        self._conn.execute("DELETE FROM greeting_videos")
+        self._conn.commit()
+
+    def greeting_video_next(self) -> tuple[str, str] | None:
+        """Следующее видео по кругу (round-robin) — курсор продвигается при
+        каждом вызове. None — пул пуст, вызывающий код падает на CMS-медиа."""
+        rows = self.greeting_video_list()
+        if not rows:
+            return None
+        idx = self.get_int_flag("greeting_video_cursor", 0) % len(rows)
+        self.set_int_flag("greeting_video_cursor", idx + 1)
+        row = rows[idx]
+        return row["file_id"], row["media_type"]
+
     # --- новости индустрии (RSS -> GPT -> модерация -> публикация) ---
 
     def news_is_seen(self, guid: str) -> bool:
@@ -291,11 +500,21 @@ class Storage:
         self._conn.commit()
         return cur.lastrowid
 
-    def news_set_admin_msg(self, draft_id: int, chat_id: int, msg_id: int) -> None:
+    def news_add_admin_msg(self, draft_id: int, chat_id: int, msg_id: int) -> None:
         self._conn.execute(
-            "UPDATE news_drafts SET admin_chat_id=?, admin_msg_id=? WHERE id=?",
-            (chat_id, msg_id, draft_id),
+            "INSERT OR REPLACE INTO news_admin_messages (draft_id, admin_chat_id, admin_msg_id) "
+            "VALUES (?,?,?)",
+            (draft_id, chat_id, msg_id),
         )
+        self._conn.commit()
+
+    def news_list_admin_msgs(self, draft_id: int) -> list[sqlite3.Row]:
+        return list(self._conn.execute(
+            "SELECT * FROM news_admin_messages WHERE draft_id=?", (draft_id,)
+        ))
+
+    def news_clear_admin_msgs(self, draft_id: int) -> None:
+        self._conn.execute("DELETE FROM news_admin_messages WHERE draft_id=?", (draft_id,))
         self._conn.commit()
 
     def news_get_draft(self, draft_id: int):
@@ -320,6 +539,30 @@ class Storage:
             "SELECT COUNT(*) AS n FROM news_drafts WHERE status='pending'"
         ).fetchone()
         return row["n"]
+
+    def news_notified_today_count(self) -> int:
+        """Сколько черновиков уже разослано админам сегодня (UTC) — дневной лимит."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM news_drafts "
+            "WHERE notified_at IS NOT NULL AND date(notified_at) = date('now')"
+        ).fetchone()
+        return row["n"]
+
+    def news_pending_unnotified(self, limit: int) -> list[sqlite3.Row]:
+        """Черновики, ещё не показанные ни одному админу — старые первыми
+        (fair queue, а не последние по времени создания)."""
+        return list(self._conn.execute(
+            "SELECT * FROM news_drafts WHERE status='pending' AND notified_at IS NULL "
+            "ORDER BY created_at ASC LIMIT ?",
+            (limit,),
+        ))
+
+    def news_mark_notified(self, draft_id: int) -> None:
+        self._conn.execute(
+            "UPDATE news_drafts SET notified_at=? WHERE id=?",
+            (datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), draft_id),
+        )
+        self._conn.commit()
 
     # --- сплетни/инсайды от участников (текст -> GPT -> модерация -> публикация) ---
 
@@ -396,6 +639,11 @@ class Storage:
             "SELECT * FROM profiles WHERE id=?", (profile_id,)
         ).fetchone()
 
+    def get_profile_by_telegram_id(self, user_id: int) -> sqlite3.Row | None:
+        return self._conn.execute(
+            "SELECT * FROM profiles WHERE user_id=? ORDER BY id DESC LIMIT 1", (user_id,)
+        ).fetchone()
+
     def profiles_page(self, offset: int, limit: int) -> list[sqlite3.Row]:
         return list(self._conn.execute(
             "SELECT * FROM profiles ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)
@@ -434,7 +682,9 @@ class Storage:
         ]
 
     def profiles_for_broadcast(self, vertical: str | None = None,
-                               grade: str | None = None) -> list[sqlite3.Row]:
+                               grade: str | None = None,
+                               country: str | None = None,
+                               country_in: list[str] | None = None) -> list[sqlite3.Row]:
         """Уникальные (user_id, username) анкет, подходящих под фильтр, без заблокировавших бота."""
         sql = "SELECT DISTINCT user_id, username FROM profiles WHERE blocked=0"
         params: list = []
@@ -444,7 +694,38 @@ class Storage:
         if grade:
             sql += " AND grade=?"
             params.append(grade)
+        if country:
+            sql += " AND country=?"
+            params.append(country)
+        if country_in:
+            sql += f" AND country IN ({','.join('?' for _ in country_in)})"
+            params.extend(country_in)
         return list(self._conn.execute(sql, params))
+
+    def country_broadcast_segments(self) -> list[sqlite3.Row]:
+        """(country, country_iso2, n) — сегменты для рассылки по странам.
+
+        n — кол-во УНИКАЛЬНЫХ user_id с этой страной, без заблокировавших
+        бота; страна должна быть нормализована (непустая)."""
+        return list(self._conn.execute(
+            "SELECT country, country_iso2, COUNT(DISTINCT user_id) AS n FROM profiles "
+            "WHERE blocked=0 AND country IS NOT NULL AND TRIM(country) != '' "
+            "GROUP BY country ORDER BY n DESC, country ASC"
+        ))
+
+    def set_profile_country(self, profile_id: int, country: str, country_iso2: str) -> None:
+        self._conn.execute(
+            "UPDATE profiles SET country=?, country_iso2=? WHERE id=?",
+            (country, country_iso2, profile_id),
+        )
+        self._conn.commit()
+
+    def profiles_needing_country_normalization(self) -> list[sqlite3.Row]:
+        """Анкеты со страной, но без iso2 — заполнены до фичи GPT-нормализации."""
+        return list(self._conn.execute(
+            "SELECT id, country FROM profiles WHERE country IS NOT NULL AND TRIM(country) != '' "
+            "AND (country_iso2 IS NULL OR TRIM(country_iso2) = '')"
+        ))
 
     # --- журнал админ-действий -------------------------------------------
 
@@ -475,7 +756,7 @@ class Storage:
         headers = [
             "id", "created_at", "user_id", "username", "vertical", "grade",
             "profession", "investor_type", "investor_amount", "investor_needs",
-            "request", "name", "company", "linkedin",
+            "request", "name", "country", "company", "linkedin",
         ]
         writer.writerow(headers)
         for r in self.all_profiles():

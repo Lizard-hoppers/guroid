@@ -1,21 +1,29 @@
-"""Раздел /admin «Анкеты»: постраничный список + поиск + карточка анкеты
-с действиями (замена голому /export для повседневной работы с заявками).
+"""Раздел /admin «Анкеты»: постраничный список (компактный, кликабельный
+Telegram ID — по образцу island_summary_bot) + поиск + карточка анкеты с
+действиями (замена голому /export для повседневной работы с заявками).
 
 WAIT_SEARCH — собственная строковая константа состояния ConversationHandler
 (не пересекается с int-состояниями admin_cms.py; PTB допускает произвольные
 hashable-ключи состояний).
-"""
+
+Карточка анкеты открывается либо кликом по ID в списке (deep-link
+`?start=p_<id>`, см. flow.start), либо кнопкой из результатов поиска. Кнопки
+самой карточки (contact/unmute) — ВНЕ ConversationHandler-состояний
+(build_admin_profiles_handlers, group=1 в bot.py), т.к. карточка может быть
+первым сообщением для админа без активной сессии /admin (тот же приём, что и
+в admin_users.py — см. докстринг там)."""
 from __future__ import annotations
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ContextTypes
+from telegram.constants import ParseMode
+from telegram.ext import CallbackQueryHandler, ContextTypes
 
 import logic
 from handlers import admin_ui
 from handlers import group_captcha as gate
 from handlers.admin_ui import BROWSE
 
-PAGE_SIZE = 8
+PAGE_SIZE = 20
 WAIT_SEARCH = "pf:search"
 
 
@@ -28,17 +36,27 @@ class _MinimalUser:
         self.full_name = username or str(user_id)
 
 
-def _line(r) -> str:
-    name = r["name"] or "—"
+def profile_card_start_url(bot_username: str, profile_id: int) -> str:
+    """Deep-link, по клику на который бот сразу открывает карточку анкеты."""
+    return f"https://t.me/{bot_username}?start=p_{profile_id}"
+
+
+def _list_line(r, index: int, bot_username: str | None) -> str:
     mark = "✅" if r["contacted"] else ""
-    return f"{mark}#{r['id']} · {name} · {r['vertical']}/{r['grade']}"
+    name = logic.html_escape(r["name"] or "—")
+    uid = r["user_id"]
+    id_text = (
+        f'<a href="{logic.html_escape(profile_card_start_url(bot_username, r["id"]))}">{uid}</a>'
+        if bot_username else f"<code>{uid}</code>"
+    )
+    return (
+        f"{index}. {mark}#{r['id']} · {id_text} · {name} · "
+        f"{logic.html_escape(r['vertical'])}/{logic.html_escape(r['grade'])}"
+    )
 
 
-def _list_kb(rows, page: int, total: int, query: str | None) -> InlineKeyboardMarkup:
-    kb_rows = [
-        [InlineKeyboardButton(_line(r), callback_data=f"acms_pf_open:{r['id']}")]
-        for r in rows
-    ]
+def _list_kb(page: int, total: int, query: str | None) -> InlineKeyboardMarkup:
+    kb_rows = []
     nav = []
     if page > 0:
         nav.append(InlineKeyboardButton("← Назад", callback_data=f"acms_pf_list:{page - 1}"))
@@ -59,6 +77,7 @@ async def _show_list(context: ContextTypes.DEFAULT_TYPE, page: int,
     storage = context.bot_data["storage"]
     context.user_data["pf_page"] = page
     context.user_data["pf_query"] = query
+    bot_username = context.bot.username
     if query:
         rows = storage.search_profiles(query)
         total = len(rows)
@@ -70,7 +89,10 @@ async def _show_list(context: ContextTypes.DEFAULT_TYPE, page: int,
         total = storage.count()
         rows = storage.profiles_page(page * PAGE_SIZE, PAGE_SIZE)
         header = f"📋 <b>Анкеты</b> (всего {total}):"
-    await admin_ui.edit_screen(context, header, _list_kb(rows, page, total, query))
+    lines = [header, ""]
+    for i, r in enumerate(rows, start=page * PAGE_SIZE + 1):
+        lines.append(_list_line(r, i, bot_username))
+    await admin_ui.edit_screen(context, "\n".join(lines), _list_kb(page, total, query))
 
 
 async def nav_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -151,6 +173,13 @@ def _card_kb(r, mute_chats: list[int], sheets_url: str | None, back_page: int) -
     return InlineKeyboardMarkup(rows)
 
 
+def _sheets_url(context) -> str | None:
+    settings = context.bot_data["settings"]
+    if settings.google_sheets_enabled and settings.google_sheets_spreadsheet_id:
+        return f"https://docs.google.com/spreadsheets/d/{settings.google_sheets_spreadsheet_id}"
+    return None
+
+
 async def _show_card(context, profile_id: int):
     storage = context.bot_data["storage"]
     r = storage.get_profile(profile_id)
@@ -161,14 +190,29 @@ async def _show_card(context, profile_id: int):
         )
         return
     mute_chats = storage.user_mute_chats(r["user_id"])
-    settings = context.bot_data["settings"]
-    sheets_url = None
-    if settings.google_sheets_enabled and settings.google_sheets_spreadsheet_id:
-        sheets_url = f"https://docs.google.com/spreadsheets/d/{settings.google_sheets_spreadsheet_id}"
     back_page = context.user_data.get("pf_page", 0)
     await admin_ui.edit_screen(
-        context, _card_text(r, mute_chats), _card_kb(r, mute_chats, sheets_url, back_page),
+        context, _card_text(r, mute_chats), _card_kb(r, mute_chats, _sheets_url(context), back_page),
     )
+
+
+async def send_card_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, profile_id: int) -> None:
+    """Открывает карточку анкеты НОВЫМ сообщением — вход по deep-link
+    `?start=p_<id>` (клик по ID в списке), без активной сессии /admin.
+    Предыдущий экран /admin (список и т.п.) при этом подчищается."""
+    await admin_ui.delete_previous_screen(context)
+    storage = context.bot_data["storage"]
+    r = storage.get_profile(profile_id)
+    if r is None:
+        await context.bot.send_message(chat_id, "Анкета не найдена (возможно, удалена).")
+        return
+    mute_chats = storage.user_mute_chats(r["user_id"])
+    msg = await context.bot.send_message(
+        chat_id, _card_text(r, mute_chats),
+        reply_markup=_card_kb(r, mute_chats, _sheets_url(context), 0),
+        parse_mode=ParseMode.HTML,
+    )
+    await admin_ui.store_screen(context, msg)
 
 
 async def pf_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -211,3 +255,13 @@ async def pf_unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer("Размучен ✅")
     await _show_card(context, pid)
     return BROWSE
+
+
+def build_admin_profiles_handlers() -> list:
+    """Кнопки карточки анкеты вне ConversationHandler-состояний (group=1 в
+    bot.py) — работают и без активной сессии /admin (см. докстринг модуля)."""
+    return [
+        CallbackQueryHandler(pf_open, pattern=r"^acms_pf_open:\d+$"),
+        CallbackQueryHandler(pf_toggle_contact, pattern=r"^acms_pf_contact:\d+$"),
+        CallbackQueryHandler(pf_unmute, pattern=r"^acms_pf_unmute:\d+$"),
+    ]

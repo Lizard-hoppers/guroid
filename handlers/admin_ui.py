@@ -21,6 +21,20 @@ async def store_screen(context, msg) -> None:
     context.user_data["adm_mid"] = msg.message_id
 
 
+async def delete_previous_screen(context) -> None:
+    """Чистит предыдущий экран /admin перед отправкой НОВЫМ сообщением (не
+    edit) — карточка по клику на ID в списке/форварду иначе оставляет старое
+    меню висеть в чате рядом с новым."""
+    chat = context.user_data.get("adm_chat")
+    mid = context.user_data.get("adm_mid")
+    if chat is None or mid is None:
+        return
+    try:
+        await context.bot.delete_message(chat_id=chat, message_id=mid)
+    except Exception:  # noqa: BLE001
+        logger.debug("admin: не удалось удалить предыдущий экран", exc_info=True)
+
+
 async def edit_screen(context, text: str, kb=None) -> bool:
     try:
         await context.bot.edit_message_text(

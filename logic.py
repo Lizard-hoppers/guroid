@@ -15,6 +15,7 @@ PROFILE_FIELDS = (
     "investor_needs",
     "request",
     "name",
+    "country",
     "company",
     "linkedin",
 )
@@ -70,19 +71,25 @@ def profile_to_sheet_row(profile: dict, created_at: str) -> list[str]:
         profile.get("investor_needs", "") or "",
         profile.get("request", "") or "",
         profile.get("name", "") or "",
+        profile.get("country", "") or "",
         profile.get("company", "") or "",
         profile.get("linkedin", "") or "",
     ]
 
 
-def profile_to_admin_card(profile: dict) -> str:
+def profile_to_admin_card(profile: dict, banned: bool = False) -> str:
     """HTML-карточка новой анкеты для админ-чата."""
     e = html_escape
     username = profile.get("username")
     uname = f"@{e(username)}" if username else "—"
     lines = [
         "🆕 <b>Новая анкета</b>",
+    ]
+    if banned:
+        lines.append("⛔ <b>Юзер забанен администратором — доступ НЕ открыт, ссылку не выдали</b>")
+    lines += [
         f"👤 {e(profile.get('name'))} ({uname}, id <code>{profile.get('user_id')}</code>)",
+        f"🌐 Страна: {e(profile.get('country'))}",
         f"🏷 Вертикаль: <b>{e(profile.get('vertical'))}</b>",
         f"🎚 Грейд: {e(profile.get('grade'))}",
     ]

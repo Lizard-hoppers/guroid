@@ -2393,13 +2393,13 @@ def test_guro_id_storage():
         check(u1["reputation_score"] == 50.0, f"первичная репутация = база 50 (анкета не даёт бонуса), а не {u1['reputation_score']}")
 
         privacy = gst.get_privacy(1)
-        check(all(v is False for v in privacy.values()), "приватность по умолчанию -> всё видно (все тумблеры выключены)")
-        updated = gst.set_privacy_field(1, "hide_company", True)
-        check(updated["hide_company"] is True, "set_privacy_field включает конкретный тумблер")
-        check(updated["hide_name"] is False, "остальные тумблеры не трогает")
-        check(gst.get_privacy(1)["hide_company"] is True, "значение сохраняется между вызовами")
+        check(all(v is False for v in privacy.values()), "приватность по умолчанию -> всё выключено (opt-in, ничего не видно чужим)")
+        updated = gst.set_privacy_field(1, "show_company", True)
+        check(updated["show_company"] is True, "set_privacy_field включает конкретный тумблер")
+        check(updated["show_name"] is False, "остальные тумблеры не трогает")
+        check(gst.get_privacy(1)["show_company"] is True, "значение сохраняется между вызовами")
         try:
-            gst.set_privacy_field(1, "hide_everything", True)
+            gst.set_privacy_field(1, "show_everything", True)
             check(False, "неизвестное поле должно кидать UNKNOWN_FIELD")
         except ValueError as e:
             check(str(e) == "UNKNOWN_FIELD", "неизвестное поле -> ValueError(UNKNOWN_FIELD)")
@@ -2553,7 +2553,7 @@ async def _run_guro_id_api_sim():
     with tempfile.TemporaryDirectory() as d:
         db_path = Path(d) / "t.sqlite3"
         st = Storage(db_path)
-        st.save_profile({"user_id": 100, "username": "initiator", "name": "Init"})
+        st.save_profile({"user_id": 100, "username": "initiator", "name": "Init", "company": "GURO Co", "vertical": "iGaming"})
         st.save_profile({"user_id": 200, "username": "confirmer", "name": "Conf"})
 
         token = "111111:FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAK"
@@ -2600,43 +2600,54 @@ async def _run_guro_id_api_sim():
                 check(body["locked"] is False, "поиск с активной подпиской -> locked=False")
                 check(body["username"] == "initiator", "поиск с подпиской -> полная карточка")
 
-                # приватность: initiator скрывает своё имя
+                # opt-in по умолчанию: все тумблеры выключены -> ничего не видно, кроме
+                # username и партнёрств
+                check(body["name"] is None, "по умолчанию имя скрыто в ЧУЖОМ поиске (opt-in)")
+                check(body["company"] is None and body["vertical"] is None,
+                      "по умолчанию company/vertical тоже скрыты")
+                check(body["reputation_score"] is None, "по умолчанию репутация скрыта в чужом поиске")
+                check(body["joined_community_at"] is None and body["days_in_community"] is None,
+                      "по умолчанию оба поля стажа скрыты")
+                check(body["confirmed_partnerships"] == 0, "число партнёрств видно ВСЕГДА, даже без единого включённого тумблера")
+
+                # приватность: initiator включает показ своего имени
                 resp = await client.post("/api/privacy", headers=auth_100,
-                                          json={"field": "hide_name", "value": True})
+                                          json={"field": "show_name", "value": True})
                 check(resp.status == 200, "POST /api/privacy -> 200")
                 body = await resp.json()
-                check(body["hide_name"] is True, "/api/privacy возвращает обновлённое состояние")
+                check(body["show_name"] is True, "/api/privacy возвращает обновлённое состояние")
 
                 resp = await client.get("/api/search?username=initiator", headers=auth_200)
                 body = await resp.json()
-                check(body["name"] is None, "скрытое имя -> None в ЧУЖОМ поиске")
+                check(body["name"] == "Init", "включённое имя -> видно в ЧУЖОМ поиске")
+                check(body["company"] is None, "остальные тумблеры независимы — company всё ещё скрыт")
                 check(body["username"] == "initiator", "username всё равно виден (нужен для идентификации)")
 
                 resp = await client.get("/api/me", headers=auth_100)
                 body = await resp.json()
-                check(body["name"] == "Init", "в СВОЁМ профиле имя видно всегда, несмотря на тумблер")
-                check(body["privacy"]["hide_name"] is True, "/api/me отдаёт текущее состояние тумблеров")
+                check(body["name"] == "Init", "в СВОЁМ профиле имя видно всегда, несмотря на тумблеры")
+                check(body["privacy"]["show_name"] is True, "/api/me отдаёт текущее состояние тумблеров")
 
                 resp = await client.post("/api/privacy", headers=auth_100,
-                                          json={"field": "hide_everything", "value": True})
+                                          json={"field": "show_everything", "value": True})
                 check(resp.status == 400, "POST /api/privacy с неизвестным полем -> 400")
 
-                # максимальная приватность: остаются видны только username и партнёрства
-                for f in ("hide_company", "hide_vertical", "hide_tenure", "hide_reputation"):
+                # включает все остальные тумблеры -> теперь видно всё
+                for f in ("show_company", "show_vertical", "show_tenure", "show_reputation"):
                     await client.post("/api/privacy", headers=auth_100, json={"field": f, "value": True})
                 resp = await client.get("/api/search?username=initiator", headers=auth_200)
                 body = await resp.json()
-                check(body["reputation_score"] is None, "hide_reputation -> репутация скрыта в чужом поиске")
-                check(body["company"] is None and body["vertical"] is None, "company/vertical скрыты")
-                check(body["joined_community_at"] is None and body["days_in_community"] is None,
-                      "hide_tenure скрывает оба поля стажа")
-                check(body["confirmed_partnerships"] == 0, "число партнёрств ВСЕГДА видно (не скрывается тумблерами)")
-                check(isinstance(body.get("partners"), list), "список партнёров остаётся виден при максимальной приватности")
+                check(body["reputation_score"] is not None, "show_reputation включён -> репутация видна в чужом поиске")
+                check(body["company"] == "GURO Co" and body["vertical"] == "iGaming", "company/vertical включены -> видны")
+                check(body["joined_community_at"] is not None and body["days_in_community"] is not None,
+                      "show_tenure включён -> видны оба поля стажа")
+                check(body["confirmed_partnerships"] == 0, "число партнёрств ВСЕГДА видно (не зависит от тумблеров)")
+                check(isinstance(body.get("partners"), list), "список партнёров виден всегда")
 
                 resp = await client.get("/api/me", headers=auth_100)
                 body = await resp.json()
                 check(body["reputation_score"] is not None,
-                      "приватность НЕ трогает свой /api/me — репутация видна себе, даже когда hide_reputation включён")
+                      "приватность НЕ трогает свой /api/me — репутация видна себе независимо от тумблеров")
                 check(all(body["privacy"].values()), "/api/me: все включённые тумблеры отражены в privacy")
 
                 resp = await client.get("/api/me", headers=auth_200)
@@ -2673,6 +2684,8 @@ async def _run_guro_id_api_sim():
                 body = await resp.json()
                 check(body["is_showcase"] is True, "/api/me витрины -> is_showcase=True")
                 check(body["locked"] is False, "/api/me витрины -> locked=False")
+                check(body.get("privacy") == {f: False for f in GC.PRIVACY_FIELDS},
+                      "/api/me витрины ТОЖЕ отдаёт privacy (иначе автор не увидит свои тумблеры под витриной)")
 
                 resp = await client.get("/api/search?username=Lizard_Hoppers", headers=auth_200)
                 check(resp.status == 200, "GET /api/search витрины (без подписки у искателя) -> 200")

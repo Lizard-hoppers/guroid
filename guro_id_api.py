@@ -84,27 +84,29 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
     }
 
 
-# Поле профиля -> тумблер приватности, который его прячет. Партнёрства
-# (с кем сотрудничал) сюда намеренно не входят — их скрыть нельзя, это ядро
-# смысла GURO ID (см. GC.PRIVACY_FIELDS).
+# Поле профиля -> тумблер приватности, который его ПОКАЗЫВАЕТ. Opt-in:
+# по умолчанию (флаг выключен) поле СКРЫТО, владелец сам включает то, что
+# хочет показать чужим. Партнёрства (с кем сотрудничал) сюда намеренно не
+# входят — они видны ВСЕГДА, это ядро смысла GURO ID (см. GC.PRIVACY_FIELDS).
 _PRIVACY_FIELD_MAP = {
-    "hide_name": ("name",),
-    "hide_company": ("company",),
-    "hide_vertical": ("vertical",),
-    "hide_tenure": ("joined_community_at", "days_in_community"),
-    "hide_reputation": ("reputation_score",),
+    "show_name": ("name",),
+    "show_company": ("company",),
+    "show_vertical": ("vertical",),
+    "show_tenure": ("joined_community_at", "days_in_community"),
+    "show_reputation": ("reputation_score",),
 }
 
 
 def _apply_privacy(summary: dict, privacy: dict) -> dict:
-    """Заменяет на None поля карточки ЧУЖОГО профиля, которые владелец скрыл
-    в своих настройках (ключ остаётся — фронту проще проверять `=== null`,
-    чем угадывать отсутствие ключа). На собственный `/api/me` не
+    """Заменяет на None поля карточки ЧУЖОГО профиля, которые владелец НЕ
+    включил в своих настройках (ключ остаётся — фронту проще проверять
+    `=== null`, чем угадывать отсутствие ключа). Opt-in: поле видно, только
+    если соответствующий тумблер явно включён. На собственный `/api/me` не
     вызывается — там нужен полный набор данных плюс сами настройки, см.
     handle_me."""
     result = dict(summary)
     for flag, fields in _PRIVACY_FIELD_MAP.items():
-        if privacy.get(flag):
+        if not privacy.get(flag):
             for field in fields:
                 result[field] = None
     return result
@@ -115,8 +117,14 @@ async def handle_me(request: web.Request) -> web.Response:
     user = _auth(request, settings)
     # Витрина разработчика — статичная карточка вместо профиля из БД (у автора
     # может не быть анкеты в этом конкретном боте), см. guro_showcase.py.
+    # Приватность — исключение: это НАСТРОЙКИ САМОГО аккаунта, а не данные из
+    # анкеты, они существуют независимо от того, показываем ли мы витрину
+    # вместо обычного профиля. Без этого автор физически не может увидеть
+    # свои тумблеры — витрина рендерится ВМЕСТО экрана с ними.
     if GS.is_showcase_username(user.get("username")):
-        return web.json_response({**GS.PAYLOAD, "user_id": user["id"]})
+        return web.json_response(
+            {**GS.PAYLOAD, "user_id": user["id"], "privacy": storage.get_privacy(user["id"])}
+        )
     summary = _profile_summary(storage, user["id"])
     if summary is None:
         return web.json_response({"error": "NO_PROFILE"}, status=404)

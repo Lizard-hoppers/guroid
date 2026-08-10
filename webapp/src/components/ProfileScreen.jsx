@@ -35,8 +35,23 @@ export function ProfileScreen() {
 
   const p = state.data;
 
+  const privacyBlock = (
+    <PrivacyToggles
+      privacy={p.privacy}
+      onChange={(privacy) => setState((s) => ({ ...s, data: { ...s.data, privacy } }))}
+    />
+  );
+
+  // Приватность — настройка САМОГО аккаунта, не данные из анкеты, поэтому
+  // рендерится ВСЕГДА, даже когда вместо обычного профиля показана витрина
+  // разработчика (иначе автор не смог бы увидеть свои же тумблеры).
   if (p.is_showcase) {
-    return <DeveloperShowcase data={p} />;
+    return (
+      <div>
+        <DeveloperShowcase data={p} />
+        {privacyBlock}
+      </div>
+    );
   }
 
   return (
@@ -58,10 +73,7 @@ export function ProfileScreen() {
           emptyHint="Пока нет подтверждённых партнёрств. Отметьте сотрудничество во вкладке «Подтвердить»."
         />
       </div>
-      <PrivacyToggles
-        privacy={p.privacy}
-        onChange={(privacy) => setState((s) => ({ ...s, data: { ...s.data, privacy } }))}
-      />
+      {privacyBlock}
     </div>
   );
 }

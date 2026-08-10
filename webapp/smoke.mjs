@@ -42,11 +42,11 @@ const ME_PAYLOAD = {
   subscription_expires_at: null,
   is_subscribed: false,
   privacy: {
-    hide_name: false,
-    hide_company: false,
-    hide_vertical: false,
-    hide_tenure: false,
-    hide_reputation: false,
+    show_name: false,
+    show_company: false,
+    show_vertical: false,
+    show_tenure: false,
+    show_reputation: false,
   },
 };
 

@@ -4,15 +4,16 @@ import { haptic } from "../telegram.js";
 import { Msg } from "./Shared.jsx";
 
 const FIELDS = [
-  { key: "hide_name", label: "Имя" },
-  { key: "hide_company", label: "Компания" },
-  { key: "hide_vertical", label: "Вертикаль / специализация" },
-  { key: "hide_tenure", label: "Стаж в комьюнити" },
-  { key: "hide_reputation", label: "Рейтинг" },
+  { key: "show_name", label: "Имя" },
+  { key: "show_company", label: "Компания" },
+  { key: "show_vertical", label: "Вертикаль / специализация" },
+  { key: "show_tenure", label: "Стаж в комьюнити" },
+  { key: "show_reputation", label: "Рейтинг" },
 ];
 
-// Партнёрства и username сюда намеренно не входят — их скрыть нельзя,
-// см. guro_constants.PRIVACY_FIELDS на бэкенде.
+// Opt-in: по умолчанию всё выключено (скрыто), человек сам включает то,
+// что хочет показать. Партнёрства и username сюда намеренно не входят —
+// они видны всегда, см. guro_constants.PRIVACY_FIELDS на бэкенде.
 export function PrivacyToggles({ privacy, onChange }) {
   const [pending, setPending] = useState(null);
   const [error, setError] = useState("");
@@ -40,16 +41,17 @@ export function PrivacyToggles({ privacy, onChange }) {
     <div className="card">
       <h3>Приватность</h3>
       <div className="privacy-hint">
-        По умолчанию всё видно. Включите тумблер — и поле исчезнет из вашей
-        карточки для тех, кто ищет вас в GURO ID. Партнёрства (с кем
-        сотрудничали) скрыть нельзя — в этом и есть смысл GURO ID.
+        По умолчанию ничего не видно чужим, кроме факта участия в GURO ID и
+        партнёрств. Включите тумблер — и поле появится в вашей карточке для
+        тех, кто ищет вас. Партнёрства (с кем сотрудничали) видны всегда —
+        в этом и есть смысл GURO ID.
       </div>
       {FIELDS.map((f) => (
         <div className="privacy-row" key={f.key}>
           <div>
             <div className="privacy-row-label">{f.label}</div>
             <div className="privacy-row-note">
-              {privacy[f.key] ? "Скрыто от чужого поиска" : "Видно всем в поиске"}
+              {privacy[f.key] ? "Видно всем в поиске" : "Скрыто от чужого поиска"}
             </div>
           </div>
           <label className="switch">

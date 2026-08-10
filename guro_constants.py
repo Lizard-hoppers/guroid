@@ -8,7 +8,6 @@ BASE_REPUTATION = 50.0
 # в ТЗ — стартовое значение, настраивается по факту наблюдения за рейтингами.
 CONFIRMATION_WEIGHT = 10.0
 
-SCREENING_BONUS = 5.0
 TENURE_BONUS_PER_PERIOD = 1.0
 TENURE_PERIOD_DAYS = 90  # "каждые 3 мес"
 TENURE_BONUS_MAX = 10.0
@@ -30,10 +29,19 @@ SUBSCRIPTION_ACTIVE = "active"
 SUBSCRIPTION_INACTIVE = "inactive"
 
 # Статус-тег участника в чате (Bot API 22.7+, setChatMemberTag) — показывает
-# принадлежность к GURO ID прямо у имени в сообщениях, доступно ЛЮБОМУ
-# обычному участнику (не только админам, в отличие от custom title), поэтому
-# не упирается в лимит ~50 админов на группу. Максимум 16 симв., эмодзи
-# запрещены Bot API (см. guro_tags.py).
-GURO_TAG_BASE = "GURO ID"
-GURO_TAG_PRO = "GURO ID PRO"
-GURO_TAGS = (GURO_TAG_BASE, GURO_TAG_PRO)
+# АКТИВНУЮ ПОДПИСКУ GURO ID прямо у имени в сообщениях (не сам факт наличия
+# анкеты/захода в Mini App — это дефолтное условие для всех в сообществе,
+# ничего не выделяет). Доступно ЛЮБОМУ обычному участнику (не только
+# админам, в отличие от custom title), поэтому не упирается в лимит ~50
+# админов на группу. Максимум 16 симв., эмодзи запрещены Bot API
+# (см. guro_tags.py).
+GURO_TAG = "GURO ID"
+GURO_TAGS = (GURO_TAG,)
+
+# Приватность (10.08.2026): владелец профиля решает в Mini App, что из
+# анкеты видно чужим в поиске. Партнёрства (с кем сотрудничал) скрыть
+# НЕЛЬЗЯ ни одним из тумблеров — это ядро смысла GURO ID (подтверждение
+# репутации через сотрудничество), остаётся видно даже при максимальной
+# приватности. hide_tenure прячет ОБА поля стажа разом (joined_community_at
+# и days_in_community — это одно и то же для пользователя).
+PRIVACY_FIELDS = ("hide_name", "hide_company", "hide_vertical", "hide_tenure", "hide_reputation")

@@ -2351,12 +2351,12 @@ def test_guro_id_reputation_formula():
     from datetime import datetime, timedelta, timezone
 
     now = datetime.now(timezone.utc)
-    check(GLm.initial_reputation(False, None, now) == 50.0, "база без анкеты/бонусов = 50")
-    check(GLm.initial_reputation(True, None, now) == 55.0, "бонус за скрининг = +5")
+    check(GLm.initial_reputation(None, now) == 50.0, "база без анкеты/бонусов = 50")
+    check(GLm.initial_reputation(now, now) == 50.0, "заполненная анкета сама по себе бонуса не даёт (дефолтное условие входа)")
     old_join = now - timedelta(days=95)
-    check(GLm.initial_reputation(True, old_join, now) == 56.0, "бонус за 3 мес в комьюнити = +1")
+    check(GLm.initial_reputation(old_join, now) == 51.0, "бонус за 3 мес в комьюнити = +1")
     very_old = now - timedelta(days=3650)
-    check(GLm.initial_reputation(True, very_old, now) == 65.0, "бонус за возраст капается в +10")
+    check(GLm.initial_reputation(very_old, now) == 60.0, "бонус за возраст капается в +10")
 
     check(GLm.confirmation_gain(100) == 10.0, "вклад партнёрства от репутации 100 = вес(10)")
     check(GLm.confirmation_gain(50) == 5.0, "вклад партнёрства от репутации 50 = половина веса")
@@ -2390,7 +2390,19 @@ def test_guro_id_storage():
         check(gst.find_profile_by_username("nobody") is None, "поиск несуществующего юзернейма -> None")
 
         u1 = gst.get_or_create_guro_user(1)
-        check(u1["reputation_score"] == 55.0, f"первичная репутация с анкетой = 55, а не {u1['reputation_score']}")
+        check(u1["reputation_score"] == 50.0, f"первичная репутация = база 50 (анкета не даёт бонуса), а не {u1['reputation_score']}")
+
+        privacy = gst.get_privacy(1)
+        check(all(v is False for v in privacy.values()), "приватность по умолчанию -> всё видно (все тумблеры выключены)")
+        updated = gst.set_privacy_field(1, "hide_company", True)
+        check(updated["hide_company"] is True, "set_privacy_field включает конкретный тумблер")
+        check(updated["hide_name"] is False, "остальные тумблеры не трогает")
+        check(gst.get_privacy(1)["hide_company"] is True, "значение сохраняется между вызовами")
+        try:
+            gst.set_privacy_field(1, "hide_everything", True)
+            check(False, "неизвестное поле должно кидать UNKNOWN_FIELD")
+        except ValueError as e:
+            check(str(e) == "UNKNOWN_FIELD", "неизвестное поле -> ValueError(UNKNOWN_FIELD)")
 
         try:
             gst.create_partnership(1, 1, None, None)
@@ -2567,9 +2579,9 @@ async def _run_guro_id_api_sim():
                 check(resp.status == 200, "GET /api/me с валидной initData -> 200")
                 body = await resp.json()
                 check(body["username"] == "initiator", "тело /api/me содержит username")
-                check(body["reputation_score"] == 55.0, "свежая анкета (0 дней) -> база 50 + бонус скрининга 5 = 55")
-                check((555, 100, GC.GURO_TAG_BASE) in _FakeTGBot.set_tag_calls,
-                      "GET /api/me без подписки -> тег GURO ID выставлен в чате")
+                check(body["reputation_score"] == 50.0, "свежая анкета (0 дней) -> база 50, анкета сама по себе бонуса не даёт")
+                check(not any(c[1] == 100 for c in _FakeTGBot.set_tag_calls),
+                      "GET /api/me без подписки -> тег НЕ выставляется (одного захода в Mini App недостаточно)")
 
                 auth_ghost = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 999, "username": "ghost"})}
                 resp = await client.get("/api/me", headers=auth_ghost)
@@ -2588,10 +2600,49 @@ async def _run_guro_id_api_sim():
                 check(body["locked"] is False, "поиск с активной подпиской -> locked=False")
                 check(body["username"] == "initiator", "поиск с подпиской -> полная карточка")
 
+                # приватность: initiator скрывает своё имя
+                resp = await client.post("/api/privacy", headers=auth_100,
+                                          json={"field": "hide_name", "value": True})
+                check(resp.status == 200, "POST /api/privacy -> 200")
+                body = await resp.json()
+                check(body["hide_name"] is True, "/api/privacy возвращает обновлённое состояние")
+
+                resp = await client.get("/api/search?username=initiator", headers=auth_200)
+                body = await resp.json()
+                check(body["name"] is None, "скрытое имя -> None в ЧУЖОМ поиске")
+                check(body["username"] == "initiator", "username всё равно виден (нужен для идентификации)")
+
+                resp = await client.get("/api/me", headers=auth_100)
+                body = await resp.json()
+                check(body["name"] == "Init", "в СВОЁМ профиле имя видно всегда, несмотря на тумблер")
+                check(body["privacy"]["hide_name"] is True, "/api/me отдаёт текущее состояние тумблеров")
+
+                resp = await client.post("/api/privacy", headers=auth_100,
+                                          json={"field": "hide_everything", "value": True})
+                check(resp.status == 400, "POST /api/privacy с неизвестным полем -> 400")
+
+                # максимальная приватность: остаются видны только username и партнёрства
+                for f in ("hide_company", "hide_vertical", "hide_tenure", "hide_reputation"):
+                    await client.post("/api/privacy", headers=auth_100, json={"field": f, "value": True})
+                resp = await client.get("/api/search?username=initiator", headers=auth_200)
+                body = await resp.json()
+                check(body["reputation_score"] is None, "hide_reputation -> репутация скрыта в чужом поиске")
+                check(body["company"] is None and body["vertical"] is None, "company/vertical скрыты")
+                check(body["joined_community_at"] is None and body["days_in_community"] is None,
+                      "hide_tenure скрывает оба поля стажа")
+                check(body["confirmed_partnerships"] == 0, "число партнёрств ВСЕГДА видно (не скрывается тумблерами)")
+                check(isinstance(body.get("partners"), list), "список партнёров остаётся виден при максимальной приватности")
+
+                resp = await client.get("/api/me", headers=auth_100)
+                body = await resp.json()
+                check(body["reputation_score"] is not None,
+                      "приватность НЕ трогает свой /api/me — репутация видна себе, даже когда hide_reputation включён")
+                check(all(body["privacy"].values()), "/api/me: все включённые тумблеры отражены в privacy")
+
                 resp = await client.get("/api/me", headers=auth_200)
                 check(resp.status == 200, "GET /api/me подписчика -> 200")
-                check((555, 200, GC.GURO_TAG_PRO) in _FakeTGBot.set_tag_calls,
-                      "GET /api/me с активной подпиской -> тег повышен до GURO ID PRO")
+                check((555, 200, GC.GURO_TAG) in _FakeTGBot.set_tag_calls,
+                      "GET /api/me с активной подпиской -> появляется тег GURO ID")
 
                 resp = await client.get("/api/search?username=nobody", headers=auth_200)
                 check(resp.status == 404, "поиск несуществующего юзернейма -> 404")
@@ -2735,8 +2786,8 @@ async def _run_guro_partnerships_sim():
         check(gstorage.is_subscribed(1), "successful_payment -> подписка активирована")
         check(any("активирована" in t for t in replies), "successful_payment -> подтверждение юзеру")
         import guro_constants as GC
-        check((bot_data["settings"].community_chat_id, 1, GC.GURO_TAG_PRO) in context.bot.set_tag_calls,
-              "successful_payment -> тег в чате повышен до GURO ID PRO")
+        check((bot_data["settings"].community_chat_id, 1, GC.GURO_TAG) in context.bot.set_tag_calls,
+              "successful_payment -> тег GURO ID появляется в чате")
 
 
 async def _run_guro_tags_sim():
@@ -2760,21 +2811,33 @@ async def _run_guro_tags_sim():
 
         gstorage.get_or_create_guro_user(10)
         await GT.sync_member_tag(bot, CHAT, gstorage, 10, reason="test")
-        check((CHAT, 10, GC.GURO_TAG_BASE) in bot.set_tag_calls,
-              "новый guro_user без подписки -> тег GURO ID")
+        check(len(bot.set_tag_calls) == 0,
+              "новый guro_user без подписки -> тега нет (заход в Mini App сам по себе тег не даёт)")
+
+        gstorage.activate_subscription(10)
+        await GT.sync_member_tag(bot, CHAT, gstorage, 10, reason="test")
+        check((CHAT, 10, GC.GURO_TAG) in bot.set_tag_calls,
+              "оплаченная подписка -> появляется тег GURO ID")
 
         # тег уже актуален -> повторный вызов ничего не шлёт
         calls_before = len(bot.set_tag_calls)
         await GT.sync_member_tag(bot, CHAT, gstorage, 10, reason="test")
         check(len(bot.set_tag_calls) == calls_before, "тег уже актуален -> повторный вызов no-op")
 
-        gstorage.activate_subscription(10)
+        # подписка истекла -> тег снимается (единственное место, где это обнаруживается —
+        # периодическая синхронизация, guro_tags_sync.py)
+        gstorage._conn.execute(
+            "UPDATE guro_users SET subscription_expires_at=? WHERE user_id=?",
+            ("2000-01-01 00:00:00", 10),
+        )
+        gstorage._conn.commit()
         await GT.sync_member_tag(bot, CHAT, gstorage, 10, reason="test")
-        check((CHAT, 10, GC.GURO_TAG_PRO) in bot.set_tag_calls,
-              "оплаченная подписка -> тег повышен до GURO ID PRO")
+        check((CHAT, 10, "") in bot.set_tag_calls, "истёкшая подписка -> тег снимается")
+        check(not bot.member_tag_map.get(10), "после истечения подписки тега у юзера больше нет")
 
-        # админа/овнера не трогаем (у них уже вкладка custom title)
+        # админа/овнера не трогаем, даже если он подписан (у них уже своя вкладка custom title)
         gstorage.get_or_create_guro_user(11)
+        gstorage.activate_subscription(11)
         bot.member_status_map[11] = ChatMemberStatus.ADMINISTRATOR
         await GT.sync_member_tag(bot, CHAT, gstorage, 11, reason="test")
         check(11 not in bot.member_tag_map, "администратора группы не трогаем")
@@ -2788,12 +2851,14 @@ async def _run_guro_tags_sim():
         # chat_id не настроен -> no-op, без падения
         await GT.sync_member_tag(bot, 0, gstorage, 10, reason="test")
 
-        # sync_all_members обходит список целиком
+        # sync_all_members обходит список целиком (тег появляется только у подписанных)
         gstorage.get_or_create_guro_user(20)
-        gstorage.get_or_create_guro_user(21)
+        gstorage.activate_subscription(20)
+        gstorage.get_or_create_guro_user(21)  # без подписки
         bot2 = FakeBot()
         await GT.sync_all_members(bot2, CHAT, gstorage, [20, 21], reason="bulk")
-        check({c[1] for c in bot2.set_tag_calls} == {20, 21}, "sync_all_members -> тег выставлен всем из списка")
+        check((CHAT, 20, GC.GURO_TAG) in bot2.set_tag_calls, "sync_all_members -> тег подписанному")
+        check(not any(c[1] == 21 for c in bot2.set_tag_calls), "sync_all_members -> без подписки тег не ставится")
 
 
 async def _run_admin_guro_sim():

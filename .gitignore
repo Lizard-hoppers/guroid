@@ -11,3 +11,4 @@ __pycache__/
 *_candidate/
 *.sqlite3-shm
 *.sqlite3-wal
+node_modules/

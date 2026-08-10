@@ -1,18 +1,20 @@
 """GURO ID — статус-тег участника в чате (Bot API 22.7+, setChatMemberTag).
-Показывает принадлежность к GURO ID прямо у имени в сообщениях в группе —
+Показывает АКТИВНУЮ ПОДПИСКУ GURO ID прямо у имени в сообщениях в группе —
 доступно ЛЮБОМУ обычному участнику (не только админам, в отличие от custom
 title), поэтому не упирается в лимит ~50 админов на группу (см. project
 memory / rating.py у Island Summary Bot — тот же паттерн, там тегом
-показывается репутация, здесь — статус GURO ID/GURO ID PRO).
+показывается репутация, здесь — статус подписки). Сам факт наличия анкеты/
+захода в Mini App тега НЕ даёт — это дефолтное условие для всех в
+сообществе, тег обозначает именно платящего подписчика.
 
 Три точки вызова:
-- guro_id_api.py (handle_me) — ставит базовый тег при первом же открытии
-  профиля в Mini App;
-- handlers/guro_payments.py (on_guro_successful_payment) — сразу повышает
-  тег до GURO_TAG_PRO после оплаты подписки;
-- guro_tags_sync.py (systemd timer) — периодически понижает тег обратно при
-  истечении подписки (единственное событие без триггера в реальном времени)
-  и подчищает то, что не долетело сразу (сеть/лимиты)."""
+- guro_id_api.py (handle_me) — освежает тег при каждом открытии профиля
+  в Mini App (в т.ч. сразу проявляет его, если подписка только что куплена);
+- handlers/guro_payments.py (on_guro_successful_payment) — сразу ставит тег
+  после оплаты подписки, не дожидаясь следующего открытия Mini App;
+- guro_tags_sync.py (systemd timer) — периодически снимает тег при истечении
+  подписки (единственное событие без триггера в реальном времени) и
+  подчищает то, что не долетело сразу (сеть/лимиты)."""
 from __future__ import annotations
 
 import asyncio
@@ -36,7 +38,8 @@ _SKIP_STATUSES = {
 
 
 def target_tag(storage: GuroStorage, user_id: int) -> str:
-    return GC.GURO_TAG_PRO if storage.is_subscribed(user_id) else GC.GURO_TAG_BASE
+    """Пустая строка = тега быть не должно (нет активной подписки)."""
+    return GC.GURO_TAG if storage.is_subscribed(user_id) else ""
 
 
 async def sync_member_tag(

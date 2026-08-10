@@ -1,0 +1,108 @@
+import { useEffect, useState } from "react";
+import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
+import { initTelegram } from "./telegram.js";
+import { TabBar } from "./components/TabBar.jsx";
+import { ProfileScreen } from "./components/ProfileScreen.jsx";
+import { SearchScreen } from "./components/SearchScreen.jsx";
+import { ConfirmScreen } from "./components/ConfirmScreen.jsx";
+import { SubscribeScreen } from "./components/SubscribeScreen.jsx";
+import { SlotIntro } from "./components/SlotIntro.jsx";
+import { BRAND_WORD_1, BRAND_WORD_2 } from "./brandLetters.js";
+
+const SCREENS = {
+  profile: ProfileScreen,
+  search: SearchScreen,
+  confirm: ConfirmScreen,
+  subscribe: SubscribeScreen,
+};
+
+const TAB_ORDER = ["profile", "search", "confirm", "subscribe"];
+
+// variants-функции (а не голые initial/exit объекты) — обязательное условие,
+// чтобы AnimatePresence прокидывал АКТУАЛЬНОЕ значение custom (direction) в
+// exit-анимацию уже УХОДЯЩЕГО экрана. Без этого exit брал бы direction,
+// который был на момент, когда этот экран сам ВОШЁЛ (устаревшее значение) —
+// проверено напрямую (замерял computed transform по кадрам): при переходе
+// назад уходящий экран всё равно улетал влево, как будто идём вперёд.
+const screenVariants = {
+  enter: (direction) => ({ opacity: 0, x: direction * 14 }),
+  center: { opacity: 1, x: 0 },
+  exit: (direction) => ({ opacity: 0, x: direction * -14 }),
+};
+
+export default function App() {
+  const [intro, setIntro] = useState(true);
+  const [tab, setTab] = useState("profile");
+  // Направление перехода между экранами — вперёд (вправо-налево, как
+  // раньше) или назад (зеркально, влево-направо), в зависимости от того,
+  // левее или правее текущего таб в TAB_ORDER тот, на который переключаемся.
+  const [direction, setDirection] = useState(1);
+
+  useEffect(() => {
+    initTelegram();
+  }, []);
+
+  function handleTabChange(next) {
+    const oldIndex = TAB_ORDER.indexOf(tab);
+    const newIndex = TAB_ORDER.indexOf(next);
+    setDirection(newIndex >= oldIndex ? 1 : -1);
+    setTab(next);
+  }
+
+  const Screen = SCREENS[tab];
+
+  return (
+    <LayoutGroup>
+      {/* Заставка со слот-барабанами "GURO ID" — каждая буква letit наверх
+          в шапку СВОИМ layoutId (brandLetters.js), это ТЕ ЖЕ САМЫЕ буквы,
+          что стояли в барабане, а не новый текстовый блок. */}
+      <AnimatePresence>{intro && <SlotIntro key="intro" onDone={() => setIntro(false)} />}</AnimatePresence>
+
+      {!intro && (
+        <div className="app">
+          <div className="header">
+            <div className="brand">
+              {BRAND_WORD_1.map((l) => (
+                <motion.span key={l.id} layoutId={`brand-${l.id}`} className="brand-letter">
+                  {l.char}
+                </motion.span>
+              ))}
+              <span className="brand-letter-space"> </span>
+              {BRAND_WORD_2.map((l) => (
+                <motion.span key={l.id} layoutId={`brand-${l.id}`} className="brand-letter">
+                  {l.char}
+                </motion.span>
+              ))}
+            </div>
+            <motion.div
+              className="subtitle"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.3 }}
+            >
+              Партнёрства и репутация комьюнити GURO
+            </motion.div>
+          </div>
+
+          <div className="screen-viewport">
+            <AnimatePresence mode="wait" custom={direction}>
+              <motion.div
+                key={tab}
+                custom={direction}
+                variants={screenVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.22, ease: "easeOut" }}
+              >
+                <Screen onNavigate={handleTabChange} />
+              </motion.div>
+            </AnimatePresence>
+          </div>
+
+          <TabBar active={tab} onChange={handleTabChange} />
+        </div>
+      )}
+    </LayoutGroup>
+  );
+}

@@ -48,7 +48,15 @@ class GuroStorage:
         # (bot.py и guro_id_api.py).
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(_SCHEMA)
+        # мягкие миграции — never ALTER TABLE вручную (тот же приём, что в storage.py)
+        for field in GC.PRIVACY_FIELDS:
+            self._ensure_column("guro_users", field, "INTEGER DEFAULT 0")
         self._conn.commit()
+
+    def _ensure_column(self, table: str, column: str, ddl: str) -> None:
+        cols = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
     @staticmethod
     def _now() -> datetime:
@@ -82,7 +90,7 @@ class GuroStorage:
             return row
         profile = self.get_profile(user_id)
         created_at = GL.parse_db_datetime(profile["created_at"]) if profile else None
-        score = GL.initial_reputation(profile is not None, created_at, self._now())
+        score = GL.initial_reputation(created_at, self._now())
         self._conn.execute(
             "INSERT INTO guro_users (user_id, reputation_score, updated_at) VALUES (?,?,?)",
             (user_id, score, self._now_str()),
@@ -114,6 +122,23 @@ class GuroStorage:
         )
         self._conn.commit()
         return GL.format_db_datetime(expires_at)
+
+    def get_privacy(self, user_id: int) -> dict:
+        row = self.get_or_create_guro_user(user_id)
+        return {field: bool(row[field]) for field in GC.PRIVACY_FIELDS}
+
+    def set_privacy_field(self, user_id: int, field: str, value: bool) -> dict:
+        """Поднимает ValueError('UNKNOWN_FIELD') на неизвестное поле — так
+        обработчик API отличит опечатку/чужой ключ от валидного запроса."""
+        if field not in GC.PRIVACY_FIELDS:
+            raise ValueError("UNKNOWN_FIELD")
+        self.get_or_create_guro_user(user_id)
+        self._conn.execute(
+            f"UPDATE guro_users SET {field}=?, updated_at=? WHERE user_id=?",
+            (1 if value else 0, self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return self.get_privacy(user_id)
 
     # --- partnerships -------------------------------------------------------
 

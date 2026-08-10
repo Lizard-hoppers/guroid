@@ -84,6 +84,32 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
     }
 
 
+# Поле профиля -> тумблер приватности, который его прячет. Партнёрства
+# (с кем сотрудничал) сюда намеренно не входят — их скрыть нельзя, это ядро
+# смысла GURO ID (см. GC.PRIVACY_FIELDS).
+_PRIVACY_FIELD_MAP = {
+    "hide_name": ("name",),
+    "hide_company": ("company",),
+    "hide_vertical": ("vertical",),
+    "hide_tenure": ("joined_community_at", "days_in_community"),
+    "hide_reputation": ("reputation_score",),
+}
+
+
+def _apply_privacy(summary: dict, privacy: dict) -> dict:
+    """Заменяет на None поля карточки ЧУЖОГО профиля, которые владелец скрыл
+    в своих настройках (ключ остаётся — фронту проще проверять `=== null`,
+    чем угадывать отсутствие ключа). На собственный `/api/me` не
+    вызывается — там нужен полный набор данных плюс сами настройки, см.
+    handle_me."""
+    result = dict(summary)
+    for flag, fields in _PRIVACY_FIELD_MAP.items():
+        if privacy.get(flag):
+            for field in fields:
+                result[field] = None
+    return result
+
+
 async def handle_me(request: web.Request) -> web.Response:
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
@@ -94,6 +120,9 @@ async def handle_me(request: web.Request) -> web.Response:
     summary = _profile_summary(storage, user["id"])
     if summary is None:
         return web.json_response({"error": "NO_PROFILE"}, status=404)
+    # Владелец в /api/me всегда видит СВОИ данные полностью — тумблеры влияют
+    # только на то, что видят ЧУЖИЕ через /api/search (см. _apply_privacy).
+    summary["privacy"] = storage.get_privacy(user["id"])
     try:
         await GT.sync_member_tag_standalone(
             settings.bot_token, settings.community_chat_id, storage, user["id"], reason="api_me",
@@ -116,16 +145,20 @@ async def handle_search(request: web.Request) -> web.Response:
         return web.json_response({"error": "NOT_FOUND"}, status=404)
 
     summary = _profile_summary(storage, target_profile["user_id"])
+    privacy = storage.get_privacy(target_profile["user_id"])
+    summary = _apply_privacy(summary, privacy)
+
     if storage.is_subscribed(requester["id"]):
         summary["locked"] = False
         return web.json_response(summary)
 
-    # Пейволл (ТЗ экран 2): без подписки — урезанная карточка.
+    # Пейволл (ТЗ экран 2): без подписки — урезанная карточка. Поля через
+    # .get() — приватность уже могла убрать name/reputation_score выше.
     return web.json_response({
         "user_id": summary["user_id"],
         "username": summary["username"],
-        "name": summary["name"],
-        "reputation_score": summary["reputation_score"],
+        "name": summary.get("name"),
+        "reputation_score": summary.get("reputation_score"),
         "confirmed_partnerships": summary["confirmed_partnerships"],
         "locked": True,
     })
@@ -172,6 +205,19 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
     return web.json_response({"id": partnership["id"], "status": partnership["status"]})
 
 
+async def handle_set_privacy(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    field = str(body.get("field", ""))
+    value = bool(body.get("value"))
+    try:
+        privacy = storage.set_privacy_field(user["id"], field, value)
+    except ValueError:
+        return web.json_response({"error": "UNKNOWN_FIELD"}, status=400)
+    return web.json_response(privacy)
+
+
 async def handle_subscribe(request: web.Request) -> web.Response:
     settings = request.app["settings"]
     user = _auth(request, settings)
@@ -196,6 +242,7 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_get("/api/search", handle_search)
     app.router.add_post("/api/partnerships", handle_create_partnership)
     app.router.add_post("/api/subscribe", handle_subscribe)
+    app.router.add_post("/api/privacy", handle_set_privacy)
     if WEBAPP_DIST.exists():
         # add_static не отдаёт index.html на "/" сам по себе (показал бы
         # листинг директории) — раздаём его явным роутом, остальное статикой.

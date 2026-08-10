@@ -2189,6 +2189,42 @@ async def _run_admin_panel_sim():
               "deep-link: старое меню (список Анкеты) удалено при открытии карточки")
         storage4.close()
 
+    # --- QR-код профиля GURO ID: /start guro_<id> -> web_app-кнопка, БЕЗ
+    #     повторного прохождения анкеты (в отличие от голого /start) ---
+    with tempfile.TemporaryDirectory() as d:
+        bd6 = _bot_data(d)
+        storage6 = bd6["storage"]
+        storage6.save_profile({
+            "user_id": 500, "username": "scanner", "name": "Scanner", "vertical": "Gambling",
+            "grade": "C-Level", "profession": "CEO", "request": "r", "company": "Acme", "linkedin": "-",
+        })
+        ctx6 = FakeContext(bd6)
+        ctx6.args = ["guro_777"]
+        st = await F.start(
+            FakeUpdate(message=FakeMessage("/start guro_777", chat_id=500), user=FakeUser(500)), ctx6,
+        )
+        check(st == ConversationHandler.END,
+              "QR deep-link: /start guro_777 (уже зарегистрирован) -> END, БЕЗ повторной анкеты")
+        sent = [t for cid, t in ctx6.bot.sent if cid == 500]
+        check(len(sent) == 1 and "профиль" in sent[0].lower(),
+              "QR deep-link: пришло сообщение с предложением открыть профиль")
+        markup = ctx6.bot.last_send_kwargs.get("reply_markup")
+        btn = markup.inline_keyboard[0][0]
+        check(btn.web_app is not None, "QR deep-link: кнопка — именно web_app (не обычная url-ссылка)")
+        check(btn.web_app.url == f"{bd6['settings'].guro_id_webapp_url.rstrip('/')}/?target=777",
+              f"QR deep-link: web_app URL содержит ?target=777, получено {btn.web_app.url}")
+
+        # НЕзарегистрированный сканирующий -> обычный флоу регистрации (lang_select),
+        # QR-цель просто теряется, а не ломает анкету
+        ctx7 = FakeContext(bd6)
+        ctx7.args = ["guro_777"]
+        st = await F.start(
+            FakeUpdate(message=FakeMessage("/start guro_777", chat_id=999), user=FakeUser(999)), ctx7,
+        )
+        check(st != ConversationHandler.END,
+              "QR deep-link: НЕзарегистрированный сканирующий -> обычный флоу анкеты продолжается")
+        storage6.close()
+
     # --- раздел «Рассылка»: сегментация по странам (кнопки, флаги, overflow) ---
     with tempfile.TemporaryDirectory() as d:
         bd5 = _bot_data(d)
@@ -2471,7 +2507,7 @@ def test_guro_id_storage():
         check(rep3_after > rep3_before, "подтверждённое учитываемое партнёрство поднимает репутацию confirmer")
         check(rep1_after2 > rep1_before2, "и репутацию initiator тоже (симметрично)")
 
-        gst3.activate_subscription(1)
+        gst3.activate_subscription(1, 30)
         check(gst3.is_subscribed(1), "activate_subscription -> is_subscribed True")
         check(not gst3.is_subscribed(2), "user 2 без подписки -> is_subscribed False")
 
@@ -2553,7 +2589,11 @@ async def _run_guro_id_api_sim():
     with tempfile.TemporaryDirectory() as d:
         db_path = Path(d) / "t.sqlite3"
         st = Storage(db_path)
-        st.save_profile({"user_id": 100, "username": "initiator", "name": "Init", "company": "GURO Co", "vertical": "iGaming"})
+        st.save_profile({
+            "user_id": 100, "username": "initiator", "name": "Init", "company": "GURO Co",
+            "vertical": "iGaming", "profession": "Manager", "linkedin": "linkedin.com/in/init",
+            "request": "ищу партнёров",
+        })
         st.save_profile({"user_id": 200, "username": "confirmer", "name": "Conf"})
 
         token = "111111:FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAK"
@@ -2579,9 +2619,18 @@ async def _run_guro_id_api_sim():
                 check(resp.status == 200, "GET /api/me с валидной initData -> 200")
                 body = await resp.json()
                 check(body["username"] == "initiator", "тело /api/me содержит username")
-                check(body["reputation_score"] == 50.0, "свежая анкета (0 дней) -> база 50, анкета сама по себе бонуса не даёт")
+                # «Рейтинг сгорает без подписки» — пока у initiator (100) нет
+                # активной подписки, реputation_score скрыт ДАЖЕ в его же /api/me.
+                check(body["reputation_score"] is None,
+                      "свежий профиль БЕЗ подписки -> reputation_score скрыт даже себе")
+                check(app["storage"].get_or_create_guro_user(100)["reputation_score"] == 50.0,
+                      "гейт РЕВЕРСИВНЫЙ: в БД значение реально есть (база 50), просто скрыто в выдаче API")
                 check(not any(c[1] == 100 for c in _FakeTGBot.set_tag_calls),
                       "GET /api/me без подписки -> тег НЕ выставляется (одного захода в Mini App недостаточно)")
+
+                # активируем подписку initiator'у — дальше тестируем privacy-тумблеры
+                # и пейволл ИЗОЛИРОВАННО от гейта подписки (у него отдельный тест ниже)
+                app["storage"].activate_subscription(100, 30)
 
                 auth_ghost = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 999, "username": "ghost"})}
                 resp = await client.get("/api/me", headers=auth_ghost)
@@ -2594,7 +2643,7 @@ async def _run_guro_id_api_sim():
                 check(body["locked"] is True, "поиск без подписки -> locked=True (пейволл)")
                 check("company" not in body, "поиск без подписки -> урезанные поля")
 
-                app["storage"].activate_subscription(200)
+                app["storage"].activate_subscription(200, 30)
                 resp = await client.get("/api/search?username=initiator", headers=auth_200)
                 body = await resp.json()
                 check(body["locked"] is False, "поиск с активной подпиской -> locked=False")
@@ -2609,6 +2658,57 @@ async def _run_guro_id_api_sim():
                 check(body["joined_community_at"] is None and body["days_in_community"] is None,
                       "по умолчанию оба поля стажа скрыты")
                 check(body["confirmed_partnerships"] == 0, "число партнёрств видно ВСЕГДА, даже без единого включённого тумблера")
+                check(body["profession"] is None, "по умолчанию профессия скрыта")
+                check(body["linkedin"] is None and body["website"] is None,
+                      "по умолчанию show_contacts выключен -> linkedin/website скрыты")
+                check(body["looking_for"] is None and body["offering"] is None,
+                      "по умолчанию show_offers выключен -> looking_for/offering скрыты")
+                check(body["cv_text"] is None, "по умолчанию show_cv выключен -> cv_text скрыт")
+
+                # редизайн профиля: /api/me отдаёт поля анкеты (профессия/linkedin/
+                # "ищу"), даже те, что не были в _profile_summary раньше
+                resp = await client.get("/api/me", headers=auth_100)
+                body = await resp.json()
+                check(body["profession"] == "Manager", "/api/me: профессия из анкеты видна себе")
+                check(body["linkedin"] == "linkedin.com/in/init", "/api/me: linkedin из анкеты видна себе")
+                check(body["looking_for"] == "ищу партнёров",
+                      "/api/me: looking_for = profiles.request (\"что актуально\") из анкеты")
+                check(body["cv_text"] is None and body["website"] is None and body["offering"] is None,
+                      "/api/me: новые поля (cv/сайт/офферы) пока не заполнены -> None")
+
+                # POST /api/profile — редактирование НОВЫХ полей (в отличие от
+                # полей анкеты, для них это единственный способ заполнения)
+                resp = await client.post("/api/profile", headers=auth_100,
+                                          json={"field": "unknown_field", "value": "x"})
+                check(resp.status == 400, "POST /api/profile с неизвестным полем -> 400")
+
+                resp = await client.post("/api/profile", headers=auth_100,
+                                          json={"field": "cv_text", "value": "5 лет в iGaming"})
+                check(resp.status == 200, "POST /api/profile cv_text -> 200")
+                body = await resp.json()
+                check(body["cv_text"] == "5 лет в iGaming", "/api/profile возвращает обновлённое значение")
+
+                await client.post("/api/profile", headers=auth_100, json={"field": "website", "value": "init.dev"})
+                await client.post("/api/profile", headers=auth_100,
+                                   json={"field": "offering", "value": "консультации по трафику"})
+
+                resp = await client.get("/api/search?username=initiator", headers=auth_200)
+                body = await resp.json()
+                check(body["cv_text"] is None, "заполненный cv_text всё равно скрыт, пока show_cv выключен")
+
+                await client.post("/api/privacy", headers=auth_100, json={"field": "show_cv", "value": True})
+                await client.post("/api/privacy", headers=auth_100, json={"field": "show_contacts", "value": True})
+                await client.post("/api/privacy", headers=auth_100, json={"field": "show_offers", "value": True})
+                await client.post("/api/privacy", headers=auth_100, json={"field": "show_profession", "value": True})
+
+                resp = await client.get("/api/search?username=initiator", headers=auth_200)
+                body = await resp.json()
+                check(body["cv_text"] == "5 лет в iGaming", "show_cv включён -> cv_text виден в чужом поиске")
+                check(body["website"] == "init.dev" and body["linkedin"] == "linkedin.com/in/init",
+                      "show_contacts включён -> website И linkedin видны разом (одна пара)")
+                check(body["looking_for"] == "ищу партнёров" and body["offering"] == "консультации по трафику",
+                      "show_offers включён -> looking_for И offering видны разом (одна пара)")
+                check(body["profession"] == "Manager", "show_profession включён -> профессия видна")
 
                 # приватность: initiator включает показ своего имени
                 resp = await client.post("/api/privacy", headers=auth_100,
@@ -2632,8 +2732,9 @@ async def _run_guro_id_api_sim():
                                           json={"field": "show_everything", "value": True})
                 check(resp.status == 400, "POST /api/privacy с неизвестным полем -> 400")
 
-                # включает все остальные тумблеры -> теперь видно всё
-                for f in ("show_company", "show_vertical", "show_tenure", "show_reputation"):
+                # включает ВСЕ тумблеры (динамически по GC.PRIVACY_FIELDS, чтобы
+                # тест не протухал при добавлении новых разделов) -> видно всё
+                for f in GC.PRIVACY_FIELDS:
                     await client.post("/api/privacy", headers=auth_100, json={"field": f, "value": True})
                 resp = await client.get("/api/search?username=initiator", headers=auth_200)
                 body = await resp.json()
@@ -2650,6 +2751,46 @@ async def _run_guro_id_api_sim():
                       "приватность НЕ трогает свой /api/me — репутация видна себе независимо от тумблеров")
                 check(all(body["privacy"].values()), "/api/me: все включённые тумблеры отражены в privacy")
 
+                # «Рейтинг сгорает без подписки» — гейт РЕВЕРСИВНЫЙ: симулируем
+                # истечение подписки initiator'а (без готового storage-метода
+                # деактивации — правим строку напрямую, как и в других тестах
+                # этого файла), проверяем скрытие ото ВСЕХ, потом реактивацию.
+                import sqlite3 as _sq
+                score_before_lapse = app["storage"].get_or_create_guro_user(100)["reputation_score"]
+                _conn = _sq.connect(db_path)
+                _conn.execute(
+                    "UPDATE guro_users SET subscription_status='inactive', subscription_expires_at=NULL "
+                    "WHERE user_id=100",
+                )
+                _conn.commit()
+                _conn.close()
+
+                resp = await client.get("/api/me", headers=auth_100)
+                body = await resp.json()
+                check(body["reputation_score"] is None,
+                      "подписка истекла -> reputation_score скрыт ДАЖЕ себе")
+                check(body["confirmed_partnerships"] is None,
+                      "подписка истекла -> confirmed_partnerships тоже скрыт (не просто 0)")
+                check(body["partners"] == [], "подписка истекла -> список партнёров пуст в выдаче")
+                check(body.get("name") == "Init",
+                      "подписка НЕ трогает остальные поля себя (имя и т.п. видны как обычно)")
+
+                resp = await client.get("/api/search?username=initiator", headers=auth_200)
+                body = await resp.json()
+                check(body["reputation_score"] is None,
+                      "подписка target'а истекла -> репутация скрыта и в ЧУЖОМ поиске (несмотря на show_reputation=True)")
+                check(body["confirmed_partnerships"] is None,
+                      "подписка target'а истекла -> confirmed_partnerships скрыт в чужом поиске")
+                check(body["company"] == "GURO Co",
+                      "гейт подписки НЕ трогает privacy-поля (company всё ещё видна через show_company)")
+
+                app["storage"].activate_subscription(100, 30)
+                resp = await client.get("/api/me", headers=auth_100)
+                body = await resp.json()
+                check(body["reputation_score"] == score_before_lapse,
+                      "реактивация подписки -> СТАРОЕ значение репутации мгновенно вернулось, не 50 заново "
+                      "(гейт ничего не удалял из БД)")
+
                 resp = await client.get("/api/me", headers=auth_200)
                 check(resp.status == 200, "GET /api/me подписчика -> 200")
                 check((555, 200, GC.GURO_TAG) in _FakeTGBot.set_tag_calls,
@@ -2657,6 +2798,46 @@ async def _run_guro_id_api_sim():
 
                 resp = await client.get("/api/search?username=nobody", headers=auth_200)
                 check(resp.status == 404, "поиск несуществующего юзернейма -> 404")
+
+                # work_status: публичный статус трудоустройства — виден ВСЕМ
+                # бесплатно (даже без подписки смотрящего), НЕ тумблер приватности
+                resp = await client.post("/api/work_status", headers=auth_100, json={"status": "bogus"})
+                check(resp.status == 400, "POST /api/work_status с неизвестным значением -> 400")
+
+                resp = await client.post("/api/work_status", headers=auth_100, json={"status": "looking"})
+                check(resp.status == 200, "POST /api/work_status валидное значение -> 200")
+                body = await resp.json()
+                check(body["work_status"] == "looking", "/api/work_status возвращает обновлённое значение")
+
+                resp = await client.get("/api/me", headers=auth_100)
+                body = await resp.json()
+                check(body["work_status"] == "looking", "/api/me отдаёт work_status себе")
+
+                auth_300 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 300, "username": "outsider"})}
+                resp = await client.get("/api/search?username=initiator", headers=auth_300)
+                check(resp.status == 200, "поиск НЕподписанным -> 200 (locked-карточка)")
+                body = await resp.json()
+                check(body["locked"] is True, "user 300 без подписки -> locked=True")
+                check(body["work_status"] == "looking",
+                      "work_status виден ДАЖЕ в пейволленной locked-карточке — не платный контент")
+
+                resp = await client.get("/api/search?username=initiator", headers=auth_200)
+                body = await resp.json()
+                check(body["work_status"] == "looking", "work_status виден и в полной карточке подписчика")
+
+                await client.post("/api/work_status", headers=auth_100, json={"status": None})
+                resp = await client.get("/api/search?username=initiator", headers=auth_300)
+                body = await resp.json()
+                check(body["work_status"] is None, "status=null (\"выкл\") -> work_status пропадает даже у locked")
+
+                # /api/qr — дипссылка на /start бота с payload guro_<user_id>
+                resp = await client.get("/api/qr", headers=auth_100)
+                check(resp.status == 200, "GET /api/qr -> 200")
+                body = await resp.json()
+                check(body["deeplink"] == f"https://t.me/{settings.bot_username}?start=guro_100",
+                      f"/api/qr отдаёт корректную deep-link, получено: {body['deeplink']}")
+                resp = await client.get("/api/qr")
+                check(resp.status == 401, "GET /api/qr без Authorization -> 401")
 
                 resp = await client.post("/api/partnerships", headers=auth_100,
                                           json={"confirmer_username": "nobody"})
@@ -2672,10 +2853,78 @@ async def _run_guro_id_api_sim():
                                           json={"confirmer_username": "confirmer"})
                 check(resp.status == 409, "повторная заявка <24ч -> 409 (анти-фрод)")
 
+                resp = await client.get("/api/plans")
+                check(resp.status == 200, "GET /api/plans -> 200 (публичный эндпойнт, без авторизации)")
+                body = await resp.json()
+                check(set(body["plans"].keys()) == {"monthly", "yearly"}, "/api/plans содержит оба тарифа")
+                check(body["plans"]["monthly"]["stars_price"] == 650, "месячный тариф = 650 звёзд (~$10)")
+                check(body["plans"]["yearly"]["stars_price"] == 6600, "годовой тариф = 6600 звёзд (~$99)")
+                check(body["plans"]["yearly"]["stars_price_full"] == 7800,
+                      "у годового тарифа есть 'полная' цена для скидочной плашки (650*12)")
+                check(body["plans"]["yearly"]["crypto_price_usd"] == round(6600 * GC.STARS_TO_USD_RATE, 2),
+                      "крипто-цена годового тарифа считается по STARS_TO_USD_RATE")
+                check(body["crypto_enabled"] is False, "crypto_enabled=False, пока не задан CRYPTOBOT_API_TOKEN")
+
                 resp = await client.post("/api/subscribe", headers=auth_100, json={})
-                check(resp.status == 200, "POST /api/subscribe -> 200")
+                check(resp.status == 400, "POST /api/subscribe без плана -> 400 UNKNOWN_PLAN")
+
+                resp = await client.post("/api/subscribe", headers=auth_100, json={"plan": "nonsense"})
+                check(resp.status == 400, "POST /api/subscribe с несуществующим планом -> 400")
+
+                resp = await client.post("/api/subscribe", headers=auth_100, json={"plan": "yearly"})
+                check(resp.status == 200, "POST /api/subscribe с валидным планом -> 200")
                 body = await resp.json()
                 check(body["invoice_link"] == "https://t.me/fake_invoice_link", "/api/subscribe отдаёт invoice_link")
+
+                # крипто-оплата выключена (в этой Settings нет токена) -> 503
+                resp = await client.post("/api/subscribe/crypto", headers=auth_100, json={"plan": "monthly"})
+                check(resp.status == 503, "POST /api/subscribe/crypto без CRYPTOBOT_API_TOKEN -> 503")
+
+                # включаем крипту и мокаем сам вызов CryptoBot (реальный API не дёргаем)
+                app["settings"].cryptobot_api_token = "fake-crypto-token"
+
+                async def _fake_create_invoice(api_token, **kw):
+                    return {"invoice_id": 42, "pay_url": "https://t.me/CryptoBot?start=fakeinv"}
+
+                with mock.patch.object(guro_id_api.GCR, "create_invoice", _fake_create_invoice):
+                    resp = await client.post("/api/subscribe/crypto", headers=auth_100, json={"plan": "yearly"})
+                    check(resp.status == 200, "POST /api/subscribe/crypto с токеном -> 200")
+                    body = await resp.json()
+                    check(body["pay_url"] == "https://t.me/CryptoBot?start=fakeinv", "/api/subscribe/crypto отдаёт pay_url")
+
+                resp = await client.get("/api/plans")
+                body = await resp.json()
+                check(body["crypto_enabled"] is True, "crypto_enabled=True после появления токена")
+
+                # вебхук CryptoBot: неверная подпись -> 403, подписку не активирует
+                import hashlib
+                import hmac
+                import json as _json
+                from datetime import datetime as _dt, timezone as _tz
+
+                webhook_body = _json.dumps({
+                    "update_type": "invoice_paid",
+                    "payload": {"payload": "guro_id_subscription:yearly:300"},
+                }).encode()
+                resp = await client.post("/api/crypto/webhook", data=webhook_body,
+                                          headers={"crypto-pay-api-signature": "wrong"})
+                check(resp.status == 403, "crypto webhook с неверной подписью -> 403")
+                check(not app["storage"].is_subscribed(300), "неверная подпись -> подписка НЕ активирована")
+
+                secret = hashlib.sha256(b"fake-crypto-token").digest()
+                good_sig = hmac.new(secret, webhook_body, hashlib.sha256).hexdigest()
+                resp = await client.post("/api/crypto/webhook", data=webhook_body,
+                                          headers={"crypto-pay-api-signature": good_sig})
+                check(resp.status == 200, "crypto webhook с верной подписью -> 200")
+                check(app["storage"].is_subscribed(300), "верная подпись -> подписка активирована")
+                _status, _expires = app["storage"].get_subscription(300)
+                _days_left = (_expires - _dt.now(_tz.utc)).days
+                check(_days_left > 300, "crypto webhook с планом yearly -> подписка на ~365 дней")
+
+                resp = await client.post("/api/crypto/webhook", data=b'{"update_type": "other"}',
+                                          headers={"crypto-pay-api-signature":
+                                                    hmac.new(secret, b'{"update_type": "other"}', hashlib.sha256).hexdigest()})
+                check(resp.status == 200, "crypto webhook с чужим update_type -> 200, но без побочных эффектов")
 
                 # витрина разработчика — своя карточка, без пейволла, без анкеты в profiles
                 auth_dev = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 777, "username": "lizard_hoppers"})}
@@ -2771,7 +3020,7 @@ async def _run_guro_partnerships_sim():
             pass
 
         u_ours = _Ns()
-        u_ours.pre_checkout_query = _FakePreCheckout("guro_id_subscription:1")
+        u_ours.pre_checkout_query = _FakePreCheckout("guro_id_subscription:monthly:1")
         await on_guro_pre_checkout(u_ours, context)
         check(u_ours.pre_checkout_query.answered_ok is True, "pre_checkout нашего payload -> answer(ok=True)")
 
@@ -2786,7 +3035,9 @@ async def _run_guro_partnerships_sim():
 
         replies = []
         msg = FakeMessage("", chat_id=1)
-        msg.successful_payment = _FakeSuccessfulPayment("guro_id_subscription:1")
+        # план "yearly" в payload -> должна примениться длительность 365 дней,
+        # а не дефолтные 30 (проверка на _plan_from_payload в guro_payments.py)
+        msg.successful_payment = _FakeSuccessfulPayment("guro_id_subscription:yearly:1")
 
         async def _capture_reply(text, **kw):
             replies.append(text)
@@ -2797,6 +3048,9 @@ async def _run_guro_partnerships_sim():
         u_payment.effective_user = FakeUser(1, "alice")
         await on_guro_successful_payment(u_payment, context)
         check(gstorage.is_subscribed(1), "successful_payment -> подписка активирована")
+        _status, _expires_at = gstorage.get_subscription(1)
+        days_left = (_expires_at - datetime.now(timezone.utc)).days
+        check(days_left > 300, f"план yearly -> подписка на ~365 дней, а не 30 (осталось {days_left} дн.)")
         check(any("активирована" in t for t in replies), "successful_payment -> подтверждение юзеру")
         import guro_constants as GC
         check((bot_data["settings"].community_chat_id, 1, GC.GURO_TAG) in context.bot.set_tag_calls,
@@ -2827,7 +3081,7 @@ async def _run_guro_tags_sim():
         check(len(bot.set_tag_calls) == 0,
               "новый guro_user без подписки -> тега нет (заход в Mini App сам по себе тег не даёт)")
 
-        gstorage.activate_subscription(10)
+        gstorage.activate_subscription(10, 30)
         await GT.sync_member_tag(bot, CHAT, gstorage, 10, reason="test")
         check((CHAT, 10, GC.GURO_TAG) in bot.set_tag_calls,
               "оплаченная подписка -> появляется тег GURO ID")
@@ -2850,7 +3104,7 @@ async def _run_guro_tags_sim():
 
         # админа/овнера не трогаем, даже если он подписан (у них уже своя вкладка custom title)
         gstorage.get_or_create_guro_user(11)
-        gstorage.activate_subscription(11)
+        gstorage.activate_subscription(11, 30)
         bot.member_status_map[11] = ChatMemberStatus.ADMINISTRATOR
         await GT.sync_member_tag(bot, CHAT, gstorage, 11, reason="test")
         check(11 not in bot.member_tag_map, "администратора группы не трогаем")
@@ -2866,7 +3120,7 @@ async def _run_guro_tags_sim():
 
         # sync_all_members обходит список целиком (тег появляется только у подписанных)
         gstorage.get_or_create_guro_user(20)
-        gstorage.activate_subscription(20)
+        gstorage.activate_subscription(20, 30)
         gstorage.get_or_create_guro_user(21)  # без подписки
         bot2 = FakeBot()
         await GT.sync_all_members(bot2, CHAT, gstorage, [20, 21], reason="bulk")

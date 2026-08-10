@@ -1,6 +1,14 @@
-import { useState } from "react";
-import { search, ApiError } from "../api.js";
-import { Msg, MetricsRow, PartnersList, LockedOverlay, IdentityLine } from "./Shared.jsx";
+import { useEffect, useState } from "react";
+import { search, searchByUserId, ApiError } from "../api.js";
+import {
+  Msg,
+  MetricsRow,
+  PartnersList,
+  LockedOverlay,
+  IdentityLine,
+  WorkStatusBadge,
+  Spinner,
+} from "./Shared.jsx";
 import { DeveloperShowcase } from "./DeveloperShowcase.jsx";
 import { haptic } from "../telegram.js";
 
@@ -9,6 +17,7 @@ function ResultCard({ p }) {
   return (
     <div className="card">
       <h2 className={p.name === null ? "hidden-value" : ""}>{heading}</h2>
+      <WorkStatusBadge status={p.work_status} />
       <IdentityLine label="Вертикаль: " value={p.vertical} />
       <IdentityLine label="Компания: " value={p.company} />
       <MetricsRow
@@ -20,9 +29,23 @@ function ResultCard({ p }) {
   );
 }
 
-export function SearchScreen({ onNavigate }) {
+export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink }) {
   const [username, setUsername] = useState("");
-  const [state, setState] = useState({ loading: false, data: null, error: null });
+  const [state, setState] = useState(
+    deepLinkTargetId ? { loading: true, data: null, error: null } : { loading: false, data: null, error: null },
+  );
+
+  // Заход по QR (App.jsx передаёт ?target=<id> ОДИН раз, дальше сам гасит
+  // проп) — сразу тянем карточку по user_id, минуя ручной ввод юзернейма.
+  // Тот же пейволл, что у обычного поиска (см. ResultCard/LockedOverlay ниже).
+  useEffect(() => {
+    if (!deepLinkTargetId) return;
+    onConsumeDeepLink?.();
+    searchByUserId(deepLinkTargetId)
+      .then((data) => setState({ loading: false, data, error: null }))
+      .catch((error) => setState({ loading: false, data: null, error }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -55,6 +78,8 @@ export function SearchScreen({ onNavigate }) {
           </button>
         </form>
       </div>
+
+      {state.loading && !state.data && <Spinner>Открываем профиль…</Spinner>}
 
       {state.error && (
         <Msg type="error">

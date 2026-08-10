@@ -19,6 +19,7 @@ from aiohttp import web
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 
 import guro_constants as GC
+import guro_crypto as GCR
 import guro_logic as GL
 import guro_showcase as GS
 import guro_tags as GT
@@ -66,12 +67,22 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
             "counts_toward_rating": bool(p["counts_toward_rating"]),
         })
 
+    extra = storage.get_extra_profile(user_id)
     return {
         "user_id": user_id,
         "username": profile["username"],
         "name": profile["name"],
         "company": profile["company"],
         "vertical": profile["vertical"],
+        "profession": profile["profession"],
+        "linkedin": profile["linkedin"],
+        # "Что для вас сейчас актуально" из анкеты бота — семантически
+        # ровно "Я ищу" из макета редизайна, отдельного поля не заводили.
+        "looking_for": profile["request"],
+        "cv_text": extra["cv_text"],
+        "website": extra["website"],
+        "offering": extra["offering"],
+        "work_status": guro_user["work_status"],
         "verified_screening": True,
         "joined_community_at": joined_at,
         "days_in_community": days_in_community,
@@ -87,13 +98,19 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
 # Поле профиля -> тумблер приватности, который его ПОКАЗЫВАЕТ. Opt-in:
 # по умолчанию (флаг выключен) поле СКРЫТО, владелец сам включает то, что
 # хочет показать чужим. Партнёрства (с кем сотрудничал) сюда намеренно не
-# входят — они видны ВСЕГДА, это ядро смысла GURO ID (см. GC.PRIVACY_FIELDS).
+# входят — тумблеры приватности их не трогают (это ядро смысла GURO ID),
+# но их скрывает ДРУГОЙ, независимый механизм — подписка САМОГО владельца
+# профиля, см. _apply_subscription_gate ниже.
 _PRIVACY_FIELD_MAP = {
     "show_name": ("name",),
     "show_company": ("company",),
     "show_vertical": ("vertical",),
+    "show_profession": ("profession",),
     "show_tenure": ("joined_community_at", "days_in_community"),
     "show_reputation": ("reputation_score",),
+    "show_cv": ("cv_text",),
+    "show_contacts": ("linkedin", "website"),
+    "show_offers": ("looking_for", "offering"),
 }
 
 
@@ -109,6 +126,26 @@ def _apply_privacy(summary: dict, privacy: dict) -> dict:
         if not privacy.get(flag):
             for field in fields:
                 result[field] = None
+    return result
+
+
+# «Рейтинг сгорает без подписки» (директива владельца, 10.08.2026): пока у
+# владельца профиля НЕТ активной подписки — его репутация/сделки/наймы
+# скрыты ото ВСЕХ, включая его самого. Сознательно РЕВЕРСИВНО — сами
+# значения в БД не трогаем (reputation_score/партнёрства никуда физически
+# не деваются), только прячем в выдаче API. Возобновил подписку — старое
+# число мгновенно вернулось, ничего не потеряно. Отдельная ось от
+# приватности (_apply_privacy) — та зависит от тумблеров смотрящего
+# профиля, эта — от подписки владельца, применяется даже к его /api/me.
+_SUBSCRIPTION_GATED_FIELDS = ("reputation_score", "confirmed_partnerships", "partners")
+
+
+def _apply_subscription_gate(summary: dict, is_subscribed: bool) -> dict:
+    if is_subscribed:
+        return summary
+    result = dict(summary)
+    for field in _SUBSCRIPTION_GATED_FIELDS:
+        result[field] = None if field != "partners" else []
     return result
 
 
@@ -130,7 +167,9 @@ async def handle_me(request: web.Request) -> web.Response:
         return web.json_response({"error": "NO_PROFILE"}, status=404)
     # Владелец в /api/me всегда видит СВОИ данные полностью — тумблеры влияют
     # только на то, что видят ЧУЖИЕ через /api/search (см. _apply_privacy).
+    # Подписка — исключение: «рейтинг сгорает» без неё даже для себя самого.
     summary["privacy"] = storage.get_privacy(user["id"])
+    summary = _apply_subscription_gate(summary, summary["is_subscribed"])
     try:
         await GT.sync_member_tag_standalone(
             settings.bot_token, settings.community_chat_id, storage, user["id"], reason="api_me",
@@ -144,30 +183,47 @@ async def handle_search(request: web.Request) -> web.Response:
     settings, storage = request.app["settings"], request.app["storage"]
     requester = _auth(request, settings)
     username = request.query.get("username", "")
+    user_id_param = request.query.get("user_id", "")
     if GS.is_showcase_username(username):
         # Витрина видна ВСЕМ полностью, без пейволла — это самореклама, не
         # обычный профиль участника.
         return web.json_response(GS.PAYLOAD)
-    target_profile = storage.find_profile_by_username(username)
+
+    if user_id_param:
+        # Заход по QR (?target=<id> у Mini App, см. App.jsx) — ищем по ID,
+        # не по юзернейму (тот мог смениться, ID стабилен).
+        try:
+            target_profile = storage.get_profile(int(user_id_param))
+        except ValueError:
+            target_profile = None
+    else:
+        target_profile = storage.find_profile_by_username(username)
     if target_profile is None:
         return web.json_response({"error": "NOT_FOUND"}, status=404)
 
     summary = _profile_summary(storage, target_profile["user_id"])
     privacy = storage.get_privacy(target_profile["user_id"])
     summary = _apply_privacy(summary, privacy)
+    # target'а (не смотрящего!) подписка гейтит рейтинг/сделки — «рейтинг
+    # сгорает без подписки», см. _apply_subscription_gate.
+    summary = _apply_subscription_gate(summary, summary["is_subscribed"])
 
     if storage.is_subscribed(requester["id"]):
         summary["locked"] = False
         return web.json_response(summary)
 
     # Пейволл (ТЗ экран 2): без подписки — урезанная карточка. Поля через
-    # .get() — приватность уже могла убрать name/reputation_score выше.
+    # .get() — приватность/subscription-гейт уже могли убрать
+    # name/reputation_score выше. work_status — сознательное исключение из
+    # пейволла (см. GC.WORK_STATUS_*): виден бесплатно, как маркер
+    # "Open to Work", даже без подписки смотрящего.
     return web.json_response({
         "user_id": summary["user_id"],
         "username": summary["username"],
         "name": summary.get("name"),
         "reputation_score": summary.get("reputation_score"),
         "confirmed_partnerships": summary["confirmed_partnerships"],
+        "work_status": summary.get("work_status"),
         "locked": True,
     })
 
@@ -226,20 +282,181 @@ async def handle_set_privacy(request: web.Request) -> web.Response:
     return web.json_response(privacy)
 
 
+async def handle_set_profile_field(request: web.Request) -> web.Response:
+    """Редактирование НОВЫХ полей профиля (GC.EXTRA_PROFILE_FIELDS: CV-текст,
+    сайт, "чем полезен"). В отличие от полей анкеты (только чтение в Mini
+    App, источник — бот), для этих полей другого способа заполнения нет,
+    поэтому редактируются прямо здесь."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    field = str(body.get("field", ""))
+    value = str(body.get("value", "")).strip()[:2000] or None
+    try:
+        extra = storage.set_extra_profile_field(user["id"], field, value)
+    except ValueError:
+        return web.json_response({"error": "UNKNOWN_FIELD"}, status=400)
+    return web.json_response(extra)
+
+
+async def handle_set_work_status(request: web.Request) -> web.Response:
+    """Публичный статус трудоустройства (looking/neutral/working/выкл) —
+    НЕ через generic set_extra_profile_field, т.к. это не свободный текст,
+    а закрытый набор значений (GC.WORK_STATUS_VALUES)."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    raw = body.get("status")
+    value = str(raw).strip() if raw else None
+    try:
+        result = storage.set_work_status(user["id"], value)
+    except ValueError:
+        return web.json_response({"error": "INVALID_STATUS"}, status=400)
+    return web.json_response({"work_status": result})
+
+
+async def handle_get_qr(request: web.Request) -> web.Response:
+    """Deep-link на /start бота с payload guro_<user_id> — сканирующий
+    получает от бота сообщение с web_app-кнопкой на Mini App с этим
+    профилем (см. handlers/flow.py::start). Не прямая ссылка на Mini App —
+    для этого нужна регистрация short name через @BotFather, которой нет."""
+    settings = request.app["settings"]
+    user = _auth(request, settings)
+    deeplink = f"https://t.me/{settings.bot_username}?start={GC.QR_PAYLOAD_PREFIX}{user['id']}"
+    return web.json_response({"deeplink": deeplink})
+
+
+def _plan_or_none(body: dict) -> tuple[str, dict] | None:
+    plan = str(body.get("plan", ""))
+    cfg = GC.SUBSCRIPTION_PLANS.get(plan)
+    return (plan, cfg) if cfg else None
+
+
+async def handle_get_plans(request: web.Request) -> web.Response:
+    """Единый источник цен для фронта (Stars + крипто-эквивалент) — чтобы
+    числа в UI никогда не разъезжались с тем, что реально спишут.
+    crypto_enabled=False, пока владелец не пропишет CRYPTOBOT_API_TOKEN —
+    фронт по этому флагу прячет кнопку крипто-оплаты, а не бьётся в 503."""
+    settings = request.app["settings"]
+    plans = {}
+    for key, cfg in GC.SUBSCRIPTION_PLANS.items():
+        plans[key] = {
+            **cfg,
+            "crypto_price_usd": round(cfg["stars_price"] * GC.STARS_TO_USD_RATE, 2),
+            "crypto_asset": GC.CRYPTO_ASSET,
+        }
+    return web.json_response({"plans": plans, "crypto_enabled": bool(settings.cryptobot_api_token)})
+
+
 async def handle_subscribe(request: web.Request) -> web.Response:
     settings = request.app["settings"]
     user = _auth(request, settings)
+    body = await request.json()
+    plan_pair = _plan_or_none(body)
+    if plan_pair is None:
+        return web.json_response({"error": "UNKNOWN_PLAN"}, status=400)
+    plan, cfg = plan_pair
+
     bot = Bot(token=settings.bot_token)
     async with bot:
         link = await bot.create_invoice_link(
-            title="GURO ID — подписка на 30 дней",
+            title=f"GURO ID — подписка ({cfg['label'].lower()})",
             description="Полный поиск и просмотр профилей участников GURO ID: рейтинг, история партнёрств.",
-            payload=f"guro_id_subscription:{user['id']}",
+            payload=f"guro_id_subscription:{plan}:{user['id']}",
             provider_token=None,  # не нужен для Telegram Stars (Bot API 7.4+)
             currency="XTR",
-            prices=[LabeledPrice("Подписка GURO ID, 30 дней", GC.SUBSCRIPTION_STARS_PRICE)],
+            prices=[LabeledPrice(f"Подписка GURO ID — {cfg['label']}", cfg["stars_price"])],
         )
     return web.json_response({"invoice_link": link})
+
+
+async def handle_subscribe_crypto(request: web.Request) -> web.Response:
+    """Альтернатива Stars — оплата подписки в крипте через CryptoBot (Crypto
+    Pay API). Подтверждение приходит асинхронно вебхуком (handle_crypto_
+    webhook), а не сразу в ответе, в отличие от Stars-инвойса."""
+    settings = request.app["settings"]
+    if not settings.cryptobot_api_token:
+        return web.json_response({"error": "CRYPTO_NOT_CONFIGURED"}, status=503)
+    user = _auth(request, settings)
+    body = await request.json()
+    plan_pair = _plan_or_none(body)
+    if plan_pair is None:
+        return web.json_response({"error": "UNKNOWN_PLAN"}, status=400)
+    plan, cfg = plan_pair
+    amount = round(cfg["stars_price"] * GC.STARS_TO_USD_RATE, 2)
+
+    try:
+        invoice = await GCR.create_invoice(
+            settings.cryptobot_api_token,
+            asset=GC.CRYPTO_ASSET,
+            amount=amount,
+            description=f"GURO ID — подписка ({cfg['label'].lower()})",
+            payload=f"guro_id_subscription:{plan}:{user['id']}",
+            paid_btn_url=settings.community_invite_url,
+        )
+    except GCR.CryptoBotError:
+        logger.exception("guro_id: не удалось создать crypto-инвойс для user_id=%s plan=%s", user["id"], plan)
+        return web.json_response({"error": "CRYPTO_INVOICE_FAILED"}, status=502)
+
+    pay_url = invoice.get("pay_url") or invoice.get("bot_invoice_url") or invoice.get("mini_app_invoice_url")
+    return web.json_response({"pay_url": pay_url, "invoice_id": invoice.get("invoice_id")})
+
+
+async def handle_crypto_webhook(request: web.Request) -> web.Response:
+    """CryptoBot шлёт сюда POST при оплате инвойса (настраивается в
+    дашборде приложения, см. OPERATIONS.md). Подпись обязательна — без нее
+    кто угодно мог бы дёрнуть этот адрес и активировать себе подписку
+    бесплатно."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    if not settings.cryptobot_api_token:
+        return web.Response(status=503)
+
+    raw_body = await request.read()
+    signature = request.headers.get("crypto-pay-api-signature", "")
+    if not GCR.verify_webhook_signature(settings.cryptobot_api_token, raw_body, signature):
+        logger.warning("guro_id: crypto webhook с неверной подписью, игнорирую")
+        return web.Response(status=403)
+
+    data = await request.json()
+    if data.get("update_type") != "invoice_paid":
+        return web.Response(status=200)
+
+    invoice = data.get("payload") or {}
+    payload_str = invoice.get("payload", "")
+    if not payload_str.startswith("guro_id_subscription:"):
+        return web.Response(status=200)
+
+    parts = payload_str.split(":")  # guro_id_subscription:<plan>:<user_id>
+    plan = parts[1] if len(parts) > 1 else "monthly"
+    cfg = GC.SUBSCRIPTION_PLANS.get(plan, GC.SUBSCRIPTION_PLANS["monthly"])
+    try:
+        user_id = int(parts[2]) if len(parts) > 2 else None
+    except ValueError:
+        user_id = None
+    if user_id is None:
+        logger.warning("guro_id: crypto webhook без user_id в payload: %s", payload_str)
+        return web.Response(status=200)
+
+    expires_at = storage.activate_subscription(user_id, cfg["duration_days"])
+    logger.info(
+        "guro_id: подписка активирована через крипту user_id=%s plan=%s до %s",
+        user_id, plan, expires_at,
+    )
+    try:
+        async with Bot(token=settings.bot_token) as bot:
+            await bot.send_message(
+                user_id,
+                f"✅ Подписка GURO ID активирована до {expires_at[:10]} (оплата в крипте) — "
+                "полный поиск и просмотр профилей открыты.",
+            )
+            await GT.sync_member_tag(
+                bot, settings.community_chat_id, storage, user_id,
+                reason="subscription_activated_crypto",
+            )
+    except Exception:  # noqa: BLE001
+        logger.exception("guro_id: не удалось уведомить/обновить тег после crypto-оплаты user_id=%s", user_id)
+
+    return web.Response(status=200)
 
 
 def create_app(settings: Settings) -> web.Application:
@@ -249,8 +466,14 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_get("/api/me", handle_me)
     app.router.add_get("/api/search", handle_search)
     app.router.add_post("/api/partnerships", handle_create_partnership)
+    app.router.add_get("/api/plans", handle_get_plans)
     app.router.add_post("/api/subscribe", handle_subscribe)
+    app.router.add_post("/api/subscribe/crypto", handle_subscribe_crypto)
+    app.router.add_post("/api/crypto/webhook", handle_crypto_webhook)
     app.router.add_post("/api/privacy", handle_set_privacy)
+    app.router.add_post("/api/profile", handle_set_profile_field)
+    app.router.add_post("/api/work_status", handle_set_work_status)
+    app.router.add_get("/api/qr", handle_get_qr)
     if WEBAPP_DIST.exists():
         # add_static не отдаёт index.html на "/" сам по себе (показал бы
         # листинг директории) — раздаём его явным роутом, остальное статикой.

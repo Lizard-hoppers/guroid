@@ -12,11 +12,13 @@ from enum import IntEnum, auto
 from pathlib import Path
 
 from telegram import (
+    InlineKeyboardButton,
     InlineKeyboardMarkup,
     InputMediaAnimation,
     InputMediaPhoto,
     InputMediaVideo,
     Update,
+    WebAppInfo,
 )
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
@@ -212,6 +214,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             ),
         )
         return ConversationHandler.END
+
+    # QR-код профиля GURO ID (10.08.2026): ?start=guro_<user_id> — сразу
+    # открываем Mini App на этом профиле, БЕЗ обычного повторного прохождения
+    # анкеты (в отличие от голого /start, который всегда возвращает к
+    # lang_select, даже для уже зарегистрированных — намеренное поведение
+    # для другого сценария, см. память проекта guro-id). Работает только для
+    # УЖЕ зарегистрированных (has_profile) — сканирующий без анкеты всё равно
+    # не может пользоваться GURO ID, дальше идёт по обычному флоу регистрации,
+    # просто теряя цель QR (мелкий, приемлемый edge-case).
+    qr_args = getattr(context, "args", None) or []
+    qr_payload = qr_args[0] if qr_args else ""
+    if qr_payload.startswith("guro_"):
+        qr_target = qr_payload[len("guro_"):]
+        storage = context.bot_data["storage"]
+        if qr_target.isdigit() and storage.has_profile(user.id):
+            webapp_url = f"{settings.guro_id_webapp_url.rstrip('/')}/?target={qr_target}"
+            await context.bot.send_message(
+                update.effective_chat.id,
+                "🪪 Открыть профиль в GURO ID:",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Открыть профиль", web_app=WebAppInfo(url=webapp_url)),
+                ]]),
+            )
+            return ConversationHandler.END
 
     # Всё для админов проверяем ДО user_data.clear() ниже — иначе
     # delete_previous_screen не найдёт adm_chat/adm_mid (текущий экран

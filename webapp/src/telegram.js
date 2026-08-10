@@ -37,3 +37,9 @@ export function openInvoice(url, callback) {
   if (tg?.openInvoice) tg.openInvoice(url, callback);
   else window.open(url, "_blank");
 }
+
+// initDataUnsafe.user.photo_url — реальное фото профиля Telegram, если
+// клиент его отдаёт (не всегда — тогда фолбэк на буквенный аватар в UI).
+export function getAvatarUrl() {
+  return tg?.initDataUnsafe?.user?.photo_url || null;
+}

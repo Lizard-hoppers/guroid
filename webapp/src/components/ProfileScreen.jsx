@@ -1,11 +1,19 @@
 import { useEffect, useState } from "react";
 import { getMe, ApiError } from "../api.js";
-import { Spinner, Msg, MetricsRow, PartnersList } from "./Shared.jsx";
-import { PrivacyToggles } from "./PrivacyToggles.jsx";
+import { Spinner, Msg } from "./Shared.jsx";
+import { PrivacyToggles, PRIVACY_LABELS } from "./PrivacyToggles.jsx";
 import { DeveloperShowcase } from "./DeveloperShowcase.jsx";
+import { ProfileHub } from "./profile/ProfileHub.jsx";
+import { RatingSubscreen } from "./profile/RatingSubscreen.jsx";
+import { CvSubscreen } from "./profile/CvSubscreen.jsx";
+import { ContactsSubscreen } from "./profile/ContactsSubscreen.jsx";
+import { OffersSubscreen } from "./profile/OffersSubscreen.jsx";
+import { QrSubscreen } from "./profile/QrSubscreen.jsx";
+import { OnboardingScreen } from "./profile/OnboardingScreen.jsx";
 
-export function ProfileScreen() {
+export function ProfileScreen({ onNavigate }) {
   const [state, setState] = useState({ loading: true, data: null, error: null });
+  const [sub, setSub] = useState(null); // null | "rating" | "cv" | "contacts" | "offers"
 
   useEffect(() => {
     let cancelled = false;
@@ -21,26 +29,22 @@ export function ProfileScreen() {
 
   if (state.error) {
     if (state.error instanceof ApiError && state.error.code === "NO_PROFILE") {
-      return (
-        <div className="card">
-          <h3>Профиль не найден</h3>
-          <div className="partner-meta">
-            Чтобы получить GURO ID, сначала пройдите анкету в @GamblingCommunitybot.
-          </div>
-        </div>
-      );
+      return <OnboardingScreen />;
     }
     return <Msg type="error">Не удалось загрузить профиль. Попробуйте позже.</Msg>;
   }
 
   const p = state.data;
 
-  const privacyBlock = (
-    <PrivacyToggles
-      privacy={p.privacy}
-      onChange={(privacy) => setState((s) => ({ ...s, data: { ...s.data, privacy } }))}
-    />
-  );
+  function updatePrivacy(privacy) {
+    setState((s) => ({ ...s, data: { ...s.data, privacy } }));
+  }
+  function updateField(field, value) {
+    setState((s) => ({ ...s, data: { ...s.data, [field]: value } }));
+  }
+  function updateWorkStatus(work_status) {
+    setState((s) => ({ ...s, data: { ...s.data, work_status } }));
+  }
 
   // Приватность — настройка САМОГО аккаунта, не данные из анкеты, поэтому
   // рендерится ВСЕГДА, даже когда вместо обычного профиля показана витрина
@@ -49,31 +53,71 @@ export function ProfileScreen() {
     return (
       <div>
         <DeveloperShowcase data={p} />
-        {privacyBlock}
+        <PrivacyToggles
+          privacy={p.privacy}
+          onChange={updatePrivacy}
+          fields={Object.keys(PRIVACY_LABELS)}
+          hint="По умолчанию ничего не видно чужим, кроме факта участия в GURO ID и партнёрств."
+        />
       </div>
     );
   }
 
+  if (sub === "rating") {
+    return (
+      <RatingSubscreen
+        profile={p}
+        privacy={p.privacy}
+        onPrivacyChange={updatePrivacy}
+        onBack={() => setSub(null)}
+        onNavigate={onNavigate}
+      />
+    );
+  }
+  if (sub === "cv") {
+    return (
+      <CvSubscreen
+        profile={p}
+        privacy={p.privacy}
+        onPrivacyChange={updatePrivacy}
+        onFieldSaved={updateField}
+        onBack={() => setSub(null)}
+      />
+    );
+  }
+  if (sub === "contacts") {
+    return (
+      <ContactsSubscreen
+        profile={p}
+        privacy={p.privacy}
+        onPrivacyChange={updatePrivacy}
+        onFieldSaved={updateField}
+        onBack={() => setSub(null)}
+      />
+    );
+  }
+  if (sub === "offers") {
+    return (
+      <OffersSubscreen
+        profile={p}
+        privacy={p.privacy}
+        onPrivacyChange={updatePrivacy}
+        onFieldSaved={updateField}
+        onBack={() => setSub(null)}
+      />
+    );
+  }
+  if (sub === "qr") {
+    return <QrSubscreen onBack={() => setSub(null)} />;
+  }
+
   return (
-    <div>
-      <div className="card">
-        <h2>{p.name || (p.username ? `@${p.username}` : "Без имени")}</h2>
-        {p.vertical && <div className="partner-meta">Вертикаль: {p.vertical}</div>}
-        {p.company && <div className="partner-meta">Компания: {p.company}</div>}
-        <MetricsRow
-          reputation={p.reputation_score}
-          partnerships={p.confirmed_partnerships}
-          daysInCommunity={p.days_in_community}
-        />
-      </div>
-      <div className="card">
-        <h3>Партнёрства</h3>
-        <PartnersList
-          partners={p.partners}
-          emptyHint="Пока нет подтверждённых партнёрств. Отметьте сотрудничество во вкладке «Подтвердить»."
-        />
-      </div>
-      {privacyBlock}
-    </div>
+    <ProfileHub
+      profile={p}
+      privacy={p.privacy}
+      onPrivacyChange={updatePrivacy}
+      onNavigateSub={setSub}
+      onWorkStatusChange={updateWorkStatus}
+    />
   );
 }

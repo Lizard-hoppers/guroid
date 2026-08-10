@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { initTelegram } from "./telegram.js";
 import { TabBar } from "./components/TabBar.jsx";
@@ -30,9 +30,20 @@ const screenVariants = {
   exit: (direction) => ({ opacity: 0, x: direction * -14 }),
 };
 
+// QR-код профиля (10.08.2026): бот открывает Mini App web_app-кнопкой на
+// URL вида `<guro_id_webapp_url>/?target=<user_id>` (см. handlers/flow.py
+// start()) — читаем ?target= ОДИН раз при старте приложения, до всякого
+// React-состояния, чтобы решить стартовый таб ДО первого рендера.
+function readDeepLinkTarget() {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("target");
+}
+
 export default function App() {
   const [intro, setIntro] = useState(true);
-  const [tab, setTab] = useState("profile");
+  const initialTargetRef = useRef(readDeepLinkTarget());
+  const targetConsumedRef = useRef(false);
+  const [tab, setTab] = useState(initialTargetRef.current ? "search" : "profile");
   // Направление перехода между экранами — вперёд (вправо-налево, как
   // раньше) или назад (зеркально, влево-направо), в зависимости от того,
   // левее или правее текущего таб в TAB_ORDER тот, на который переключаемся.
@@ -40,6 +51,11 @@ export default function App() {
 
   useEffect(() => {
     initTelegram();
+    // Сразу чистим query string — иначе обновление/повторный заход в этот
+    // же сеанс WebApp заново триггерил бы deep-link на каждый ре-маунт.
+    if (initialTargetRef.current && window.history?.replaceState) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }, []);
 
   function handleTabChange(next) {
@@ -95,7 +111,17 @@ export default function App() {
                 exit="exit"
                 transition={{ duration: 0.22, ease: "easeOut" }}
               >
-                <Screen onNavigate={handleTabChange} />
+                <Screen
+                  onNavigate={handleTabChange}
+                  deepLinkTargetId={
+                    tab === "search" && initialTargetRef.current && !targetConsumedRef.current
+                      ? initialTargetRef.current
+                      : undefined
+                  }
+                  onConsumeDeepLink={() => {
+                    targetConsumedRef.current = true;
+                  }}
+                />
               </motion.div>
             </AnimatePresence>
           </div>

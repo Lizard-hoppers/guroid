@@ -384,6 +384,55 @@ label {
   font-weight: 500;
 }
 
+.plan-picker {
+  display: flex;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.plan-card {
+  flex: 1;
+  background: #ffffff0a;
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  padding: 12px 8px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--text);
+  font-family: inherit;
+}
+
+.plan-card.is-selected {
+  border-color: var(--gold);
+  background: #d4af371a;
+}
+
+.plan-card-label {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.plan-card-price-full {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
+
+.plan-card-price-main {
+  font-family: Lora, serif;
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--gold);
+}
+
+.plan-card-badge {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--ok);
+}
+
 .spinner {
   text-align: center;
   color: var(--text-dim);
@@ -662,4 +711,264 @@ label {
   color: var(--text-dim);
   margin-top: 8px;
   line-height: 1.5;
+}
+
+/* --- Редизайн профиля (10.08.2026): хаб + разделы --- */
+
+.profile-header-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.profile-avatar,
+.profile-avatar-fallback {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.profile-avatar {
+  object-fit: cover;
+}
+
+.profile-avatar-fallback {
+  background: linear-gradient(135deg, var(--gold), #7a5c1e);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: Lora, serif;
+  font-weight: 700;
+  font-size: 22px;
+  color: #1a1206;
+}
+
+.profile-header-info h2 {
+  margin: 0 0 2px;
+}
+
+.profile-header-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.profile-vertical-badge {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gold);
+  border-bottom: 2px solid var(--gold);
+  padding-bottom: 2px;
+}
+
+.profile-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.profile-menu-item:last-child {
+  border-bottom: none;
+}
+
+.profile-menu-item-chevron {
+  color: var(--text-dim);
+}
+
+.subscreen-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--gold);
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 0 14px;
+}
+
+.editable-field {
+  margin: 10px 0;
+}
+
+.editable-field label {
+  margin: 0 0 6px;
+}
+
+.editable-field-value {
+  font-size: 14px;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.editable-field-empty {
+  font-size: 13px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.editable-field textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: #ffffff0d;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+}
+
+.editable-field-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.editable-field-actions .btn {
+  width: auto;
+  flex: 1;
+}
+
+/* --- Статус трудоустройства + QR (10.08.2026) --- */
+
+.work-status-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.work-status-section > label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.work-status-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.work-status-option {
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: #ffffff0d;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.work-status-option.active {
+  border-color: var(--gold-soft);
+  background: rgba(212, 175, 55, 0.12);
+  color: var(--text);
+}
+
+.work-status-option.work-status-off.active {
+  border-color: var(--glass-border);
+  background: #ffffff14;
+  color: var(--text);
+}
+
+.work-status-badge {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: #ffffff0d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.qr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+}
+
+.qr-card img {
+  width: 220px;
+  height: 220px;
+  border-radius: 14px;
+  background: #fff;
+  padding: 10px;
+}
+
+/* --- Онбординг первого запуска + гейт подписки на рейтинг (10.08.2026) --- */
+
+.onboarding-mock-card {
+  opacity: 0.75;
+}
+
+.onboarding-mock-avatar {
+  font-size: 22px;
+}
+
+.onboarding-mock-placeholder {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.onboarding-more-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--gold);
+  font-family: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.onboarding-detail {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+.onboarding-detail p {
+  margin: 0 0 10px;
+}
+
+.onboarding-verticals {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+
+.onboarding-verticals li {
+  margin-bottom: 2px;
+}
+
+.subscription-gate-note {
+  border: 1px solid var(--gold-soft);
+  background: rgba(212, 175, 55, 0.08);
+}
+
+.subscription-gate-note strong {
+  color: var(--gold);
 }

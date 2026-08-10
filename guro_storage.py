@@ -51,6 +51,9 @@ class GuroStorage:
         # мягкие миграции — never ALTER TABLE вручную (тот же приём, что в storage.py)
         for field in GC.PRIVACY_FIELDS:
             self._ensure_column("guro_users", field, "INTEGER DEFAULT 0")
+        for field in GC.EXTRA_PROFILE_FIELDS:
+            self._ensure_column("guro_users", field, "TEXT")
+        self._ensure_column("guro_users", "work_status", "TEXT")
         self._conn.commit()
 
     def _ensure_column(self, table: str, column: str, ddl: str) -> None:
@@ -112,9 +115,9 @@ class GuroStorage:
         rows = self._conn.execute("SELECT user_id FROM guro_users").fetchall()
         return [row["user_id"] for row in rows]
 
-    def activate_subscription(self, user_id: int) -> str:
+    def activate_subscription(self, user_id: int, duration_days: int) -> str:
         self.get_or_create_guro_user(user_id)
-        expires_at = GL.subscription_expires_at(self._now())
+        expires_at = GL.subscription_expires_at(self._now(), duration_days)
         self._conn.execute(
             "UPDATE guro_users SET subscription_status=?, subscription_expires_at=?, updated_at=? "
             "WHERE user_id=?",
@@ -139,6 +142,40 @@ class GuroStorage:
         )
         self._conn.commit()
         return self.get_privacy(user_id)
+
+    def get_extra_profile(self, user_id: int) -> dict:
+        row = self.get_or_create_guro_user(user_id)
+        return {field: row[field] for field in GC.EXTRA_PROFILE_FIELDS}
+
+    def set_extra_profile_field(self, user_id: int, field: str, value: str) -> dict:
+        """Поднимает ValueError('UNKNOWN_FIELD') на неизвестное поле — тот
+        же приём, что и set_privacy_field."""
+        if field not in GC.EXTRA_PROFILE_FIELDS:
+            raise ValueError("UNKNOWN_FIELD")
+        self.get_or_create_guro_user(user_id)
+        self._conn.execute(
+            f"UPDATE guro_users SET {field}=?, updated_at=? WHERE user_id=?",
+            (value, self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return self.get_extra_profile(user_id)
+
+    def get_work_status(self, user_id: int) -> str | None:
+        row = self.get_or_create_guro_user(user_id)
+        return row["work_status"]
+
+    def set_work_status(self, user_id: int, value: str | None) -> str | None:
+        """Поднимает ValueError('INVALID_STATUS') на значение вне
+        GC.WORK_STATUS_VALUES — None (== "выкл"/скрыто) всегда разрешён."""
+        if value is not None and value not in GC.WORK_STATUS_VALUES:
+            raise ValueError("INVALID_STATUS")
+        self.get_or_create_guro_user(user_id)
+        self._conn.execute(
+            "UPDATE guro_users SET work_status=?, updated_at=? WHERE user_id=?",
+            (value, self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return self.get_work_status(user_id)
 
     # --- partnerships -------------------------------------------------------
 

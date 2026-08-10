@@ -3,18 +3,23 @@ import { setPrivacyField } from "../api.js";
 import { haptic } from "../telegram.js";
 import { Msg } from "./Shared.jsx";
 
-const FIELDS = [
-  { key: "show_name", label: "Имя" },
-  { key: "show_company", label: "Компания" },
-  { key: "show_vertical", label: "Вертикаль / специализация" },
-  { key: "show_tenure", label: "Стаж в комьюнити" },
-  { key: "show_reputation", label: "Рейтинг" },
-];
+// Полный словарь подписей — каждый экран передаёт СВОЙ подмножество полей
+// через проп `fields` (например, только show_cv на экране CV), а не весь
+// список сразу. Opt-in: по умолчанию всё выключено (скрыто), человек сам
+// включает то, что хочет показать — см. guro_constants.PRIVACY_FIELDS.
+export const PRIVACY_LABELS = {
+  show_name: "Имя",
+  show_company: "Компания",
+  show_vertical: "Вертикаль / специализация",
+  show_profession: "Должность",
+  show_tenure: "Стаж в комьюнити",
+  show_reputation: "Рейтинг",
+  show_cv: "CV",
+  show_contacts: "Контакты (LinkedIn, сайт)",
+  show_offers: "Офферы (ищу / полезен)",
+};
 
-// Opt-in: по умолчанию всё выключено (скрыто), человек сам включает то,
-// что хочет показать. Партнёрства и username сюда намеренно не входят —
-// они видны всегда, см. guro_constants.PRIVACY_FIELDS на бэкенде.
-export function PrivacyToggles({ privacy, onChange }) {
+export function PrivacyToggles({ privacy, onChange, fields, hint }) {
   const [pending, setPending] = useState(null);
   const [error, setError] = useState("");
 
@@ -40,26 +45,21 @@ export function PrivacyToggles({ privacy, onChange }) {
   return (
     <div className="card">
       <h3>Приватность</h3>
-      <div className="privacy-hint">
-        По умолчанию ничего не видно чужим, кроме факта участия в GURO ID и
-        партнёрств. Включите тумблер — и поле появится в вашей карточке для
-        тех, кто ищет вас. Партнёрства (с кем сотрудничали) видны всегда —
-        в этом и есть смысл GURO ID.
-      </div>
-      {FIELDS.map((f) => (
-        <div className="privacy-row" key={f.key}>
+      {hint && <div className="privacy-hint">{hint}</div>}
+      {fields.map((key) => (
+        <div className="privacy-row" key={key}>
           <div>
-            <div className="privacy-row-label">{f.label}</div>
+            <div className="privacy-row-label">{PRIVACY_LABELS[key]}</div>
             <div className="privacy-row-note">
-              {privacy[f.key] ? "Видно всем в поиске" : "Скрыто от чужого поиска"}
+              {privacy[key] ? "Видно всем в поиске" : "Скрыто от чужого поиска"}
             </div>
           </div>
           <label className="switch">
             <input
               type="checkbox"
-              checked={!!privacy[f.key]}
-              disabled={pending === f.key}
-              onChange={() => toggle(f.key)}
+              checked={!!privacy[key]}
+              disabled={pending === key}
+              onChange={() => toggle(key)}
             />
             <span className="slider" />
           </label>

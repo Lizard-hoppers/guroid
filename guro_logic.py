@@ -103,8 +103,8 @@ def rate_limited(last_request_at: datetime | None, now: datetime) -> bool:
     return (now - last_request_at) < timedelta(hours=GC.RATE_LIMIT_HOURS)
 
 
-def subscription_expires_at(now: datetime) -> datetime:
-    return now + timedelta(days=GC.SUBSCRIPTION_DURATION_DAYS)
+def subscription_expires_at(now: datetime, duration_days: int) -> datetime:
+    return now + timedelta(days=duration_days)
 
 
 def subscription_active(status: str | None, expires_at: datetime | None, now: datetime) -> bool:

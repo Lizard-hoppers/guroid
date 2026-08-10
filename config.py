@@ -50,6 +50,13 @@ class Settings:
     # Публичный HTTPS-адрес Mini App (тот же порт, но снаружи) — ставится
     # Menu Button-ом бота при старте (bot.py post_init).
     guro_id_webapp_url: str = "https://guro-app.193.111.62.16.sslip.io/"
+    # CryptoBot (Crypto Pay API) — оплата подписки GURO ID в крипте
+    # (альтернатива Stars). Пусто = крипто-оплата выключена (эндпойнты
+    # отдают 503), см. guro_crypto.py про получение токена.
+    cryptobot_api_token: str = ""
+    # Юзернейм бота без @ — нужен серверу для сборки QR-дипссылок GURO ID
+    # (`t.me/<bot_username>?start=guro_<id>`), без лишнего вызова getMe().
+    bot_username: str = "GamblingCommunitybot"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -108,6 +115,9 @@ class Settings:
             guro_id_webapp_url=os.environ.get(
                 "GURO_ID_WEBAPP_URL", "https://guro-app.193.111.62.16.sslip.io/"
             ).strip(),
+            cryptobot_api_token=os.environ.get("CRYPTOBOT_API_TOKEN", "").strip(),
+            bot_username=os.environ.get("BOT_USERNAME", "GamblingCommunitybot").strip()
+            or "GamblingCommunitybot",
         )
 
     def is_admin(self, user_id: int) -> bool:

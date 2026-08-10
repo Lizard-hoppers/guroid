@@ -41,6 +41,10 @@ export function search(username) {
   return request(`/api/search?username=${encodeURIComponent(username)}`);
 }
 
+export function searchByUserId(userId) {
+  return request(`/api/search?user_id=${encodeURIComponent(userId)}`);
+}
+
 export function createPartnership({ confirmerUsername, vertical, geo }) {
   return request("/api/partnerships", {
     method: "POST",
@@ -52,8 +56,16 @@ export function createPartnership({ confirmerUsername, vertical, geo }) {
   });
 }
 
-export function subscribe() {
-  return request("/api/subscribe", { method: "POST", body: JSON.stringify({}) });
+export function getPlans() {
+  return request("/api/plans");
+}
+
+export function subscribe(plan) {
+  return request("/api/subscribe", { method: "POST", body: JSON.stringify({ plan }) });
+}
+
+export function subscribeCrypto(plan) {
+  return request("/api/subscribe/crypto", { method: "POST", body: JSON.stringify({ plan }) });
 }
 
 export function setPrivacyField(field, value) {
@@ -61,6 +73,24 @@ export function setPrivacyField(field, value) {
     method: "POST",
     body: JSON.stringify({ field, value }),
   });
+}
+
+export function setProfileField(field, value) {
+  return request("/api/profile", {
+    method: "POST",
+    body: JSON.stringify({ field, value }),
+  });
+}
+
+export function setWorkStatus(status) {
+  return request("/api/work_status", {
+    method: "POST",
+    body: JSON.stringify({ status }),
+  });
+}
+
+export function getQr() {
+  return request("/api/qr");
 }
 
 export { ApiError };

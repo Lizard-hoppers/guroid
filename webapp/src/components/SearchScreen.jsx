@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { search, searchByUserId, ApiError } from "../api.js";
+import { search, searchByUserId, directorySearch, ApiError } from "../api.js";
 import {
   Msg,
   MetricsRow,
@@ -29,11 +29,38 @@ function ResultCard({ p }) {
   );
 }
 
+// Компактная строка результата directory-поиска (поиск по описанию, не по
+// юзернейму) — тап открывает полную карточку тем же кодом, что и обычный
+// поиск (см. onOpen -> searchByUserId в SearchScreen).
+function DirectoryRow({ r, onOpen }) {
+  const heading = r.name || (r.username ? `@${r.username}` : "Без имени");
+  return (
+    <button type="button" className="directory-row" onClick={() => onOpen(r.user_id)}>
+      <div className="directory-row-main">
+        <div className="directory-row-name">{heading}</div>
+        <div className="partner-meta">
+          {[r.profession, r.company, r.vertical].filter(Boolean).join(" · ") || "—"}
+        </div>
+        <WorkStatusBadge status={r.work_status} />
+      </div>
+      <span className="profile-menu-item-chevron">›</span>
+    </button>
+  );
+}
+
 export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink }) {
   const [username, setUsername] = useState("");
   const [state, setState] = useState(
     deepLinkTargetId ? { loading: true, data: null, error: null } : { loading: false, data: null, error: null },
   );
+  const [query, setQuery] = useState("");
+  const [dirState, setDirState] = useState({
+    loading: false,
+    results: null,
+    truncated: false,
+    subscriptionRequired: false,
+    error: null,
+  });
 
   // Заход по QR (App.jsx передаёт ?target=<id> ОДИН раз, дальше сам гасит
   // проп) — сразу тянем карточку по user_id, минуя ручной ввод юзернейма.
@@ -62,6 +89,36 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink }
     }
   }
 
+  // Поиск по описанию ("менеджер в крипто") — список совпадений среди
+  // ОТКРЫТЫХ (privacy-тумблерами) полей всего комьюнити. Целиком платная
+  // фича: без подписки самого ищущего сервер отдаёт 402, список не строим.
+  async function onDirectorySubmit(e) {
+    e.preventDefault();
+    const q = query.trim();
+    if (!q) return;
+    setDirState({ loading: true, results: null, truncated: false, subscriptionRequired: false, error: null });
+    try {
+      const { results, truncated } = await directorySearch(q);
+      setDirState({ loading: false, results, truncated, subscriptionRequired: false, error: null });
+      haptic("light");
+    } catch (error) {
+      const subscriptionRequired = error instanceof ApiError && error.status === 402;
+      setDirState({ loading: false, results: null, truncated: false, subscriptionRequired, error });
+      haptic("error");
+    }
+  }
+
+  async function openFromDirectory(userId) {
+    setState({ loading: true, data: null, error: null });
+    haptic("select");
+    try {
+      const data = await searchByUserId(userId);
+      setState({ loading: false, data, error: null });
+    } catch (error) {
+      setState({ loading: false, data: null, error });
+    }
+  }
+
   return (
     <div>
       <div className="card">
@@ -77,6 +134,55 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink }
             {state.loading ? "Ищем…" : "Найти"}
           </button>
         </form>
+      </div>
+
+      <div className="card">
+        <h3>Поиск по описанию</h3>
+        <div className="partner-meta" style={{ marginBottom: 10 }}>
+          Например: «менеджер в крипто». Ищем среди того, что участники сами открыли в профиле.
+        </div>
+        <form onSubmit={onDirectorySubmit}>
+          <input
+            type="text"
+            placeholder="Кого вы ищете?"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <button className="btn" type="submit" disabled={dirState.loading || !query.trim()}>
+            {dirState.loading ? "Ищем…" : "Искать"}
+          </button>
+        </form>
+
+        {dirState.subscriptionRequired && (
+          <div className="directory-paywall">
+            <strong>Поиск по описанию — по подписке</strong>
+            <p className="partner-meta">
+              Без подписки доступен только точный поиск по юзернейму выше.
+            </p>
+            <button className="btn" style={{ width: "auto", padding: "10px 20px" }} onClick={() => onNavigate("subscribe")}>
+              Оформить подписку
+            </button>
+          </div>
+        )}
+
+        {dirState.error && !dirState.subscriptionRequired && <Msg type="error">Ошибка поиска.</Msg>}
+
+        {dirState.results && dirState.results.length === 0 && (
+          <div className="partner-meta">Ничего не нашлось. Попробуйте другое описание.</div>
+        )}
+
+        {dirState.results && dirState.results.length > 0 && (
+          <div className="directory-results">
+            {dirState.results.map((r) => (
+              <DirectoryRow key={r.user_id} r={r} onOpen={openFromDirectory} />
+            ))}
+            {dirState.truncated && (
+              <div className="partner-meta" style={{ marginTop: 8 }}>
+                Показаны не все совпадения — уточните запрос.
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {state.loading && !state.data && <Spinner>Открываем профиль…</Spinner>}

@@ -45,6 +45,10 @@ export function searchByUserId(userId) {
   return request(`/api/search?user_id=${encodeURIComponent(userId)}`);
 }
 
+export function directorySearch(query) {
+  return request(`/api/directory?q=${encodeURIComponent(query)}`);
+}
+
 export function createPartnership({ confirmerUsername, vertical, geo }) {
   return request("/api/partnerships", {
     method: "POST",

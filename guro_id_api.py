@@ -228,6 +228,70 @@ async def handle_search(request: web.Request) -> web.Response:
     })
 
 
+# Поля, участвующие в directory-поиске по описанию (10.08.2026) — только
+# "описательные" текстовые поля профиля. Осознанно НЕ включены: linkedin/
+# website (это URL, не то, что ищут по смыслу), joined_community_at/
+# days_in_community/reputation_score (числа/даты, не текст). Порядок не
+# важен — просто склеиваются в один "поисковый слепок".
+_DIRECTORY_TEXT_FIELDS = ("name", "company", "vertical", "profession", "cv_text", "looking_for", "offering")
+
+
+def _searchable_text(summary: dict) -> str:
+    return " ".join(str(summary.get(f) or "") for f in _DIRECTORY_TEXT_FIELDS).lower()
+
+
+async def handle_directory_search(request: web.Request) -> web.Response:
+    """Поиск ПО ОПИСАНИЮ ("менеджер в крипто"), а не по точному юзернейму
+    (см. handle_search) — отдаёт СПИСОК всех, у кого есть совпадение среди
+    полей, которые они САМИ открыли тумблерами приватности. Целиком платная
+    фича (решение владельца, 10.08.2026) — без подписки СМОТРЯЩЕГО ни
+    одного результата не отдаём, даже тизером."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    requester = _auth(request, settings)
+    if not storage.is_subscribed(requester["id"]):
+        return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
+
+    query = request.query.get("q", "").strip().lower()
+    if not query:
+        return web.json_response({"results": [], "truncated": False})
+    keywords = query.split()[: GC.DIRECTORY_QUERY_MAX_KEYWORDS]
+
+    matches: list[tuple[int, dict]] = []
+    for user_id in storage.list_guro_user_ids():
+        if user_id == requester["id"]:
+            continue  # сам себя в directory-поиске видеть незачем
+        privacy = storage.get_privacy(user_id)
+        if not any(privacy.values()):
+            continue  # ничего не открыто -> нечего искать, не тратим время на профиль
+        summary = _profile_summary(storage, user_id)
+        if summary is None:
+            continue
+        summary = _apply_privacy(summary, privacy)
+        summary = _apply_subscription_gate(summary, summary["is_subscribed"])
+        haystack = _searchable_text(summary)
+        score = sum(1 for kw in keywords if kw in haystack)
+        if score > 0:
+            matches.append((score, summary))
+
+    matches.sort(key=lambda pair: (pair[0], pair[1].get("reputation_score") or 0), reverse=True)
+    top = matches[: GC.DIRECTORY_RESULTS_LIMIT]
+    results = [
+        {
+            "user_id": s["user_id"],
+            "username": s["username"],
+            "name": s.get("name"),
+            "vertical": s.get("vertical"),
+            "profession": s.get("profession"),
+            "company": s.get("company"),
+            "work_status": s.get("work_status"),
+            "reputation_score": s.get("reputation_score"),
+            "confirmed_partnerships": s.get("confirmed_partnerships"),
+        }
+        for _, s in top
+    ]
+    return web.json_response({"results": results, "truncated": len(matches) > len(top)})
+
+
 async def _notify_confirmer(bot_token: str, confirmer_id: int, initiator_username: str, partnership_id: int) -> None:
     kb = InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Подтвердить", callback_data=f"guro:confirm:{partnership_id}"),
@@ -465,6 +529,7 @@ def create_app(settings: Settings) -> web.Application:
     app["storage"] = GuroStorage(settings.database_path)
     app.router.add_get("/api/me", handle_me)
     app.router.add_get("/api/search", handle_search)
+    app.router.add_get("/api/directory", handle_directory_search)
     app.router.add_post("/api/partnerships", handle_create_partnership)
     app.router.add_get("/api/plans", handle_get_plans)
     app.router.add_post("/api/subscribe", handle_subscribe)

@@ -141,6 +141,23 @@ await page.route("**/api/work_status", async (route) => {
 await page.route("**/api/qr", (route) =>
   route.fulfill({ json: { deeplink: "https://t.me/GamblingCommunitybot?start=guro_100" } }),
 );
+await page.route("**/api/directory**", (route) => {
+  if (!ME_PAYLOAD.is_subscribed) {
+    return route.fulfill({ status: 402, json: { error: "SUBSCRIPTION_REQUIRED" } });
+  }
+  return route.fulfill({
+    json: {
+      results: [
+        {
+          user_id: 700, username: "cryptoguy", name: "Crypto Guy", vertical: "Крипто",
+          profession: "Manager", company: null, work_status: "looking",
+          reputation_score: 72.0, confirmed_partnerships: 3,
+        },
+      ],
+      truncated: false,
+    },
+  });
+});
 await page.route("**/api/plans", (route) => route.fulfill({
   json: {
     plans: {
@@ -184,6 +201,15 @@ await step("search-fill", async () => {
   await sleep(500);
   await page.screenshot({ path: "smoke_2b_search_result.png" });
 });
+await step("directory-search-locked", async () => {
+  await page.fill('input[placeholder="Кого вы ищете?"]', "менеджер крипто");
+  await page.getByRole("button", { name: "Искать" }).click();
+  await sleep(400);
+  const locked = await page.$(".directory-paywall");
+  console.log("directory search without subscription -> paywall shown:", !!locked);
+  await page.screenshot({ path: "smoke_2c_directory_locked.png" });
+});
+
 await step("goto-confirm", async () => {
   await page.getByRole("button", { name: "Подтвердить" }).click();
   await sleep(400);
@@ -261,6 +287,22 @@ await step("profile-subscription-gate", async () => {
   await sleep(300);
 });
 
+await step("directory-search-subscribed", async () => {
+  await page.getByRole("button", { name: "Поиск" }).click();
+  await sleep(400);
+  await page.fill('input[placeholder="Кого вы ищете?"]', "менеджер крипто");
+  await page.getByRole("button", { name: "Искать" }).click();
+  await sleep(400);
+  const rows = await page.$$(".directory-row");
+  console.log("directory search results found (subscribed):", rows.length);
+  await page.screenshot({ path: "smoke_2d_directory_results.png" });
+  if (rows.length > 0) {
+    await rows[0].click();
+    await sleep(400);
+    await page.screenshot({ path: "smoke_2e_directory_opened_profile.png" });
+  }
+});
+
 await step("onboarding-no-profile", async () => {
   const page3 = await browser.newPage({ viewport: { width: 420, height: 860 } });
   await page3.addInitScript(() => {
@@ -293,6 +335,8 @@ await step("onboarding-no-profile", async () => {
 });
 
 await step("edit-cv-field", async () => {
+  await page.getByRole("button", { name: "Профиль" }).click();
+  await sleep(300);
   await page.getByRole("button", { name: "Моё CV" }).click();
   await sleep(300);
   await page.getByRole("button", { name: "Изменить" }).click();

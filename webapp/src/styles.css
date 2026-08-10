@@ -972,3 +972,57 @@ label {
 .subscription-gate-note strong {
   color: var(--gold);
 }
+
+/* --- Directory-поиск по описанию (10.08.2026) --- */
+
+.directory-results {
+  margin-top: 10px;
+}
+
+.directory-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.directory-row:last-child {
+  border-bottom: none;
+}
+
+.directory-row-main {
+  min-width: 0;
+}
+
+.directory-row-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.directory-paywall {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: center;
+}
+
+.directory-paywall strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--gold);
+}
+
+.directory-paywall .btn {
+  margin: 10px auto 0;
+}

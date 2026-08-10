@@ -2839,6 +2839,65 @@ async def _run_guro_id_api_sim():
                 resp = await client.get("/api/qr")
                 check(resp.status == 401, "GET /api/qr без Authorization -> 401")
 
+                # directory-поиск по описанию ("менеджер в крипто" -> список) —
+                # целиком платная фича, отдельная от точного /api/search
+                st.save_profile({
+                    "user_id": 400, "username": "cryptomgr", "name": "Crypto Manager",
+                    "vertical": "Крипто", "profession": "Manager", "company": "Secret Co",
+                    "request": "ищу инвесторов",
+                })
+                app["storage"].activate_subscription(400, 30)
+                await client.post(
+                    "/api/privacy",
+                    headers={"Authorization": "tma " + _guro_make_init_data(token, {"id": 400, "username": "cryptomgr"})},
+                    json={"field": "show_vertical", "value": True},
+                )
+                await client.post(
+                    "/api/privacy",
+                    headers={"Authorization": "tma " + _guro_make_init_data(token, {"id": 400, "username": "cryptomgr"})},
+                    json={"field": "show_profession", "value": True},
+                )
+                await client.post(
+                    "/api/privacy",
+                    headers={"Authorization": "tma " + _guro_make_init_data(token, {"id": 400, "username": "cryptomgr"})},
+                    json={"field": "show_reputation", "value": True},
+                )
+                # компания НЕ открыта -> не должна светиться ни в поиске, ни в тексте
+                st.save_profile({
+                    "user_id": 401, "username": "hiddencrypto", "name": "Hidden Crypto",
+                    "vertical": "Крипто", "profession": "Trader",
+                })  # ни один privacy-тумблер не включён -> невидим для directory-поиска вообще
+
+                resp = await client.get("/api/directory?q=крипто", headers=auth_ghost)
+                check(resp.status == 402, "GET /api/directory без подписки у смотрящего -> 402 SUBSCRIPTION_REQUIRED")
+                body = await resp.json()
+                check(body["error"] == "SUBSCRIPTION_REQUIRED", "тело ответа содержит понятный код ошибки")
+
+                # auth_200 (confirmer) уже подписан с самого начала теста (см. paywall-тест выше)
+                resp = await client.get("/api/directory?q=", headers=auth_200)
+                check(resp.status == 200, "GET /api/directory без query -> 200, просто пусто")
+                body = await resp.json()
+                check(body["results"] == [], "пустой запрос -> пустой список, не вся база")
+
+                resp = await client.get("/api/directory?q=крипто", headers=auth_200)
+                check(resp.status == 200, "GET /api/directory с подпиской -> 200")
+                body = await resp.json()
+                ids = [r["user_id"] for r in body["results"]]
+                check(400 in ids, "directory-поиск по 'крипто' находит user 400 (открыл show_vertical)")
+                check(401 not in ids,
+                      "user 401 совпадает по тексту, НО ни один privacy-тумблер не включён -> не находится")
+                found = next(r for r in body["results"] if r["user_id"] == 400)
+                check(found["vertical"] == "Крипто", "у найденного видна вертикаль (show_vertical включён)")
+                check(found["company"] is None,
+                      "company НЕ была открыта тумблером -> скрыта даже в найденном результате")
+                check(found["reputation_score"] is not None,
+                      "user 400 подписан -> его репутация видна в directory-результате")
+
+                resp = await client.get("/api/directory?q=менеджер", headers=auth_100)
+                body = await resp.json()
+                self_ids = [r["user_id"] for r in body["results"]]
+                check(100 not in self_ids, "directory-поиск никогда не возвращает самого запрашивающего")
+
                 resp = await client.post("/api/partnerships", headers=auth_100,
                                           json={"confirmer_username": "nobody"})
                 check(resp.status == 404, "POST /api/partnerships неизвестному юзернейму -> 404")

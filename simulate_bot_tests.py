@@ -3422,23 +3422,6 @@ async def _run_guro_id_api_sim():
                 check(497 not in [r["user_id"] for r in body["results"]],
                       "resumes=1 + vertical= сужает выдачу (resumeuser1 в Gambling, не Crypto)")
 
-                # витрина разработчика — своя карточка, без пейволла, без анкеты в profiles
-                auth_dev = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 777, "username": "lizard_hoppers"})}
-                resp = await client.get("/api/me", headers=auth_dev)
-                check(resp.status == 200, "GET /api/me для витрины разработчика -> 200 (анкета не нужна)")
-                body = await resp.json()
-                check(body["is_showcase"] is True, "/api/me витрины -> is_showcase=True")
-                check(body["locked"] is False, "/api/me витрины -> locked=False")
-                check(body.get("privacy") == {f: False for f in GC.PRIVACY_FIELDS},
-                      "/api/me витрины ТОЖЕ отдаёт privacy (иначе автор не увидит свои тумблеры под витриной)")
-
-                resp = await client.get("/api/search?username=Lizard_Hoppers", headers=auth_200)
-                check(resp.status == 200, "GET /api/search витрины (без подписки у искателя) -> 200")
-                body = await resp.json()
-                check(body["is_showcase"] is True, "поиск витрины -> is_showcase=True даже без подписки")
-                check(body["locked"] is False, "поиск витрины -> НЕ запаяволлено")
-                check(len(body["showcase"]["projects"]) > 0, "витрина содержит портфолио проектов")
-
                 # --- личные сообщения внутри прилы (Фаза 1, 11.08.2026) -------
                 # ВАЖНО: auth_300 к этому моменту УЖЕ подписан (см. тест
                 # crypto-вебхука выше, user_id=300 получил подписку через него) —

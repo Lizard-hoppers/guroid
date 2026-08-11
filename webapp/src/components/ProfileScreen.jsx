@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { getMe, ApiError } from "../api.js";
 import { Spinner, Msg } from "./Shared.jsx";
-import { PrivacyToggles, PRIVACY_LABELS } from "./PrivacyToggles.jsx";
-import { DeveloperShowcase } from "./DeveloperShowcase.jsx";
+import { PrivacyToggles } from "./PrivacyToggles.jsx";
 import { ProfileHub } from "./profile/ProfileHub.jsx";
 import { RatingSubscreen } from "./profile/RatingSubscreen.jsx";
 import { CvSubscreen } from "./profile/CvSubscreen.jsx";
@@ -106,25 +105,6 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
   }
   function updateRecruiterField(field, value) {
     setRecruiterState((s) => ({ ...s, data: { ...s.data, [field]: value } }));
-  }
-
-  // Приватность — настройка САМОГО аккаунта, не данные из анкеты, поэтому
-  // рендерится ВСЕГДА, даже когда вместо обычного профиля показана витрина
-  // разработчика (иначе автор не смог бы увидеть свои же тумблеры).
-  // Витрина — не обычный БД-профиль, кабинет рекрутера для неё не имеет
-  // смысла, переключатель не показываем.
-  if (p.is_showcase) {
-    return (
-      <div>
-        <DeveloperShowcase data={p} />
-        <PrivacyToggles
-          privacy={p.privacy}
-          onChange={updatePrivacy}
-          fields={Object.keys(PRIVACY_LABELS)}
-          hint={t("showcase.privacyHint")}
-        />
-      </div>
-    );
   }
 
   if (workspace === "recruiter") {

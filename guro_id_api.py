@@ -21,7 +21,6 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPri
 import guro_constants as GC
 import guro_crypto as GCR
 import guro_logic as GL
-import guro_showcase as GS
 import guro_tags as GT
 from config import Settings
 from guro_storage import GuroStorage
@@ -203,19 +202,6 @@ async def handle_me(request: web.Request) -> web.Response:
         summary["privacy"] = storage.get_recruiter_privacy(user["id"])
         return web.json_response(summary)
 
-    # Витрина разработчика — статичная карточка вместо профиля из БД (у автора
-    # может не быть анкеты в этом конкретном боте), см. guro_showcase.py.
-    # Приватность — исключение: это НАСТРОЙКИ САМОГО аккаунта, а не данные из
-    # анкеты, они существуют независимо от того, показываем ли мы витрину
-    # вместо обычного профиля. Без этого автор физически не может увидеть
-    # свои тумблеры — витрина рендерится ВМЕСТО экрана с ними.
-    if GS.is_showcase_username(user.get("username")):
-        return web.json_response(
-            {
-                **GS.PAYLOAD, "user_id": user["id"], "privacy": storage.get_privacy(user["id"]),
-                "unread_messages": storage.count_unread_messages(user["id"]),
-            }
-        )
     summary = _profile_summary(storage, user["id"])
     if summary is None:
         return web.json_response({"error": "NO_PROFILE"}, status=404)
@@ -498,11 +484,6 @@ async def handle_search(request: web.Request) -> web.Response:
         if response is None:
             return web.json_response({"error": "NO_RECRUITER_PROFILE"}, status=404)
         return web.json_response(response)
-
-    if GS.is_showcase_username(username or query):
-        # Витрина видна ВСЕМ полностью, без пейволла — это самореклама, не
-        # обычный профиль участника.
-        return web.json_response({**GS.PAYLOAD, "mode": "profile"})
 
     if user_id_param:
         # Заход по QR (?target=<id> у Mini App, см. App.jsx) — ищем по ID,

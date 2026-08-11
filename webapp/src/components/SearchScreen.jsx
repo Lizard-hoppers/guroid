@@ -9,7 +9,6 @@ import {
   WorkStatusBadge,
   Spinner,
 } from "./Shared.jsx";
-import { DeveloperShowcase } from "./DeveloperShowcase.jsx";
 import { haptic } from "../telegram.js";
 import { useLang } from "../i18n.jsx";
 
@@ -304,18 +303,14 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
         <RecruiterResultCard p={state.data} onBackToPersonal={backToPersonalCard} />
       )}
 
-      {state.data && state.data.mode === "profile" && state.data.is_showcase && (
-        <DeveloperShowcase data={state.data} />
-      )}
-
-      {state.data && state.data.mode === "profile" && !state.data.is_showcase &&
+      {state.data && state.data.mode === "profile" &&
         state.data.workspace !== "recruiter" && state.data.locked && (
         <LockedOverlay onUnlock={() => onNavigate("subscribe")}>
           <ResultCard p={state.data} />
         </LockedOverlay>
       )}
 
-      {state.data && state.data.mode === "profile" && !state.data.is_showcase &&
+      {state.data && state.data.mode === "profile" &&
         state.data.workspace !== "recruiter" && !state.data.locked && (
         <div>
           <ResultCard p={state.data} onWrite={onOpenMessages} onViewRecruiter={viewRecruiterCard} />

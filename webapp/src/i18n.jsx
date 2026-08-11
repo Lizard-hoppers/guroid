@@ -473,13 +473,6 @@ const STRINGS = {
   "onboardingScreen.profileNotFound": { ru: "Профиль не найден. Попробуйте позже.", en: "Profile not found. Please try again later." },
   "profileScreen.loading": { ru: "Загружаем профиль…", en: "Loading profile…" },
   "profileScreen.loadError": { ru: "Не удалось загрузить профиль. Попробуйте позже.", en: "Couldn't load profile. Please try again later." },
-  "showcase.privacyHint": {
-    ru: "По умолчанию ничего не видно чужим, кроме факта участия в GURO ID и партнёрств.",
-    en: "By default nothing is visible to others except the fact of being in GURO ID and partnerships.",
-  },
-  "showcase.role": { ru: "💻 Разработчик ботов и Mini Apps", en: "💻 Bot & Mini App developer" },
-  "showcase.portfolio": { ru: "Портфолио", en: "Portfolio" },
-  "showcase.contact": { ru: "✉️ Написать в Telegram", en: "✉️ Message on Telegram" },
 };
 
 // Список вертикалей в питче онбординга (не строка, отдельно от STRINGS) —

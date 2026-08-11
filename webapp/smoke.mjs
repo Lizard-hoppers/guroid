@@ -23,6 +23,21 @@ const ME_PAYLOAD = {
   cv_text: "5 лет в iGaming, руководил командой из 10 человек",
   website: "pavel-test.example",
   offering: "могу подключить трафик, есть база рекламодателей",
+  // Расширение "Моё CV" (12.08.2026) — все новые поля пустые в фикстуре,
+  // заполняются шагами теста (см. step "cv-expansion-fields").
+  cv_profession: null,
+  cv_verticals: null,
+  cv_grade: null,
+  cv_location: null,
+  cv_relocation_ready: null,
+  cv_polygraph_consent: null,
+  cv_salary_from: null,
+  cv_salary_to: null,
+  cv_salary_negotiable: false,
+  cv_skills: null,
+  cv_languages: null,
+  cv_certifications: null,
+  cv_experience: [],
   work_status: null,
   verified_screening: true,
   joined_community_at: "2026-01-01 00:00:00",
@@ -263,6 +278,54 @@ await page.route("**/api/profile", async (route) => {
   const body = route.request().postDataJSON();
   ME_PAYLOAD[body.field] = body.value;
   route.fulfill({ json: { [body.field]: body.value } });
+});
+// Расширение "Моё CV" (12.08.2026) — простые in-memory моки /api/cv/*, тот
+// же приём, что /api/profile выше.
+let cvExperience = [];
+let cvExperienceNextId = 1;
+await page.route("**/api/cv/field", async (route) => {
+  const body = route.request().postDataJSON();
+  ME_PAYLOAD[body.field] = body.value;
+  route.fulfill({ json: { [body.field]: body.value } });
+});
+await page.route("**/api/cv/profession", async (route) => {
+  const body = route.request().postDataJSON();
+  ME_PAYLOAD.cv_profession = body.value;
+  route.fulfill({ json: { cv_profession: body.value } });
+});
+await page.route("**/api/cv/grade", async (route) => {
+  const body = route.request().postDataJSON();
+  ME_PAYLOAD.cv_grade = body.value;
+  route.fulfill({ json: { cv_grade: body.value } });
+});
+await page.route("**/api/cv/flag", async (route) => {
+  const body = route.request().postDataJSON();
+  ME_PAYLOAD[body.field] = body.value;
+  route.fulfill({ json: { [body.field]: body.value } });
+});
+await page.route("**/api/cv/salary", async (route) => {
+  const body = route.request().postDataJSON();
+  ME_PAYLOAD.cv_salary_from = body.salary_from;
+  ME_PAYLOAD.cv_salary_to = body.salary_to;
+  ME_PAYLOAD.cv_salary_negotiable = body.negotiable;
+  route.fulfill({
+    json: {
+      cv_salary_from: body.salary_from, cv_salary_to: body.salary_to, cv_salary_negotiable: body.negotiable,
+    },
+  });
+});
+await page.route("**/api/cv/experience/*/delete", async (route) => {
+  const id = Number(route.request().url().match(/\/experience\/(\d+)\/delete/)[1]);
+  cvExperience = cvExperience.filter((e) => e.id !== id);
+  ME_PAYLOAD.cv_experience = cvExperience;
+  route.fulfill({ json: { status: "deleted" } });
+});
+await page.route("**/api/cv/experience", async (route) => {
+  const body = route.request().postDataJSON();
+  const entry = { id: cvExperienceNextId++, ...body };
+  cvExperience = [entry, ...cvExperience];
+  ME_PAYLOAD.cv_experience = cvExperience;
+  route.fulfill({ json: entry });
 });
 await page.route("**/api/work_status", async (route) => {
   const body = route.request().postDataJSON();
@@ -777,9 +840,85 @@ await step("edit-cv-field", async () => {
   await page.getByRole("button", { name: "Изменить" }).click();
   await sleep(200);
   await page.fill("textarea", "обновлённый текст CV из smoke-теста");
-  await page.getByRole("button", { name: "Сохранить" }).click();
+  // .first() — расширение "Моё CV" (12.08.2026) добавило постоянно видимую
+  // кнопку "Сохранить" у блока зарплатных ожиданий (SalaryField), она идёт
+  // ПОСЛЕ формы cv_text в DOM, .first() детерминированно берёт нужную.
+  await page.getByRole("button", { name: "Сохранить" }).first().click();
   await sleep(300);
   await page.screenshot({ path: "smoke_5d_cv_edited.png" });
+  await page.getByRole("button", { name: "‹ Профиль" }).click();
+  await sleep(300);
+});
+
+await step("cv-expansion-fields", async () => {
+  // Профиль уже активная вкладка (предыдущий шаг вернулся туда кнопкой
+  // "‹ Профиль") — повторный клик по табу словит каплю-индикатор поверх
+  // кнопки (известная особенность, см. drag-tab-blob), поэтому не кликаем.
+  await page.getByRole("button", { name: "Моё CV" }).click();
+  await sleep(300);
+
+  // Должность (с лимитом смен, см. GuroStorage.set_cv_profession) — 2-е
+  // поле .editable-field на экране (0=cv_text, 1=должность, 2=локация).
+  const professionField = page.locator(".editable-field").nth(1);
+  await professionField.getByRole("button", { name: "Заполнить" }).click();
+  await sleep(150);
+  await professionField.locator("input[type=text]").fill("Head of Marketing");
+  await professionField.getByRole("button", { name: "Сохранить" }).click();
+  await sleep(200);
+  const professionSaved = await professionField.getByText("Head of Marketing").isVisible().catch(() => false);
+  console.log("cv: profession saved:", professionSaved);
+
+  const locationField = page.locator(".editable-field").nth(2);
+  await locationField.getByRole("button", { name: "Заполнить" }).click();
+  await sleep(150);
+  await locationField.locator("input[type=text]").fill("Odesa");
+  await locationField.getByRole("button", { name: "Сохранить" }).click();
+  await sleep(200);
+  const locationSaved = await locationField.getByText("Odesa").isVisible().catch(() => false);
+  console.log("cv: location saved:", locationSaved);
+
+  await page.getByRole("button", { name: "Gambling", exact: true }).click();
+  await sleep(150);
+  await page.getByRole("button", { name: "Crypto", exact: true }).click();
+  await sleep(200);
+  const verticalsSelected = await page.locator(".vertical-chip.is-selected").count();
+  console.log("cv: verticals selected count (expect 2):", verticalsSelected);
+
+  await page.locator("select").selectOption({ index: 3 }); // Senior (5-8 years)
+  await sleep(200);
+
+  const relocationCard = page.locator(".card").filter({ hasText: "Готовность к релокации" });
+  await relocationCard.getByRole("button", { name: "Да" }).click();
+  await sleep(200);
+  const polygraphCard = page.locator(".card").filter({ hasText: "Согласие на полиграф" });
+  await polygraphCard.getByRole("button", { name: "Нет" }).click();
+  await sleep(200);
+
+  const salaryCard = page.locator(".card").filter({ hasText: "Зарплатные ожидания" });
+  await salaryCard.locator('input[type="number"]').nth(0).fill("2000");
+  await salaryCard.locator('input[type="number"]').nth(1).fill("3500");
+  await salaryCard.getByRole("button", { name: "Сохранить" }).click();
+  await sleep(200);
+
+  await page.screenshot({ path: "smoke_5k_cv_expansion_fields.png" });
+
+  const experienceCard = page.locator(".card").filter({ hasText: "Опыт работы" });
+  await experienceCard.getByRole("button", { name: "+ Добавить опыт" }).click();
+  await sleep(150);
+  const expInputs = experienceCard.locator('input[type="text"]');
+  await expInputs.nth(0).fill("GURO Co");
+  await expInputs.nth(1).fill("Marketing Lead");
+  await experienceCard.getByRole("button", { name: "Сохранить" }).click();
+  await sleep(200);
+  const entryVisible = await experienceCard.getByText("Marketing Lead — GURO Co").isVisible().catch(() => false);
+  console.log("cv: experience entry added:", entryVisible);
+  await page.screenshot({ path: "smoke_5l_cv_experience_added.png" });
+
+  await experienceCard.getByRole("button", { name: "Удалить" }).click();
+  await sleep(200);
+  const entryGone = !(await experienceCard.getByText("Marketing Lead — GURO Co").isVisible().catch(() => false));
+  console.log("cv: experience entry deleted after removal:", entryGone);
+
   await page.getByRole("button", { name: "‹ Профиль" }).click();
   await sleep(300);
 });

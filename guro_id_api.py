@@ -83,6 +83,8 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
         })
 
     extra = storage.get_extra_profile(user_id)
+    cv_extra = storage.get_cv_extra(user_id)
+    cv_experience = [dict(row) for row in storage.list_cv_experience(user_id)]
     return {
         "user_id": user_id,
         "username": profile["username"],
@@ -97,6 +99,10 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
         "cv_text": extra["cv_text"],
         "website": extra["website"],
         "offering": extra["offering"],
+        # Расширение "Моё CV" (12.08.2026) — cv_profession/cv_grade/... и
+        # список записей опыта работы, всё под одним тумблером show_cv.
+        **cv_extra,
+        "cv_experience": cv_experience,
         "work_status": guro_user["work_status"],
         "verified_screening": True,
         "joined_community_at": joined_at,
@@ -123,7 +129,10 @@ _PRIVACY_FIELD_MAP = {
     "show_profession": ("profession",),
     "show_tenure": ("joined_community_at", "days_in_community"),
     "show_reputation": ("reputation_score",),
-    "show_cv": ("cv_text",),
+    "show_cv": ("cv_text", "cv_profession") + GC.CV_SIMPLE_FIELDS + (
+        "cv_grade", "cv_relocation_ready", "cv_polygraph_consent",
+        "cv_salary_from", "cv_salary_to", "cv_salary_negotiable", "cv_experience",
+    ),
     "show_contacts": ("linkedin", "website"),
     "show_offers": ("looking_for", "offering"),
 }
@@ -140,7 +149,9 @@ def _apply_privacy(summary: dict, privacy: dict) -> dict:
     for flag, fields in _PRIVACY_FIELD_MAP.items():
         if not privacy.get(flag):
             for field in fields:
-                result[field] = None
+                # cv_experience — список, скрытое состояние это [], не None
+                # (тот же приём, что _apply_subscription_gate для partners).
+                result[field] = [] if field == "cv_experience" else None
     return result
 
 
@@ -311,7 +322,10 @@ def _recruiter_profile_response(storage: GuroStorage, requester_id: int, target_
 # website (это URL, не то, что ищут по смыслу), joined_community_at/
 # days_in_community/reputation_score (числа/даты, не текст). Порядок не
 # важен — просто склеиваются в один "поисковый слепок".
-_DIRECTORY_TEXT_FIELDS = ("name", "company", "vertical", "profession", "cv_text", "looking_for", "offering")
+_DIRECTORY_TEXT_FIELDS = (
+    "name", "company", "vertical", "profession", "cv_text", "looking_for", "offering",
+    "cv_profession", "cv_skills", "cv_verticals", "cv_location",
+)
 
 
 def _searchable_text(summary: dict) -> str:
@@ -775,6 +789,127 @@ async def handle_set_work_status(request: web.Request) -> web.Response:
     return web.json_response({"work_status": result})
 
 
+async def handle_set_cv_field(request: web.Request) -> web.Response:
+    """Простые текстовые поля CV (GC.CV_SIMPLE_FIELDS) — вертикали/локация/
+    навыки/языки/сертификаты. Должность и грейд — отдельные эндпоинты
+    (своя валидация), см. handle_set_cv_profession/handle_set_cv_grade."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    field = str(body.get("field", ""))
+    value = str(body.get("value", "")).strip()[:2000] or None
+    try:
+        extra = storage.set_cv_field(user["id"], field, value)
+    except ValueError:
+        return web.json_response({"error": "UNKNOWN_FIELD"}, status=400)
+    return web.json_response(extra)
+
+
+async def handle_set_cv_profession(request: web.Request) -> web.Response:
+    """Смена должности — не чаще CV_PROFESSION_MAX_CHANGES_PER_YEAR раз в
+    год (владелец, 2Правки СV.pdf), первое заполнение пустого поля не
+    считается сменой (см. GuroStorage.set_cv_profession)."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    value = str(body.get("value", "")).strip()[:200]
+    if not value:
+        return web.json_response({"error": "VALUE_REQUIRED"}, status=400)
+    try:
+        extra = storage.set_cv_profession(user["id"], value)
+    except ValueError:
+        return web.json_response({"error": "CHANGE_LIMIT_REACHED"}, status=400)
+    return web.json_response(extra)
+
+
+async def handle_set_cv_grade(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    raw = body.get("value")
+    value = str(raw).strip() if raw else None
+    try:
+        extra = storage.set_cv_grade(user["id"], value)
+    except ValueError:
+        return web.json_response({"error": "INVALID_GRADE"}, status=400)
+    return web.json_response(extra)
+
+
+async def handle_set_cv_flag(request: web.Request) -> web.Response:
+    """Тристейт да/нет/не указано — релокейт и полиграф."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    field = str(body.get("field", ""))
+    raw = body.get("value")
+    value = None if raw is None else bool(raw)
+    try:
+        extra = storage.set_cv_flag(user["id"], field, value)
+    except ValueError:
+        return web.json_response({"error": "UNKNOWN_FIELD"}, status=400)
+    return web.json_response(extra)
+
+
+async def handle_set_cv_salary(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    extra = storage.set_cv_salary(
+        user["id"],
+        salary_from=_parse_amount(body.get("salary_from")),
+        salary_to=_parse_amount(body.get("salary_to")),
+        negotiable=bool(body.get("negotiable")),
+    )
+    return web.json_response(extra)
+
+
+def _cv_experience_public(row) -> dict:
+    return {
+        "id": row["id"],
+        "company": row["company"],
+        "position": row["position"],
+        "date_from": row["date_from"],
+        "date_to": row["date_to"],
+        "location": row["location"],
+        "description": row["description"],
+    }
+
+
+async def handle_add_cv_experience(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    company = str(body.get("company", "")).strip()[:200]
+    position = str(body.get("position", "")).strip()[:200]
+    if not company or not position:
+        return web.json_response({"error": "COMPANY_AND_POSITION_REQUIRED"}, status=400)
+    try:
+        entry = storage.add_cv_experience(
+            user["id"],
+            company=company,
+            position=position,
+            date_from=str(body.get("date_from", "")).strip()[:50] or None,
+            date_to=str(body.get("date_to", "")).strip()[:50] or None,
+            location=str(body.get("location", "")).strip()[:200] or None,
+            description=str(body.get("description", "")).strip()[:2000] or None,
+        )
+    except ValueError:
+        return web.json_response({"error": "LIMIT_REACHED"}, status=400)
+    return web.json_response(_cv_experience_public(entry))
+
+
+async def handle_delete_cv_experience(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        entry_id = int(request.match_info["entry_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    if not storage.delete_cv_experience(entry_id, user["id"]):
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    return web.json_response({"status": "deleted"})
+
+
 async def handle_get_qr(request: web.Request) -> web.Response:
     """Deep-link на /start бота с payload guro_<user_id> — сканирующий
     получает от бота сообщение с web_app-кнопкой на Mini App с этим
@@ -1087,6 +1222,13 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/privacy", handle_set_privacy)
     app.router.add_post("/api/profile", handle_set_profile_field)
     app.router.add_post("/api/work_status", handle_set_work_status)
+    app.router.add_post("/api/cv/field", handle_set_cv_field)
+    app.router.add_post("/api/cv/profession", handle_set_cv_profession)
+    app.router.add_post("/api/cv/grade", handle_set_cv_grade)
+    app.router.add_post("/api/cv/flag", handle_set_cv_flag)
+    app.router.add_post("/api/cv/salary", handle_set_cv_salary)
+    app.router.add_post("/api/cv/experience", handle_add_cv_experience)
+    app.router.add_post("/api/cv/experience/{entry_id}/delete", handle_delete_cv_experience)
     app.router.add_post("/api/recruiter/profile", handle_set_recruiter_profile_field)
     app.router.add_post("/api/recruiter/privacy", handle_set_recruiter_privacy)
     app.router.add_get("/api/qr", handle_get_qr)

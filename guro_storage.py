@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import guro_constants as GC
@@ -90,6 +90,29 @@ CREATE TABLE IF NOT EXISTS guro_vacancies (
 );
 CREATE INDEX IF NOT EXISTS idx_guro_vacancies_author ON guro_vacancies(author_id);
 CREATE INDEX IF NOT EXISTS idx_guro_vacancies_status_lang ON guro_vacancies(status, lang);
+
+-- Расширение "Моё CV" (12.08.2026) — история изменений должности (для
+-- лимита "не чаще 2 раз в год", см. GuroStorage.set_cv_profession) и
+-- отдельные записи опыта работы (один человек -> много мест работы).
+CREATE TABLE IF NOT EXISTS guro_profession_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    changed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_guro_profession_changes_user ON guro_profession_changes(user_id);
+
+CREATE TABLE IF NOT EXISTS guro_cv_experience (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    company TEXT,
+    position TEXT,
+    date_from TEXT,
+    date_to TEXT,
+    location TEXT,
+    description TEXT,
+    created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_guro_cv_experience_user ON guro_cv_experience(user_id);
 """
 
 
@@ -129,6 +152,17 @@ class GuroStorage:
             self._ensure_column("guro_recruiter_profiles", field, "TEXT")
         for field in GC.PRIVACY_FIELDS:
             self._ensure_column("guro_recruiter_profiles", field, "INTEGER DEFAULT 0")
+        # Расширение "Моё CV" (12.08.2026) — новые поля личного профиля,
+        # гейтятся существующим show_cv (см. guro_constants.CV_SIMPLE_FIELDS).
+        self._ensure_column("guro_users", "cv_profession", "TEXT")
+        for field in GC.CV_SIMPLE_FIELDS:
+            self._ensure_column("guro_users", field, "TEXT")
+        self._ensure_column("guro_users", "cv_grade", "TEXT")
+        self._ensure_column("guro_users", "cv_relocation_ready", "INTEGER")
+        self._ensure_column("guro_users", "cv_polygraph_consent", "INTEGER")
+        self._ensure_column("guro_users", "cv_salary_from", "REAL")
+        self._ensure_column("guro_users", "cv_salary_to", "REAL")
+        self._ensure_column("guro_users", "cv_salary_negotiable", "INTEGER DEFAULT 0")
         self._conn.commit()
 
     def _ensure_column(self, table: str, column: str, ddl: str) -> None:
@@ -621,5 +655,136 @@ class GuroStorage:
         self._conn.execute(
             "UPDATE guro_vacancies SET status=? WHERE id=?", (GC.VACANCY_STATUS_CLOSED, vacancy_id),
         )
+        self._conn.commit()
+        return True
+
+    # --- расширение "Моё CV" (12.08.2026) ---------------------------------
+
+    _CV_ALL_FIELDS = ("cv_profession",) + GC.CV_SIMPLE_FIELDS + (
+        "cv_grade", "cv_relocation_ready", "cv_polygraph_consent",
+        "cv_salary_from", "cv_salary_to", "cv_salary_negotiable",
+    )
+
+    def get_cv_extra(self, user_id: int) -> dict:
+        row = self.get_or_create_guro_user(user_id)
+        out = {field: row[field] for field in GC.CV_SIMPLE_FIELDS}
+        out["cv_profession"] = row["cv_profession"]
+        out["cv_grade"] = row["cv_grade"]
+        out["cv_relocation_ready"] = None if row["cv_relocation_ready"] is None else bool(row["cv_relocation_ready"])
+        out["cv_polygraph_consent"] = None if row["cv_polygraph_consent"] is None else bool(row["cv_polygraph_consent"])
+        out["cv_salary_from"] = row["cv_salary_from"]
+        out["cv_salary_to"] = row["cv_salary_to"]
+        out["cv_salary_negotiable"] = bool(row["cv_salary_negotiable"])
+        return out
+
+    def set_cv_field(self, user_id: int, field: str, value: str | None) -> dict:
+        """Простые текстовые поля CV (см. CV_SIMPLE_FIELDS) — должность и
+        грейд НЕ сюда, у них своя валидация (see set_cv_profession/set_cv_grade)."""
+        if field not in GC.CV_SIMPLE_FIELDS:
+            raise ValueError("UNKNOWN_FIELD")
+        self.get_or_create_guro_user(user_id)
+        self._conn.execute(
+            f"UPDATE guro_users SET {field}=?, updated_at=? WHERE user_id=?",
+            (value, self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return self.get_cv_extra(user_id)
+
+    def _count_profession_changes_last_year(self, user_id: int) -> int:
+        since = self._now() - timedelta(days=365)
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM guro_profession_changes WHERE user_id=? AND changed_at>=?",
+            (user_id, GL.format_db_datetime(since)),
+        ).fetchone()
+        return row["n"]
+
+    def set_cv_profession(self, user_id: int, value: str) -> dict:
+        """Первое заполнение пустого поля НЕ считается сменой (см. ТЗ
+        владельца — лимит против "сегодня менеджер, завтра директор", не
+        против заполнения анкеты с нуля). Поднимает ValueError('CHANGE_LIMIT_REACHED')."""
+        row = self.get_or_create_guro_user(user_id)
+        current = row["cv_profession"]
+        is_real_change = bool(current) and current != value
+        if is_real_change and self._count_profession_changes_last_year(user_id) >= GC.CV_PROFESSION_MAX_CHANGES_PER_YEAR:
+            raise ValueError("CHANGE_LIMIT_REACHED")
+        self._conn.execute(
+            "UPDATE guro_users SET cv_profession=?, updated_at=? WHERE user_id=?",
+            (value, self._now_str(), user_id),
+        )
+        if is_real_change:
+            self._conn.execute(
+                "INSERT INTO guro_profession_changes (user_id, changed_at) VALUES (?,?)",
+                (user_id, self._now_str()),
+            )
+        self._conn.commit()
+        return self.get_cv_extra(user_id)
+
+    def set_cv_grade(self, user_id: int, value: str | None) -> dict:
+        if value is not None and value not in GC.CV_GRADE_LEVELS:
+            raise ValueError("INVALID_GRADE")
+        self.get_or_create_guro_user(user_id)
+        self._conn.execute(
+            "UPDATE guro_users SET cv_grade=?, updated_at=? WHERE user_id=?",
+            (value, self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return self.get_cv_extra(user_id)
+
+    def set_cv_flag(self, user_id: int, field: str, value: bool | None) -> dict:
+        """Тристейт (да/нет/не указано) для релокейта и полиграфа."""
+        if field not in ("cv_relocation_ready", "cv_polygraph_consent"):
+            raise ValueError("UNKNOWN_FIELD")
+        self.get_or_create_guro_user(user_id)
+        db_value = None if value is None else (1 if value else 0)
+        self._conn.execute(
+            f"UPDATE guro_users SET {field}=?, updated_at=? WHERE user_id=?",
+            (db_value, self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return self.get_cv_extra(user_id)
+
+    def set_cv_salary(
+        self, user_id: int, *, salary_from: float | None, salary_to: float | None, negotiable: bool,
+    ) -> dict:
+        self.get_or_create_guro_user(user_id)
+        self._conn.execute(
+            "UPDATE guro_users SET cv_salary_from=?, cv_salary_to=?, cv_salary_negotiable=?, "
+            "updated_at=? WHERE user_id=?",
+            (salary_from, salary_to, 1 if negotiable else 0, self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return self.get_cv_extra(user_id)
+
+    def list_cv_experience(self, user_id: int) -> list[sqlite3.Row]:
+        return self._conn.execute(
+            "SELECT * FROM guro_cv_experience WHERE user_id=? ORDER BY created_at DESC", (user_id,)
+        ).fetchall()
+
+    def add_cv_experience(
+        self, user_id: int, *, company: str, position: str, date_from: str | None = None,
+        date_to: str | None = None, location: str | None = None, description: str | None = None,
+    ) -> sqlite3.Row:
+        """Поднимает ValueError('LIMIT_REACHED') сверх CV_EXPERIENCE_MAX
+        записей на человека — защита от бесконечного разрастания карточки."""
+        existing = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM guro_cv_experience WHERE user_id=?", (user_id,)
+        ).fetchone()
+        if existing["n"] >= GC.CV_EXPERIENCE_MAX:
+            raise ValueError("LIMIT_REACHED")
+        cur = self._conn.execute(
+            "INSERT INTO guro_cv_experience (user_id, company, position, date_from, date_to, "
+            "location, description, created_at) VALUES (?,?,?,?,?,?,?,?)",
+            (user_id, company, position, date_from, date_to, location, description, self._now_str()),
+        )
+        self._conn.commit()
+        return self._conn.execute("SELECT * FROM guro_cv_experience WHERE id=?", (cur.lastrowid,)).fetchone()
+
+    def delete_cv_experience(self, entry_id: int, user_id: int) -> bool:
+        row = self._conn.execute(
+            "SELECT * FROM guro_cv_experience WHERE id=?", (entry_id,)
+        ).fetchone()
+        if row is None or row["user_id"] != user_id:
+            return False
+        self._conn.execute("DELETE FROM guro_cv_experience WHERE id=?", (entry_id,))
         self._conn.commit()
         return True

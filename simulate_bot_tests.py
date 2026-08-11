@@ -2414,6 +2414,7 @@ def test_guro_id_storage():
     from datetime import datetime, timedelta, timezone
     from storage import Storage
     from guro_storage import GuroStorage
+    import guro_constants as GC
 
     with tempfile.TemporaryDirectory() as d:
         db_path = Path(d) / "t.sqlite3"
@@ -2518,6 +2519,17 @@ def test_guro_id_storage():
         check(stats["declined"] == 0, "dashboard_stats: declined=0")
         check(stats["active_subscriptions"] == 1, "dashboard_stats: active_subscriptions=1 после activate_subscription")
         check(stats["tracked_users"] >= 3, "dashboard_stats: tracked_users учитывает всех с guro_users row")
+
+        # расширение "Моё CV" (12.08.2026) — потолок записей опыта работы
+        for i in range(GC.CV_EXPERIENCE_MAX):
+            gst3.add_cv_experience(1, company=f"Co{i}", position="Dev")
+        check(len(gst3.list_cv_experience(1)) == GC.CV_EXPERIENCE_MAX,
+              f"добавлено ровно CV_EXPERIENCE_MAX={GC.CV_EXPERIENCE_MAX} записей")
+        try:
+            gst3.add_cv_experience(1, company="Overflow", position="Dev")
+            check(False, "запись сверх CV_EXPERIENCE_MAX должна кидать LIMIT_REACHED")
+        except ValueError as e:
+            check(str(e) == "LIMIT_REACHED", "потолок записей опыта -> ValueError(LIMIT_REACHED)")
 
 
 def _guro_make_init_data(token: str, user: dict) -> str:
@@ -2709,6 +2721,117 @@ async def _run_guro_id_api_sim():
                 check(body["looking_for"] == "ищу партнёров" and body["offering"] == "консультации по трафику",
                       "show_offers включён -> looking_for И offering видны разом (одна пара)")
                 check(body["profession"] == "Manager", "show_profession включён -> профессия видна")
+
+                # --- расширение "Моё CV" (12.08.2026) ---------------------------
+
+                resp = await client.post("/api/cv/field", headers=auth_100,
+                                          json={"field": "unknown_field", "value": "x"})
+                check(resp.status == 400, "POST /api/cv/field с неизвестным полем -> 400")
+
+                resp = await client.post("/api/cv/field", headers=auth_100,
+                                          json={"field": "cv_skills", "value": "Python, SQL"})
+                check(resp.status == 200, "POST /api/cv/field cv_skills -> 200")
+                body = await resp.json()
+                check(body["cv_skills"] == "Python, SQL", "/api/cv/field возвращает обновлённое значение")
+
+                resp = await client.post("/api/cv/profession", headers=auth_100, json={"value": "Менеджер"})
+                check(resp.status == 200, "POST /api/cv/profession первое заполнение -> 200")
+                body = await resp.json()
+                check(body["cv_profession"] == "Менеджер", "cv_profession сохранился")
+
+                resp = await client.post("/api/cv/profession", headers=auth_100, json={"value": ""})
+                check(resp.status == 400, "POST /api/cv/profession с пустым значением -> 400")
+
+                resp = await client.post("/api/cv/profession", headers=auth_100, json={"value": "Директор"})
+                check(resp.status == 200, "1-я реальная смена должности (из 2 разрешённых) -> 200")
+                resp = await client.post("/api/cv/profession", headers=auth_100, json={"value": "C-Level"})
+                check(resp.status == 200, "2-я реальная смена должности -> 200")
+                resp = await client.post("/api/cv/profession", headers=auth_100, json={"value": "Ещё раз"})
+                check(resp.status == 400, "3-я смена должности за год -> 400 CHANGE_LIMIT_REACHED")
+                body = await resp.json()
+                check(body["error"] == "CHANGE_LIMIT_REACHED", "тело ответа содержит CHANGE_LIMIT_REACHED")
+
+                resp = await client.post("/api/cv/grade", headers=auth_100, json={"value": "Not A Grade"})
+                check(resp.status == 400, "POST /api/cv/grade с невалидным значением -> 400 INVALID_GRADE")
+                resp = await client.post("/api/cv/grade", headers=auth_100,
+                                          json={"value": GC.CV_GRADE_LEVELS[2]})
+                check(resp.status == 200, "POST /api/cv/grade из списка -> 200")
+                body = await resp.json()
+                check(body["cv_grade"] == GC.CV_GRADE_LEVELS[2], "cv_grade сохранился")
+
+                resp = await client.post("/api/cv/flag", headers=auth_100,
+                                          json={"field": "cv_relocation_ready", "value": True})
+                check(resp.status == 200, "POST /api/cv/flag relocation=True -> 200")
+                body = await resp.json()
+                check(body["cv_relocation_ready"] is True, "cv_relocation_ready=True сохранился")
+                resp = await client.post("/api/cv/flag", headers=auth_100,
+                                          json={"field": "cv_relocation_ready", "value": None})
+                body = await resp.json()
+                check(body["cv_relocation_ready"] is None, "cv_relocation_ready можно вернуть в 'не указано' (None)")
+                resp = await client.post("/api/cv/flag", headers=auth_100,
+                                          json={"field": "cv_polygraph_consent", "value": False})
+                body = await resp.json()
+                check(body["cv_polygraph_consent"] is False, "cv_polygraph_consent=False сохранился")
+                resp = await client.post("/api/cv/flag", headers=auth_100,
+                                          json={"field": "not_a_flag", "value": True})
+                check(resp.status == 400, "POST /api/cv/flag с неизвестным полем -> 400")
+
+                resp = await client.post("/api/cv/salary", headers=auth_100,
+                                          json={"salary_from": "2000", "salary_to": "3000", "negotiable": False})
+                check(resp.status == 200, "POST /api/cv/salary -> 200")
+                body = await resp.json()
+                check(body["cv_salary_from"] == 2000.0 and body["cv_salary_to"] == 3000.0,
+                      "вилка зарплаты сохранилась")
+                check(body["cv_salary_negotiable"] is False, "negotiable=False сохранился")
+                resp = await client.post("/api/cv/salary", headers=auth_100,
+                                          json={"salary_from": None, "salary_to": None, "negotiable": True})
+                body = await resp.json()
+                check(body["cv_salary_from"] is None and body["cv_salary_negotiable"] is True,
+                      "'по договорённости' можно выставить без чисел")
+
+                resp = await client.post("/api/cv/experience", headers=auth_100,
+                                          json={"company": "", "position": "PM"})
+                check(resp.status == 400, "POST /api/cv/experience без company -> 400")
+
+                resp = await client.post("/api/cv/experience", headers=auth_100, json={
+                    "company": "GURO Co", "position": "Manager",
+                    "date_from": "2020", "date_to": "2023", "location": "Odessa",
+                    "description": "Управлял командой",
+                })
+                check(resp.status == 200, "POST /api/cv/experience валидная запись -> 200")
+                body = await resp.json()
+                exp_id = body["id"]
+                check(body["company"] == "GURO Co" and body["position"] == "Manager",
+                      "запись опыта содержит company/position")
+
+                resp = await client.get("/api/me", headers=auth_100)
+                body = await resp.json()
+                check(len(body["cv_experience"]) == 1, "/api/me: cv_experience содержит добавленную запись")
+                check(body["cv_skills"] == "Python, SQL", "/api/me: cv_skills виден себе")
+                check(body["cv_grade"] == GC.CV_GRADE_LEVELS[2], "/api/me: cv_grade виден себе")
+
+                resp = await client.get("/api/search?username=initiator", headers=auth_200)
+                body = await resp.json()
+                check(body["cv_skills"] == "Python, SQL", "show_cv включён -> cv_skills виден в чужом поиске")
+                check(len(body["cv_experience"]) == 1, "show_cv включён -> cv_experience виден в чужом поиске")
+
+                await client.post("/api/privacy", headers=auth_100, json={"field": "show_cv", "value": False})
+                resp = await client.get("/api/search?username=initiator", headers=auth_200)
+                body = await resp.json()
+                check(body["cv_skills"] is None, "show_cv выключен -> cv_skills скрыт в чужом поиске")
+                check(body["cv_experience"] == [], "show_cv выключен -> cv_experience = [] (не null) в чужом поиске")
+                await client.post("/api/privacy", headers=auth_100, json={"field": "show_cv", "value": True})
+
+                resp = await client.post(f"/api/cv/experience/{exp_id}/delete", headers=auth_200)
+                check(resp.status == 404, "DELETE чужой записи опыта -> 404 (не автор)")
+                resp = await client.post(f"/api/cv/experience/{exp_id}/delete", headers=auth_100)
+                check(resp.status == 200, "DELETE своей записи опыта -> 200")
+                resp = await client.post(f"/api/cv/experience/{exp_id}/delete", headers=auth_100)
+                check(resp.status == 404, "повторное удаление уже удалённой записи -> 404")
+
+                resp = await client.get("/api/me", headers=auth_100)
+                body = await resp.json()
+                check(body["cv_experience"] == [], "после удаления cv_experience снова пуст")
 
                 # приватность: initiator включает показ своего имени
                 resp = await client.post("/api/privacy", headers=auth_100,

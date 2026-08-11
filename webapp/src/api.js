@@ -169,6 +169,38 @@ export function getQr() {
   return request("/api/qr");
 }
 
+// Расширение "Моё CV" (12.08.2026) — см. guro_id_api.py /api/cv/*.
+export function setCvField(field, value) {
+  return request("/api/cv/field", { method: "POST", body: JSON.stringify({ field, value }) });
+}
+
+export function setCvProfession(value) {
+  return request("/api/cv/profession", { method: "POST", body: JSON.stringify({ value }) });
+}
+
+export function setCvGrade(value) {
+  return request("/api/cv/grade", { method: "POST", body: JSON.stringify({ value }) });
+}
+
+export function setCvFlag(field, value) {
+  return request("/api/cv/flag", { method: "POST", body: JSON.stringify({ field, value }) });
+}
+
+export function setCvSalary({ salaryFrom, salaryTo, negotiable }) {
+  return request("/api/cv/salary", {
+    method: "POST",
+    body: JSON.stringify({ salary_from: salaryFrom || null, salary_to: salaryTo || null, negotiable: !!negotiable }),
+  });
+}
+
+export function addCvExperience(entry) {
+  return request("/api/cv/experience", { method: "POST", body: JSON.stringify(entry) });
+}
+
+export function deleteCvExperience(id) {
+  return request(`/api/cv/experience/${encodeURIComponent(id)}/delete`, { method: "POST" });
+}
+
 // Личные сообщения внутри прилы (Фаза 1, 11.08.2026) — см. guro_id_api.py.
 export function getMessages() {
   return request("/api/messages");

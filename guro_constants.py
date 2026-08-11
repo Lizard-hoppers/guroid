@@ -171,3 +171,27 @@ VACANCY_LANGS = ("ru", "en")
 VACANCY_STATUS_ACTIVE = "active"
 VACANCY_STATUS_CLOSED = "closed"
 VACANCY_LIST_LIMIT = 30
+
+# Расширение "Моё CV" (12.08.2026, по макету владельца "2Правки СV.pdf") —
+# новые поля личного профиля, которых нет в анкете бота, редактируются
+# прямо в Mini App (тот же принцип, что EXTRA_PROFILE_FIELDS). Гейтятся
+# ОДНИМ уже существующим тумблером show_cv — не плодим новый тумблер под
+# каждое поле, это всё один логический раздел "Моё CV".
+CV_SIMPLE_FIELDS = ("cv_verticals", "cv_location", "cv_skills", "cv_languages", "cv_certifications")
+
+# "Должность не более 2 раз в год" (владелец, 2Правки СV.pdf) — чтобы
+# "сегодня менеджер, завтра директор" не подрывало доверие к CV. Считаем
+# только РЕАЛЬНЫЕ изменения (не первое заполнение пустого поля), см.
+# GuroStorage.set_cv_profession.
+CV_PROFESSION_MAX_CHANGES_PER_YEAR = 2
+
+# Ровно список грейдов из макета владельца — НЕ путать с constants.GRADES
+# (та номенклатура для анкеты бота/вакансий, других сгенерированных полей,
+# см. ТЗ) — тут воспроизведён буквально скриншот "Experience Level" из
+# присланного макета, сознательно другой список.
+CV_GRADE_LEVELS = (
+    "Junior (0–2 years)", "Mid (2–5 years)", "Senior (5–8 years)",
+    "Lead (8+ years)", "Head / Director", "C-Level / VP",
+)
+
+CV_EXPERIENCE_MAX = 20  # разумный потолок записей опыта работы на человека

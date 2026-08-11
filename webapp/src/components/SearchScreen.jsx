@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { search, searchByUserId, ApiError } from "../api.js";
+import { search, searchByUserId, browseVertical, ApiError } from "../api.js";
 import {
   Msg,
   MetricsRow,
@@ -11,6 +11,12 @@ import {
 } from "./Shared.jsx";
 import { DeveloperShowcase } from "./DeveloperShowcase.jsx";
 import { haptic } from "../telegram.js";
+
+// Канонический список вертикалей — ровно constants.VERTICALS в боте (то,
+// что реально пишется в profiles.vertical при регистрации, см.
+// handlers/flow.py). Browse по вертикали (Фаза 2, 11.08.2026) matches
+// именно эти значения (см. guro_id_api._directory_browse).
+const VERTICALS = ["Gambling", "Betting", "Crypto", "Dating", "E-Commerce", "FinTech", "Nutra", "Other"];
 
 // onWrite передаётся только для РАЗБЛОКИРОВАННОГО профиля (см. рендер ниже) —
 // то же условие подписки смотрящего, что уже пускает писать первым в
@@ -43,9 +49,9 @@ function ResultCard({ p, onWrite }) {
   );
 }
 
-// Компактная строка результата поиска по описанию (mode=list) — тап
-// открывает полную карточку тем же кодом, что и обычный поиск по
-// юзернейму (см. onOpen -> searchByUserId).
+// Компактная строка результата поиска по описанию/browse по вертикали
+// (mode=list) — тап открывает полную карточку тем же кодом, что и обычный
+// поиск по юзернейму (см. onOpen -> searchByUserId).
 function DirectoryRow({ r, onOpen }) {
   const heading = r.name || (r.username ? `@${r.username}` : "Без имени");
   return (
@@ -67,6 +73,11 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
   const [state, setState] = useState(
     deepLinkTargetId ? { loading: true, data: null, error: null } : { loading: false, data: null, error: null },
   );
+  // "ТОП рейтинга" (Фаза 2) — переключатель сортировки для последнего
+  // выполненного платного запроса (описание ИЛИ browse по вертикали),
+  // lastQuery хранит, что именно перезапустить при переключении.
+  const [sortTop, setSortTop] = useState(false);
+  const [lastQuery, setLastQuery] = useState(null); // {kind: "q"|"vertical", value}
 
   // Заход по QR (App.jsx передаёт ?target=<id> ОДИН раз, дальше сам гасит
   // проп) — сразу тянем карточку по user_id, минуя ручной ввод.
@@ -79,6 +90,19 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function runQuery(kind, value, top) {
+    setLastQuery({ kind, value });
+    setState({ loading: true, data: null, error: null });
+    try {
+      const data = kind === "vertical" ? await browseVertical(value, { top }) : await search(value, { top });
+      setState({ loading: false, data, error: null });
+      haptic("light");
+    } catch (error) {
+      setState({ loading: false, data: null, error });
+      haptic("error");
+    }
+  }
+
   // Одно поле на всё (10.08.2026): бэкенд сам решает, что это — точный
   // юзернейм (бесплатный тизер-профиль, mode=profile) или описание вроде
   // «менеджер в крипто» (платный поиск по открытым полям всего
@@ -87,15 +111,18 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
     e.preventDefault();
     const q = query.trim().replace(/^@/, "");
     if (!q) return;
-    setState({ loading: true, data: null, error: null });
-    try {
-      const data = await search(q);
-      setState({ loading: false, data, error: null });
-      haptic("light");
-    } catch (error) {
-      setState({ loading: false, data: null, error });
-      haptic("error");
-    }
+    await runQuery("q", q, sortTop);
+  }
+
+  async function onPickVertical(v) {
+    setQuery("");
+    await runQuery("vertical", v, sortTop);
+  }
+
+  function toggleTop() {
+    const next = !sortTop;
+    setSortTop(next);
+    if (lastQuery) runQuery(lastQuery.kind, lastQuery.value, next);
   }
 
   async function openFromList(userId) {
@@ -130,13 +157,24 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
             {state.loading ? "Ищем…" : "Найти"}
           </button>
         </form>
+
+        <div className="partner-meta" style={{ margin: "12px 0 6px" }}>
+          Или посмотрите по вертикали, если не знаете юзернейм (по подписке):
+        </div>
+        <div className="vertical-chips">
+          {VERTICALS.map((v) => (
+            <button key={v} type="button" className="vertical-chip" onClick={() => onPickVertical(v)}>
+              {v}
+            </button>
+          ))}
+        </div>
       </div>
 
       {state.loading && !state.data && <Spinner>Ищем…</Spinner>}
 
       {subscriptionRequired && (
         <div className="directory-paywall">
-          <strong>Поиск по описанию — по подписке</strong>
+          <strong>Поиск по описанию и вертикалям — по подписке</strong>
           <p className="partner-meta">
             Без подписки доступен только точный поиск по юзернейму.
           </p>
@@ -154,8 +192,15 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
         </Msg>
       )}
 
+      {state.data && state.data.mode === "list" && (
+        <label className="checkbox-row" style={{ margin: "12px 2px" }}>
+          <input type="checkbox" checked={sortTop} onChange={toggleTop} />
+          🏆 Сначала высокий рейтинг
+        </label>
+      )}
+
       {state.data && state.data.mode === "list" && state.data.results.length === 0 && (
-        <div className="partner-meta">Ничего не нашлось. Попробуйте другое описание.</div>
+        <div className="partner-meta">Ничего не нашлось. Попробуйте другое описание или вертикаль.</div>
       )}
 
       {state.data && state.data.mode === "list" && state.data.results.length > 0 && (

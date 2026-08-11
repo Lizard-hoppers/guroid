@@ -97,8 +97,14 @@ export function MetricsRow({ reputation, partnerships, daysInCommunity }) {
   );
 }
 
+// Офер/отзыв — публичны всегда (Фаза 2, 11.08.2026): в этом и смысл
+// счётчика сделок — проверить репутацию контакта. Суммы показывает
+// бэкенд только если инициатор включил show при создании заявки
+// (guro_id_api._profile_summary), поэтому здесь просто рендерим то, что
+// пришло — без своей логики видимости.
 export function PartnerRow({ partner }) {
   const displayName = partner.name || (partner.username ? `@${partner.username}` : "Без имени");
+  const hasAmount = partner.amount_received != null || partner.amount_paid != null;
   return (
     <div className="partner-row">
       <div className="avatar-dot">{initialOf(partner.name, partner.username)}</div>
@@ -107,7 +113,19 @@ export function PartnerRow({ partner }) {
         <div className="partner-meta">
           {partner.username && partner.name ? `@${partner.username} · ` : ""}
           {formatDate(partner.confirmed_at)}
+          {partner.vertical ? ` · ${partner.vertical}` : ""}
+          {partner.geo ? ` · ${partner.geo}` : ""}
         </div>
+        {partner.offer && <div className="partner-offer">{partner.offer}</div>}
+        {hasAmount && (
+          <div className="partner-meta">
+            {partner.amount_received != null && `Получено: $${partner.amount_received}`}
+            {partner.amount_received != null && partner.amount_paid != null && " · "}
+            {partner.amount_paid != null && `Оплачено: $${partner.amount_paid}`}
+            {" (со слов инициатора)"}
+          </div>
+        )}
+        {partner.review && <div className="partner-review">«{partner.review}»</div>}
       </div>
       {!partner.counts_toward_rating && <span className="badge-unrated">не влияет на рейтинг</span>}
     </div>

@@ -39,24 +39,44 @@ export function getMe() {
 
 // Универсальный поиск (10.08.2026): одно поле q= — бэкенд сам решает,
 // точный это юзернейм (mode=profile) или описание (mode=list,
-// платный directory-поиск), см. handle_search в guro_id_api.py.
-export function search(query) {
-  return request(`/api/search?q=${encodeURIComponent(query)}`);
+// платный directory-поиск), см. handle_search в guro_id_api.py. top=true
+// (Фаза 2) — сортировка "ТОП рейтинга" для описания (на точный юзернейм
+// не влияет, там всегда один профиль).
+export function search(query, { top } = {}) {
+  return request(`/api/search?q=${encodeURIComponent(query)}${top ? "&top=1" : ""}`);
 }
 
 export function searchByUserId(userId) {
   return request(`/api/search?user_id=${encodeURIComponent(userId)}`);
 }
 
-export function createPartnership({ confirmerUsername, vertical, geo }) {
+export function createPartnership({
+  confirmerUsername, vertical, geo, offer, amountReceived, amountPaid, review, amountVisible,
+}) {
   return request("/api/partnerships", {
     method: "POST",
     body: JSON.stringify({
       confirmer_username: confirmerUsername,
       vertical: vertical || null,
       geo: geo || null,
+      offer: offer || null,
+      amount_received: amountReceived || null,
+      amount_paid: amountPaid || null,
+      review: review || null,
+      amount_visible: !!amountVisible,
     }),
   });
+}
+
+// Browse по вертикали (Фаза 2, 11.08.2026) — альтернатива текстовому
+// поиску для тех, кто не знает точного юзернейма. top=true — сортировка
+// "ТОП рейтинга" вместо силы совпадения (тот же флаг, что у search()).
+export function browseVertical(vertical, { top } = {}) {
+  return request(`/api/search?vertical=${encodeURIComponent(vertical)}${top ? "&top=1" : ""}`);
+}
+
+export function getInviteLink() {
+  return request("/api/invite_link");
 }
 
 export function getPlans() {

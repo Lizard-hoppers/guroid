@@ -1,7 +1,41 @@
-import { EditableField } from "../Shared.jsx";
+import { useState } from "react";
+import { getInviteLink } from "../../api.js";
+import { EditableField, Msg } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
+import { openTelegramLink, haptic } from "../../telegram.js";
 
-export function ContactsSubscreen({ profile, privacy, onPrivacyChange, onFieldSaved, onBack }) {
+// «Пригласить коллегу» (Фаза 2, 11.08.2026, по PDF-фидбеку владельца) —
+// персональная одноразовая реф-ссылка (см. /api/invite_link ->
+// handlers/referral.py-совместимый формат), шарится через универсальный
+// t.me/share — работает даже там, где нет нативного Telegram.WebApp.shareURL.
+function InviteColleagueButton() {
+  const [state, setState] = useState({ loading: false, error: false });
+
+  async function onClick() {
+    setState({ loading: true, error: false });
+    try {
+      const { link } = await getInviteLink();
+      haptic("light");
+      const text = "Присоединяйся к Private Gambling Community через GURO ID";
+      openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
+      setState({ loading: false, error: false });
+    } catch {
+      setState({ loading: false, error: true });
+      haptic("error");
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <button type="button" className="btn secondary" onClick={onClick} disabled={state.loading}>
+        {state.loading ? "Готовим ссылку…" : "🔗 Пригласить коллегу"}
+      </button>
+      <Msg type="error">{state.error ? "Не удалось получить ссылку. Попробуйте ещё раз." : null}</Msg>
+    </div>
+  );
+}
+
+export function ContactsSubscreen({ profile, privacy, onPrivacyChange, onFieldSaved, onBack, onNavigateSub }) {
   return (
     <div>
       <button type="button" className="subscreen-back" onClick={onBack}>
@@ -26,6 +60,16 @@ export function ContactsSubscreen({ profile, privacy, onPrivacyChange, onFieldSa
           value={profile.website}
           onSaved={(v) => onFieldSaved("website", v)}
         />
+        <button
+          type="button"
+          className="profile-menu-item"
+          style={{ marginTop: 10 }}
+          onClick={() => onNavigateSub?.("qr")}
+        >
+          <span>Показать мой QR (визитка)</span>
+          <span className="profile-menu-item-chevron">›</span>
+        </button>
+        <InviteColleagueButton />
       </div>
       <PrivacyToggles
         privacy={privacy}

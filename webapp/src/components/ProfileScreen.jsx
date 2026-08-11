@@ -100,6 +100,7 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
         onPrivacyChange={updatePrivacy}
         onFieldSaved={updateField}
         onBack={() => setSub(null)}
+        onNavigateSub={setSub}
       />
     );
   }

@@ -2931,6 +2931,105 @@ async def _run_guro_id_api_sim():
                                           json={"confirmer_username": "confirmer"})
                 check(resp.status == 409, "повторная заявка <24ч -> 409 (анти-фрод)")
 
+                # --- Фаза 2 (11.08.2026): офер/суммы/отзыв в партнёрстве -------
+                st.save_profile({"user_id": 450, "username": "dealmaker", "name": "Deal Maker"})
+                st.save_profile({"user_id": 460, "username": "dealpartner", "name": "Deal Partner"})
+                app["storage"].activate_subscription(450, 30)
+                auth_450 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 450, "username": "dealmaker"})}
+
+                resp = await client.post("/api/partnerships", headers=auth_450, json={
+                    "confirmer_username": "dealpartner", "vertical": "iGaming", "geo": "Malta",
+                    "offer": "Привёл байера на казино-трафик",
+                    "amount_received": "1500", "amount_paid": "200.5",
+                    "review": "Отличная сделка, всё чётко и в срок",
+                    "amount_visible": True,
+                })
+                check(resp.status == 200, "POST /api/partnerships с офером/суммами/отзывом -> 200")
+                body = await resp.json()
+                app["storage"].respond_partnership(body["id"], responder_id=460, accept=True)
+
+                resp = await client.get("/api/search?username=dealmaker", headers=auth_200)
+                body = await resp.json()
+                partner = next(p for p in body["partners"] if p["user_id"] == 460)
+                check(partner["offer"] == "Привёл байера на казино-трафик",
+                      "офер виден в чужом поиске (публичен всегда)")
+                check(partner["review"] == "Отличная сделка, всё чётко и в срок",
+                      "отзыв виден в чужом поиске (публичен всегда)")
+                check(partner["amount_received"] == 1500.0, "сумма видна, т.к. amount_visible=True при создании")
+                check(partner["amount_paid"] == 200.5, "вторая сумма тоже видна")
+                check(partner["vertical"] == "iGaming" and partner["geo"] == "Malta",
+                      "вертикаль/гео конкретного партнёрства видны")
+                check(partner["initiator_id"] == 450, "видно, кто был инициатором (со слов кого офер/суммы)")
+
+                st.save_profile({"user_id": 470, "username": "dealmaker2", "name": "Deal Maker 2"})
+                app["storage"].activate_subscription(470, 30)
+                auth_470 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 470, "username": "dealmaker2"})}
+                resp = await client.post("/api/partnerships", headers=auth_470, json={
+                    "confirmer_username": "dealpartner",
+                    "offer": "Консультация по комплаенсу",
+                    "amount_received": "500",
+                    "review": "Норм",
+                })
+                body = await resp.json()
+                app["storage"].respond_partnership(body["id"], responder_id=460, accept=True)
+
+                resp = await client.get("/api/search?username=dealmaker2", headers=auth_200)
+                body = await resp.json()
+                partner2 = next(p for p in body["partners"] if p["user_id"] == 460)
+                check(partner2["offer"] == "Консультация по комплаенсу", "офер публичен и БЕЗ amount_visible")
+                check(partner2["amount_received"] is None,
+                      "amount_visible по умолчанию False -> сумма скрыта, несмотря на то что была указана")
+
+                # --- Фаза 2: browse по вертикали (альтернатива тексту поиска) ---
+                st.save_profile({"user_id": 480, "username": "gambler1", "name": "Gambler One", "vertical": "Gambling"})
+                st.save_profile({"user_id": 481, "username": "other1", "name": "Other One", "vertical": "Other: Web3 gaming"})
+                st.save_profile({"user_id": 482, "username": "gambler2", "name": "Gambler Two", "vertical": "Gambling"})
+                for uid, uname in ((480, "gambler1"), (481, "other1"), (482, "gambler2")):
+                    app["storage"].activate_subscription(uid, 30)
+                    auth_u = {"Authorization": "tma " + _guro_make_init_data(token, {"id": uid, "username": uname})}
+                    await client.post("/api/privacy", headers=auth_u, json={"field": "show_vertical", "value": True})
+                    await client.post("/api/privacy", headers=auth_u, json={"field": "show_reputation", "value": True})
+
+                st.save_profile({"user_id": 490, "username": "nosub2", "name": "No Sub 2"})
+                auth_490 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 490, "username": "nosub2"})}
+                resp = await client.get("/api/search?vertical=Gambling", headers=auth_490)
+                check(resp.status == 402, "browse по вертикали без подписки СМОТРЯЩЕГО -> 402")
+
+                resp = await client.get("/api/search?vertical=Gambling", headers=auth_200)
+                check(resp.status == 200, "browse по вертикали с подпиской -> 200")
+                body = await resp.json()
+                check(body["mode"] == "list", "browse по вертикали -> mode=list")
+                ids = [r["user_id"] for r in body["results"]]
+                check(480 in ids and 482 in ids, "browse находит обоих gambler1/gambler2 по вертикали Gambling")
+                check(400 not in ids,
+                      "browse НЕ путает с cryptomgr (у него вертикаль 'Крипто', это другое значение)")
+
+                resp = await client.get("/api/search?vertical=Other", headers=auth_200)
+                body = await resp.json()
+                ids2 = [r["user_id"] for r in body["results"]]
+                check(481 in ids2, "browse по 'Other' находит произвольные 'Other: <текст>' через startswith")
+
+                # ТОП рейтинга (top=1) — искусственно поднимаем репутацию gambler2
+                _conn3 = _sq.connect(db_path)
+                _conn3.execute("UPDATE guro_users SET reputation_score=90 WHERE user_id=482")
+                _conn3.commit()
+                _conn3.close()
+
+                resp = await client.get("/api/search?vertical=Gambling&top=1", headers=auth_200)
+                body = await resp.json()
+                top_ids = [r["user_id"] for r in body["results"]]
+                check(top_ids.index(482) < top_ids.index(480),
+                      "top=1 -> сортировка по репутации (gambler2=90 выше gambler1=50), а не по порядку совпадения")
+
+                # --- Фаза 2: «Пригласить коллегу» — персональная реф-ссылка -----
+                resp = await client.get("/api/invite_link", headers=auth_100)
+                check(resp.status == 200, "GET /api/invite_link -> 200")
+                body = await resp.json()
+                check(body["link"].startswith(f"https://t.me/{settings.bot_username}?start=ref_100_"),
+                      f"инвайт-ссылка в формате реф-системы, получено: {body['link']}")
+                resp = await client.get("/api/invite_link")
+                check(resp.status == 401, "GET /api/invite_link без Authorization -> 401")
+
                 resp = await client.get("/api/plans")
                 check(resp.status == 200, "GET /api/plans -> 200 (публичный эндпойнт, без авторизации)")
                 body = await resp.json()

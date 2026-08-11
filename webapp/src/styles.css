@@ -136,7 +136,7 @@ h3 {
 
 .partner-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   padding: 8px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -183,7 +183,22 @@ h3 {
   padding: 1px 6px;
 }
 
-input[type="text"] {
+/* Офер/отзыв в карточке партнёрства (Фаза 2, 11.08.2026) */
+.partner-offer {
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.partner-review {
+  font-size: 13px;
+  font-style: italic;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+input[type="text"],
+input[type="number"],
+textarea {
   width: 100%;
   padding: 12px 14px;
   border-radius: 12px;
@@ -195,8 +210,39 @@ input[type="text"] {
   outline: none;
 }
 
-input[type="text"]::placeholder {
+textarea {
+  resize: vertical;
+}
+
+input[type="text"]::placeholder,
+input[type="number"]::placeholder,
+textarea::placeholder {
   color: var(--text-dim);
+}
+
+/* Форма партнёрства: сумма в 2 колонки + чекбокс видимости (Фаза 2) */
+.amount-row {
+  display: flex;
+  gap: 8px;
+}
+
+.amount-row input {
+  margin-top: 0;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: auto;
+  accent-color: var(--gold);
 }
 
 label {
@@ -971,6 +1017,29 @@ label {
 
 .subscription-gate-note strong {
   color: var(--gold);
+}
+
+/* --- Browse по вертикали (Фаза 2, 11.08.2026) --- */
+
+.vertical-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vertical-chip {
+  padding: 7px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--glass-border);
+  background: #ffffff0d;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.vertical-chip:active {
+  background: var(--glass-bg);
 }
 
 /* --- Directory-поиск по описанию (10.08.2026) --- */

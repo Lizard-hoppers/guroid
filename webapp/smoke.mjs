@@ -61,6 +61,13 @@ const SUBSCRIBED_EXTRAS = {
       name: "Bob Partner",
       confirmed_at: "2026-07-01 12:00:00",
       counts_toward_rating: true,
+      vertical: "iGaming",
+      geo: "Malta",
+      offer: "Помог с интеграцией платёжки",
+      review: "Быстро и по делу",
+      amount_received: 800,
+      amount_paid: null,
+      initiator_id: 100,
     },
     {
       user_id: 300,
@@ -138,7 +145,10 @@ await page.addInitScript(() => {
       openInvoice(url, cb) {
         cb && cb("paid");
       },
-      openTelegramLink() {},
+      openTelegramLink(url) {
+        window.__openedLinks = window.__openedLinks || [];
+        window.__openedLinks.push(url);
+      },
     },
   };
 });
@@ -158,6 +168,27 @@ await page.route("**/api/search**", (route) => {
   }
   if (q === "unlockeduser") {
     return route.fulfill({ json: SEARCH_UNLOCKED });
+  }
+  const vertical = url.searchParams.get("vertical") || "";
+  if (vertical) {
+    if (!ME_PAYLOAD.is_subscribed) {
+      return route.fulfill({ status: 402, json: { error: "SUBSCRIPTION_REQUIRED" } });
+    }
+    const top = url.searchParams.get("top") === "1";
+    const results = [
+      {
+        user_id: 710, username: "gambler_low", name: "Low Rep Gambler", vertical,
+        profession: "Manager", company: null, work_status: null,
+        reputation_score: 55.0, confirmed_partnerships: 1,
+      },
+      {
+        user_id: 720, username: "gambler_high", name: "High Rep Gambler", vertical,
+        profession: "Director", company: null, work_status: "looking",
+        reputation_score: 91.0, confirmed_partnerships: 5,
+      },
+    ];
+    if (top) results.sort((a, b) => b.reputation_score - a.reputation_score);
+    return route.fulfill({ json: { mode: "list", results, truncated: false } });
   }
   if (!ME_PAYLOAD.is_subscribed) {
     return route.fulfill({ status: 402, json: { error: "SUBSCRIPTION_REQUIRED" } });
@@ -193,6 +224,12 @@ await page.route("**/api/work_status", async (route) => {
 });
 await page.route("**/api/qr", (route) =>
   route.fulfill({ json: { deeplink: "https://t.me/GamblingCommunitybot?start=guro_100" } }),
+);
+await page.route("**/api/invite_link", (route) =>
+  route.fulfill({ json: { link: "https://t.me/GamblingCommunitybot?start=ref_100_1" } }),
+);
+await page.route("**/api/partnerships", (route) =>
+  route.fulfill({ json: { id: 999, status: "pending" } }),
 );
 await page.route("**/api/messages/with/**", (route) => {
   const url = new URL(route.request().url());
@@ -327,6 +364,21 @@ await step("goto-confirm", async () => {
   await sleep(400);
   await page.screenshot({ path: "smoke_3_confirm.png" });
 });
+await step("confirm-partnership-form-fields", async () => {
+  // Фаза 2 (11.08.2026): офер/суммы/отзыв в форме "Подтвердить партнёрство".
+  await page.fill('input[placeholder="Юзернейм контрагента"]', "confirmer");
+  await page.fill('input[placeholder="Например: привёл байера на казино-трафик"]', "Свёл с байером");
+  await page.fill('input[placeholder="Я получил, $"]', "500");
+  await page.fill('input[placeholder="Я заплатил, $"]', "50");
+  await page.getByRole("checkbox").click();
+  await page.fill('textarea[placeholder="Как прошло сотрудничество"]', "Отличная сделка");
+  await page.screenshot({ path: "smoke_3b_confirm_filled.png" });
+  await page.getByRole("button", { name: "Отправить на подтверждение" }).click();
+  await sleep(400);
+  console.log("partnership form submitted ok:",
+    await page.getByText("Заявка отправлена").isVisible().catch(() => false));
+  await page.screenshot({ path: "smoke_3c_confirm_sent.png" });
+});
 await step("goto-subscribe", async () => {
   await page.getByRole("button", { name: "Подписка" }).click();
   await sleep(400);
@@ -378,6 +430,29 @@ await step("profile-my-qr", async () => {
   await sleep(300);
 });
 
+await step("contacts-qr-shortcut-and-invite", async () => {
+  await page.getByRole("button", { name: "Мои контакты" }).click();
+  await sleep(300);
+  await page.screenshot({ path: "smoke_5i_contacts.png" });
+
+  await page.getByRole("button", { name: "Показать мой QR (визитка)" }).click();
+  await sleep(400);
+  console.log("contacts -> QR shortcut opens QR screen:",
+    await page.$(".qr-card img").then((el) => !!el).catch(() => false));
+  await page.getByRole("button", { name: "‹ Профиль" }).click();
+  await sleep(300);
+  await page.getByRole("button", { name: "Мои контакты" }).click();
+  await sleep(300);
+
+  await page.getByRole("button", { name: "🔗 Пригласить коллегу" }).click();
+  await sleep(400);
+  const openedLinks = await page.evaluate(() => window.__openedLinks || []);
+  console.log("invite colleague opened share link:", openedLinks[openedLinks.length - 1]);
+  await page.screenshot({ path: "smoke_5j_invite_colleague.png" });
+  await page.getByRole("button", { name: "‹ Профиль" }).click();
+  await sleep(300);
+});
+
 await step("profile-subscription-gate", async () => {
   await page.getByRole("button", { name: "Мой рейтинг" }).click();
   await sleep(300);
@@ -413,6 +488,24 @@ await step("directory-search-subscribed", async () => {
     await sleep(400);
     await page.screenshot({ path: "smoke_2e_directory_opened_profile.png" });
   }
+});
+
+await step("browse-by-vertical-and-top-sort", async () => {
+  // Уже на вкладке "Поиск" (предыдущий шаг её не покидал) — см. заметку
+  // про клик по уже активному табу в search-unlocked-write-message выше.
+  await page.getByRole("button", { name: "Gambling", exact: true }).click();
+  await sleep(400);
+  const rows = await page.$$(".directory-row");
+  console.log("browse by vertical results found:", rows.length);
+  await page.screenshot({ path: "smoke_2j_browse_vertical.png" });
+
+  const topCheckbox = page.getByRole("checkbox", { name: /Сначала высокий рейтинг/ });
+  console.log("top-rating toggle visible:", await topCheckbox.isVisible().catch(() => false));
+  await topCheckbox.click();
+  await sleep(400);
+  const namesAfterTop = await page.$$eval(".directory-row-name", (els) => els.map((e) => e.textContent));
+  console.log("order after top=1 toggle (expect High Rep first):", namesAfterTop);
+  await page.screenshot({ path: "smoke_2k_browse_top_sorted.png" });
 });
 
 await step("onboarding-no-profile", async () => {

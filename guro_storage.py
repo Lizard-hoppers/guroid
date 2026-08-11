@@ -77,6 +77,16 @@ class GuroStorage:
         for field in GC.EXTRA_PROFILE_FIELDS:
             self._ensure_column("guro_users", field, "TEXT")
         self._ensure_column("guro_users", "work_status", "TEXT")
+        # Фаза 2 (11.08.2026) — офер/суммы/отзыв в форме подтверждения
+        # партнёрства (см. PDF-фидбек владельца). amount_visible=0 по
+        # умолчанию (суммы приватны, owner решает при создании — opt-in,
+        # тот же принцип, что PRIVACY_FIELDS), offer/review публичны всегда
+        # (это и есть смысл "проверить репутацию контакта").
+        self._ensure_column("partnerships", "offer", "TEXT")
+        self._ensure_column("partnerships", "amount_received", "REAL")
+        self._ensure_column("partnerships", "amount_paid", "REAL")
+        self._ensure_column("partnerships", "review", "TEXT")
+        self._ensure_column("partnerships", "amount_visible", "INTEGER DEFAULT 0")
         self._conn.commit()
 
     def _ensure_column(self, table: str, column: str, ddl: str) -> None:
@@ -226,9 +236,14 @@ class GuroStorage:
 
     def create_partnership(
         self, initiator_id: int, confirmer_id: int, vertical: str | None, geo: str | None,
+        *, offer: str | None = None, amount_received: float | None = None,
+        amount_paid: float | None = None, review: str | None = None, amount_visible: bool = False,
     ) -> sqlite3.Row:
         """Поднимает ValueError с понятным кодом-строкой при нарушении правил
-        (see ТЗ п.4/п.8): NO_CONFIRMER_PROFILE / SELF_PARTNERSHIP / RATE_LIMITED."""
+        (see ТЗ п.4/п.8): NO_CONFIRMER_PROFILE / SELF_PARTNERSHIP / RATE_LIMITED.
+        offer/amount_*/review/amount_visible (Фаза 2, 11.08.2026) — заполняет
+        ТОЛЬКО инициатор в момент создания заявки; confirmer лишь
+        подтверждает/отклоняет кнопкой, отдельной формы у него нет (см. план)."""
         if initiator_id == confirmer_id:
             raise ValueError("SELF_PARTNERSHIP")
         confirmer_profile = self.get_profile(confirmer_id)
@@ -248,9 +263,11 @@ class GuroStorage:
         )
         cur = self._conn.execute(
             "INSERT INTO partnerships (initiator_id, confirmer_id, status, vertical, geo, "
-            "counts_toward_rating, created_at) VALUES (?,?,?,?,?,?,?)",
+            "counts_toward_rating, created_at, offer, amount_received, amount_paid, review, "
+            "amount_visible) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (initiator_id, confirmer_id, GC.PARTNERSHIP_STATUS_PENDING, vertical, geo,
-             1 if counts else 0, GL.format_db_datetime(now)),
+             1 if counts else 0, GL.format_db_datetime(now), offer, amount_received, amount_paid,
+             review, 1 if amount_visible else 0),
         )
         self._conn.commit()
         return self._conn.execute("SELECT * FROM partnerships WHERE id=?", (cur.lastrowid,)).fetchone()

@@ -10,23 +10,34 @@ const ERROR_MESSAGES = {
     "Этот пользователь ещё не проходил анкету @GamblingCommunitybot — бот не может ему написать.",
 };
 
+const EMPTY_FORM = {
+  confirmerUsername: "",
+  vertical: "",
+  geo: "",
+  offer: "",
+  amountReceived: "",
+  amountPaid: "",
+  review: "",
+  amountVisible: false,
+};
+
 export function ConfirmScreen() {
-  const [confirmerUsername, setConfirmerUsername] = useState("");
-  const [vertical, setVertical] = useState("");
-  const [geo, setGeo] = useState("");
+  const [form, setForm] = useState(EMPTY_FORM);
   const [state, setState] = useState({ loading: false, ok: false, error: null });
+
+  function set(field, value) {
+    setForm((f) => ({ ...f, [field]: value }));
+  }
 
   async function onSubmit(e) {
     e.preventDefault();
-    const q = confirmerUsername.trim().replace(/^@/, "");
+    const q = form.confirmerUsername.trim().replace(/^@/, "");
     if (!q) return;
     setState({ loading: true, ok: false, error: null });
     try {
-      await createPartnership({ confirmerUsername: q, vertical, geo });
+      await createPartnership({ ...form, confirmerUsername: q });
       setState({ loading: false, ok: true, error: null });
-      setConfirmerUsername("");
-      setVertical("");
-      setGeo("");
+      setForm(EMPTY_FORM);
       haptic("success");
     } catch (error) {
       setState({ loading: false, ok: false, error });
@@ -45,31 +56,72 @@ export function ConfirmScreen() {
       <div className="privacy-hint">
         Укажите юзернейм человека, с которым уже состоялось сотрудничество.
         Ему придёт запрос на подтверждение от бота — запись появится в
-        профилях обоих только после его ответа.
+        профилях обоих только после его ответа. Офер и отзыв видны всем
+        чужим (в этом и смысл — проверить репутацию контакта), суммы —
+        только если включите показ ниже.
       </div>
       <form onSubmit={onSubmit}>
         <label>Юзернейм контрагента</label>
         <input
           type="text"
           placeholder="Юзернейм контрагента"
-          value={confirmerUsername}
-          onChange={(e) => setConfirmerUsername(e.target.value)}
+          value={form.confirmerUsername}
+          onChange={(e) => set("confirmerUsername", e.target.value)}
         />
         <label>Вертикаль (необязательно)</label>
         <input
           type="text"
           placeholder="Вертикаль (необязательно)"
-          value={vertical}
-          onChange={(e) => setVertical(e.target.value)}
+          value={form.vertical}
+          onChange={(e) => set("vertical", e.target.value)}
         />
         <label>Гео (необязательно)</label>
         <input
           type="text"
           placeholder="Одесса, Кипр…"
-          value={geo}
-          onChange={(e) => setGeo(e.target.value)}
+          value={form.geo}
+          onChange={(e) => set("geo", e.target.value)}
         />
-        <button className="btn" type="submit" disabled={state.loading || !confirmerUsername.trim()}>
+        <label>Оффер — суть сделки (необязательно)</label>
+        <input
+          type="text"
+          placeholder="Например: привёл байера на казино-трафик"
+          value={form.offer}
+          onChange={(e) => set("offer", e.target.value)}
+        />
+        <label>Сумма (необязательно)</label>
+        <div className="amount-row">
+          <input
+            type="number"
+            inputMode="decimal"
+            placeholder="Я получил, $"
+            value={form.amountReceived}
+            onChange={(e) => set("amountReceived", e.target.value)}
+          />
+          <input
+            type="number"
+            inputMode="decimal"
+            placeholder="Я заплатил, $"
+            value={form.amountPaid}
+            onChange={(e) => set("amountPaid", e.target.value)}
+          />
+        </div>
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={form.amountVisible}
+            onChange={(e) => set("amountVisible", e.target.checked)}
+          />
+          Показывать сумму чужим (по умолчанию скрыта)
+        </label>
+        <label>Отзыв — ваше сообщение о партнёрстве (необязательно)</label>
+        <textarea
+          rows={3}
+          placeholder="Как прошло сотрудничество"
+          value={form.review}
+          onChange={(e) => set("review", e.target.value)}
+        />
+        <button className="btn" type="submit" disabled={state.loading || !form.confirmerUsername.trim()}>
           {state.loading ? "Отправляем…" : "Отправить на подтверждение"}
         </button>
       </form>

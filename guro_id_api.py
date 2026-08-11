@@ -25,6 +25,7 @@ import guro_showcase as GS
 import guro_tags as GT
 from config import Settings
 from guro_storage import GuroStorage
+from storage import Storage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -59,12 +60,26 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
     for p in storage.list_confirmed_partnerships(user_id):
         other_id = p["confirmer_id"] if p["initiator_id"] == user_id else p["initiator_id"]
         other_profile = storage.get_profile(other_id)
+        amount_visible = bool(p["amount_visible"])
         partners.append({
             "user_id": other_id,
             "username": other_profile["username"] if other_profile else None,
             "name": other_profile["name"] if other_profile else None,
             "confirmed_at": p["confirmed_at"],
             "counts_toward_rating": bool(p["counts_toward_rating"]),
+            # Офер/отзыв — публичны всегда (в этом и смысл "проверить
+            # репутацию контакта", решение владельца 11.08.2026); суммы —
+            # только если инициатор явно включил показ при создании заявки.
+            "vertical": p["vertical"],
+            "geo": p["geo"],
+            "offer": p["offer"],
+            "review": p["review"],
+            "amount_received": p["amount_received"] if amount_visible else None,
+            "amount_paid": p["amount_paid"] if amount_visible else None,
+            # Кто именно указал офер/суммы (со слов инициатора, не факт,
+            # подтверждённый confirmer'ом) — фронту нужно, чтобы подписать
+            # "получил/заплатил" с правильной стороны.
+            "initiator_id": p["initiator_id"],
         })
 
     extra = storage.get_extra_profile(user_id)
@@ -228,32 +243,39 @@ def _searchable_text(summary: dict) -> str:
     return " ".join(str(summary.get(f) or "") for f in _DIRECTORY_TEXT_FIELDS).lower()
 
 
-def _directory_search(storage: GuroStorage, requester_id: int, query: str) -> dict:
-    """Поиск ПО ОПИСАНИЮ ("менеджер в крипто") — список всех, у кого есть
-    совпадение среди полей, которые они САМИ открыли тумблерами
-    приватности. Вызывается из handle_search, когда q= не совпал ни с
-    одним точным юзернеймом (см. режимы ниже) — доступ уже проверен
-    вызывающим (платная фича, 402 без подписки)."""
-    keywords = query.lower().split()[: GC.DIRECTORY_QUERY_MAX_KEYWORDS]
+def _scan_directory_candidates(storage: GuroStorage, requester_id: int, match_fn) -> list[tuple[int, dict]]:
+    """Общий проход по всем GURO ID пользователям для обоих directory-режимов
+    (поиск по описанию и browse по вертикали, 11.08.2026) — экономит поход
+    в БД для тех, кто вообще ничего не открыл тумблерами приватности.
+    match_fn(summary) -> int > 0, чтобы попасть в выдачу (сила совпадения,
+    используется для сортировки), иначе кандидат исключается."""
     matches: list[tuple[int, dict]] = []
     for user_id in storage.list_guro_user_ids():
         if user_id == requester_id:
-            continue  # сам себя в directory-поиске видеть незачем
+            continue  # сам себя в directory-режимах видеть незачем
         privacy = storage.get_privacy(user_id)
         if not any(privacy.values()):
-            continue  # ничего не открыто -> нечего искать, не тратим время на профиль
+            continue  # ничего не открыто -> нечего показывать, не тратим время на профиль
         summary = _profile_summary(storage, user_id)
         if summary is None:
             continue
         summary = _apply_privacy(summary, privacy)
         summary = _apply_subscription_gate(summary, summary["is_subscribed"])
-        haystack = _searchable_text(summary)
-        score = sum(1 for kw in keywords if kw in haystack)
+        score = match_fn(summary)
         if score > 0:
             matches.append((score, summary))
+    return matches
 
-    matches.sort(key=lambda pair: (pair[0], pair[1].get("reputation_score") or 0), reverse=True)
-    top = matches[: GC.DIRECTORY_RESULTS_LIMIT]
+
+def _rank_directory_matches(matches: list[tuple[int, dict]], *, top: bool) -> dict:
+    """top=True («ТОП рейтинга», 11.08.2026) — чистая сортировка по
+    репутации вместо силы совпадения (для browse по вертикали сила
+    совпадения всегда одинакова, там top лишь один осмысленный порядок)."""
+    if top:
+        ranked = sorted(matches, key=lambda pair: pair[1].get("reputation_score") or 0, reverse=True)
+    else:
+        ranked = sorted(matches, key=lambda pair: (pair[0], pair[1].get("reputation_score") or 0), reverse=True)
+    sliced = ranked[: GC.DIRECTORY_RESULTS_LIMIT]
     results = [
         {
             "user_id": s["user_id"],
@@ -266,24 +288,68 @@ def _directory_search(storage: GuroStorage, requester_id: int, query: str) -> di
             "reputation_score": s.get("reputation_score"),
             "confirmed_partnerships": s.get("confirmed_partnerships"),
         }
-        for _, s in top
+        for _, s in sliced
     ]
-    return {"mode": "list", "results": results, "truncated": len(matches) > len(top)}
+    return {"mode": "list", "results": results, "truncated": len(ranked) > len(sliced)}
+
+
+def _directory_search(storage: GuroStorage, requester_id: int, query: str, *, top: bool) -> dict:
+    """Поиск ПО ОПИСАНИЮ ("менеджер в крипто") — список всех, у кого есть
+    совпадение среди полей, которые они САМИ открыли тумблерами
+    приватности. Вызывается из handle_search, когда q= не совпал ни с
+    одним точным юзернеймом (см. режимы ниже) — доступ уже проверен
+    вызывающим (платная фича, 402 без подписки)."""
+    keywords = query.lower().split()[: GC.DIRECTORY_QUERY_MAX_KEYWORDS]
+
+    def match_fn(summary: dict) -> int:
+        haystack = _searchable_text(summary)
+        return sum(1 for kw in keywords if kw in haystack)
+
+    matches = _scan_directory_candidates(storage, requester_id, match_fn)
+    return _rank_directory_matches(matches, top=top)
+
+
+def _directory_browse(storage: GuroStorage, requester_id: int, vertical: str, *, top: bool) -> dict:
+    """Browse по вертикали (11.08.2026) — альтернатива текстовому поиску
+    для тех, кто не знает точного юзернейма и не хочет формулировать
+    запрос (см. PDF-фидбек владельца: "пока не понятно как они будут
+    находить друг друга"). Сравнение — с КАНОНИЧЕСКИМ значением из
+    constants.VERTICALS (то, что реально пишется в profiles.vertical при
+    регистрации, см. handlers/flow.py), "Other" дополнительно матчит
+    произвольные "Other: <текст>"."""
+    vertical_lower = vertical.strip().lower()
+
+    def match_fn(summary: dict) -> int:
+        v = (summary.get("vertical") or "").lower()
+        if v == vertical_lower:
+            return 1
+        if vertical_lower == "other" and v.startswith("other"):
+            return 1
+        return 0
+
+    matches = _scan_directory_candidates(storage, requester_id, match_fn)
+    return _rank_directory_matches(matches, top=top)
 
 
 async def handle_search(request: web.Request) -> web.Response:
-    """Три режима запроса:
+    """Режимы запроса:
     - `user_id=<id>` — точный переход по ID (QR, клик по результату поиска).
     - `username=<name>` — точный переход по юзернейму (внутреннее использование).
+    - `vertical=<v>` — browse по вертикали (11.08.2026, см. _directory_browse),
+      платный, как и q=-описание.
     - `q=<текст>` — УНИВЕРСАЛЬНЫЙ поиск (10.08.2026, единственный режим,
       доступный из формы поиска фронта): сперва пробуем точный юзернейм
       (бесплатный тизер, как раньше) — не нашли, значит это уже описание,
-      платный directory-поиск по открытым полям (см. _directory_search)."""
+      платный directory-поиск по открытым полям (см. _directory_search).
+    `top=1` (любой из платных режимов) — сортировка «ТОП рейтинга» вместо
+    силы совпадения, см. _rank_directory_matches."""
     settings, storage = request.app["settings"], request.app["storage"]
     requester = _auth(request, settings)
     username = request.query.get("username", "")
     user_id_param = request.query.get("user_id", "")
     query = request.query.get("q", "")
+    vertical = request.query.get("vertical", "").strip()
+    top = request.query.get("top") == "1"
 
     if GS.is_showcase_username(username or query):
         # Витрина видна ВСЕМ полностью, без пейволла — это самореклама, не
@@ -307,6 +373,11 @@ async def handle_search(request: web.Request) -> web.Response:
             return web.json_response({"error": "NOT_FOUND"}, status=404)
         return web.json_response(_profile_response(storage, requester["id"], target_profile))
 
+    if vertical:
+        if not storage.is_subscribed(requester["id"]):
+            return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
+        return web.json_response(_directory_browse(storage, requester["id"], vertical, top=top))
+
     q = query.strip()
     if not q:
         return web.json_response({"mode": "list", "results": [], "truncated": False})
@@ -318,7 +389,7 @@ async def handle_search(request: web.Request) -> web.Response:
     # Не нашли точного юзернейма -> это описание, платный directory-поиск.
     if not storage.is_subscribed(requester["id"]):
         return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
-    return web.json_response(_directory_search(storage, requester["id"], q))
+    return web.json_response(_directory_search(storage, requester["id"], q, top=top))
 
 
 async def _notify_confirmer(bot_token: str, confirmer_id: int, initiator_username: str, partnership_id: int) -> None:
@@ -335,6 +406,18 @@ async def _notify_confirmer(bot_token: str, confirmer_id: int, initiator_usernam
         )
 
 
+def _parse_amount(raw) -> float | None:
+    """Пустая строка/None/мусор -> None (сумма не указана), а не 400 —
+    поле необязательное."""
+    if raw in (None, ""):
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value >= 0 else None
+
+
 async def handle_create_partnership(request: web.Request) -> web.Response:
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
@@ -342,13 +425,22 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
     confirmer_username = str(body.get("confirmer_username", "")).strip()
     vertical = body.get("vertical") or None
     geo = body.get("geo") or None
+    offer = (str(body.get("offer", "")).strip()[:300]) or None
+    review = (str(body.get("review", "")).strip()[:500]) or None
+    amount_received = _parse_amount(body.get("amount_received"))
+    amount_paid = _parse_amount(body.get("amount_paid"))
+    amount_visible = bool(body.get("amount_visible"))
 
     target_profile = storage.find_profile_by_username(confirmer_username)
     if target_profile is None:
         return web.json_response({"error": "NO_CONFIRMER_PROFILE"}, status=404)
 
     try:
-        partnership = storage.create_partnership(user["id"], target_profile["user_id"], vertical, geo)
+        partnership = storage.create_partnership(
+            user["id"], target_profile["user_id"], vertical, geo,
+            offer=offer, amount_received=amount_received, amount_paid=amount_paid,
+            review=review, amount_visible=amount_visible,
+        )
     except ValueError as e:
         return web.json_response({"error": str(e)}, status=409)
 
@@ -526,6 +618,21 @@ async def handle_get_qr(request: web.Request) -> web.Response:
     return web.json_response({"deeplink": deeplink})
 
 
+async def handle_invite_link(request: web.Request) -> web.Response:
+    """«Пригласить коллегу» (11.08.2026, Мои контакты) — персональная
+    одноразовая реф-ссылка того же формата, что /invite в боте
+    (handlers/referral.py::_referral_link, формат продублирован тут
+    строкой ниже — не тянуть весь пакет handlers в отдельный процесс
+    ради одного f-string). Слот резервируется в ГЛАВНОЙ Storage (реф-
+    система общая для всего бота, не только GURO ID), тот же sqlite-файл,
+    что и у GuroStorage, WAL уже включён под запись с двух процессов."""
+    settings, main_storage = request.app["settings"], request.app["main_storage"]
+    user = _auth(request, settings)
+    slot = main_storage.create_referral_link(user["id"])
+    link = f"https://t.me/{settings.bot_username}?start=ref_{user['id']}_{slot}"
+    return web.json_response({"link": link})
+
+
 def _plan_or_none(body: dict) -> tuple[str, dict] | None:
     plan = str(body.get("plan", ""))
     cfg = GC.SUBSCRIPTION_PLANS.get(plan)
@@ -663,6 +770,7 @@ def create_app(settings: Settings) -> web.Application:
     app = web.Application()
     app["settings"] = settings
     app["storage"] = GuroStorage(settings.database_path)
+    app["main_storage"] = Storage(settings.database_path)
     app.router.add_get("/api/me", handle_me)
     app.router.add_get("/api/search", handle_search)
     app.router.add_post("/api/partnerships", handle_create_partnership)
@@ -677,6 +785,7 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/profile", handle_set_profile_field)
     app.router.add_post("/api/work_status", handle_set_work_status)
     app.router.add_get("/api/qr", handle_get_qr)
+    app.router.add_get("/api/invite_link", handle_invite_link)
     if WEBAPP_DIST.exists():
         # add_static не отдаёт index.html на "/" сам по себе (показал бы
         # листинг директории) — раздаём его явным роутом, остальное статикой.

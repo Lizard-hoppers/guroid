@@ -9,11 +9,18 @@ import { CvSubscreen } from "./profile/CvSubscreen.jsx";
 import { ContactsSubscreen } from "./profile/ContactsSubscreen.jsx";
 import { OffersSubscreen } from "./profile/OffersSubscreen.jsx";
 import { QrSubscreen } from "./profile/QrSubscreen.jsx";
+import { MessagesScreen } from "./profile/MessagesScreen.jsx";
 import { OnboardingScreen } from "./profile/OnboardingScreen.jsx";
 
-export function ProfileScreen({ onNavigate }) {
+export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTarget }) {
   const [state, setState] = useState({ loading: true, data: null, error: null });
-  const [sub, setSub] = useState(null); // null | "rating" | "cv" | "contacts" | "offers"
+  const [sub, setSub] = useState(null); // null | "rating" | "cv" | "contacts" | "offers" | "messages" | "qr"
+
+  // Заход сразу в сообщения — кнопка "Написать" в поиске или deep-link из
+  // уведомления бота ?thread=<id> (см. App.jsx), консьюмится MessagesScreen'ом.
+  useEffect(() => {
+    if (messageTargetId != null) setSub("messages");
+  }, [messageTargetId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +116,15 @@ export function ProfileScreen({ onNavigate }) {
   }
   if (sub === "qr") {
     return <QrSubscreen onBack={() => setSub(null)} />;
+  }
+  if (sub === "messages") {
+    return (
+      <MessagesScreen
+        initialThreadUserId={messageTargetId}
+        onConsumeInitialThread={onConsumeMessageTarget}
+        onBack={() => setSub(null)}
+      />
+    );
   }
 
   return (

@@ -8,6 +8,7 @@ const MENU = [
   { key: "cv", label: "Моё CV" },
   { key: "contacts", label: "Мои контакты" },
   { key: "offers", label: "Мои офферы" },
+  { key: "messages", label: "Мои сообщения" },
   { key: "qr", label: "Мой QR" },
 ];
 
@@ -60,7 +61,12 @@ export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, o
             className="profile-menu-item"
             onClick={() => onNavigateSub(m.key)}
           >
-            <span>{m.label}</span>
+            <span>
+              {m.label}
+              {m.key === "messages" && profile.unread_messages > 0 && (
+                <span className="thread-unread-badge">{profile.unread_messages}</span>
+              )}
+            </span>
             <span className="profile-menu-item-chevron">›</span>
           </button>
         ))}

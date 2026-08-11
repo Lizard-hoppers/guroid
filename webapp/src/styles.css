@@ -1026,3 +1026,125 @@ label {
 .directory-paywall .btn {
   margin: 10px auto 0;
 }
+
+/* --- Личные сообщения внутри прилы (Фаза 1, 11.08.2026) --- */
+
+.thread-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.thread-row:last-child {
+  border-bottom: none;
+}
+
+.thread-row-main {
+  min-width: 0;
+}
+
+.thread-row-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.thread-row-preview {
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-unread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+  flex-shrink: 0;
+}
+
+.thread-unread-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  border-radius: 9px;
+  background: var(--gold);
+  color: #1a1206;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.thread-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+  margin: 10px 0;
+}
+
+.thread-bubble {
+  max-width: 80%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.thread-bubble.mine {
+  align-self: flex-end;
+  background: linear-gradient(135deg, var(--gold), #a9822b);
+  color: #1a1206;
+}
+
+.thread-bubble.theirs {
+  align-self: flex-start;
+  background: #ffffff14;
+  border: 1px solid var(--glass-border);
+}
+
+.thread-composer {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.thread-composer textarea {
+  flex: 1;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: #ffffff0d;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  resize: none;
+}
+
+.thread-composer .btn {
+  width: auto;
+  margin-top: 0;
+  padding: 12px 16px;
+}

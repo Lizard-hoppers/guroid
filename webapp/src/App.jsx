@@ -39,10 +39,24 @@ function readDeepLinkTarget() {
   return new URLSearchParams(window.location.search).get("target");
 }
 
+// Уведомление о новом сообщении (Фаза 1, 11.08.2026, см. guro_id_api.py::
+// _notify_new_message) открывает Mini App на `?thread=<sender_id>` — та же
+// механика deep-link'а, что уже была у QR (?target=), только ведёт не в
+// Поиск, а сразу в переписку внутри Профиля.
+function readDeepLinkThread() {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("thread");
+}
+
 export default function App() {
   const [intro, setIntro] = useState(true);
   const initialTargetRef = useRef(readDeepLinkTarget());
   const targetConsumedRef = useRef(false);
+  const initialThreadRef = useRef(readDeepLinkThread());
+  // messageTargetId — не только начальный deep-link, но и рантайм-переход
+  // из кнопки "Написать" в поиске (см. openMessages ниже), поэтому это
+  // обычный state, а не ref с отдельным consumed-флагом, как у ?target=.
+  const [messageTargetId, setMessageTargetId] = useState(initialThreadRef.current);
   const [tab, setTab] = useState(initialTargetRef.current ? "search" : "profile");
   // Направление перехода между экранами — вперёд (вправо-налево, как
   // раньше) или назад (зеркально, влево-направо), в зависимости от того,
@@ -53,7 +67,7 @@ export default function App() {
     initTelegram();
     // Сразу чистим query string — иначе обновление/повторный заход в этот
     // же сеанс WebApp заново триггерил бы deep-link на каждый ре-маунт.
-    if (initialTargetRef.current && window.history?.replaceState) {
+    if ((initialTargetRef.current || initialThreadRef.current) && window.history?.replaceState) {
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
@@ -63,6 +77,13 @@ export default function App() {
     const newIndex = TAB_ORDER.indexOf(next);
     setDirection(newIndex >= oldIndex ? 1 : -1);
     setTab(next);
+  }
+
+  // Кнопка "Написать" на разблокированном профиле в Поиске — переключает на
+  // вкладку Профиль и сразу открывает переписку с этим человеком.
+  function openMessages(userId) {
+    setMessageTargetId(String(userId));
+    handleTabChange("profile");
   }
 
   const Screen = SCREENS[tab];
@@ -121,6 +142,9 @@ export default function App() {
                   onConsumeDeepLink={() => {
                     targetConsumedRef.current = true;
                   }}
+                  onOpenMessages={openMessages}
+                  messageTargetId={messageTargetId}
+                  onConsumeMessageTarget={() => setMessageTargetId(null)}
                 />
               </motion.div>
             </AnimatePresence>

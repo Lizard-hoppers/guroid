@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from aiohttp import web
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, WebAppInfo
 
 import guro_constants as GC
 import guro_crypto as GCR
@@ -160,7 +160,10 @@ async def handle_me(request: web.Request) -> web.Response:
     # свои тумблеры — витрина рендерится ВМЕСТО экрана с ними.
     if GS.is_showcase_username(user.get("username")):
         return web.json_response(
-            {**GS.PAYLOAD, "user_id": user["id"], "privacy": storage.get_privacy(user["id"])}
+            {
+                **GS.PAYLOAD, "user_id": user["id"], "privacy": storage.get_privacy(user["id"]),
+                "unread_messages": storage.count_unread_messages(user["id"]),
+            }
         )
     summary = _profile_summary(storage, user["id"])
     if summary is None:
@@ -170,6 +173,7 @@ async def handle_me(request: web.Request) -> web.Response:
     # Подписка — исключение: «рейтинг сгорает» без неё даже для себя самого.
     summary["privacy"] = storage.get_privacy(user["id"])
     summary = _apply_subscription_gate(summary, summary["is_subscribed"])
+    summary["unread_messages"] = storage.count_unread_messages(user["id"])
     try:
         await GT.sync_member_tag_standalone(
             settings.bot_token, settings.community_chat_id, storage, user["id"], reason="api_me",
@@ -356,6 +360,113 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
         logger.exception("guro_id: не удалось отправить уведомление о партнёрстве %s", partnership["id"])
 
     return web.json_response({"id": partnership["id"], "status": partnership["status"]})
+
+
+async def _notify_new_message(bot_token: str, webapp_url: str, recipient_id: int, sender_id: int) -> None:
+    """Уведомление о новом сообщении — БЕЗ содержимого (сохраняет приватность
+    переписки внутри прилы, тот же принцип, что и весь модуль сообщений).
+    Deep-link ?thread=<sender_id> открывает Mini App сразу на этой
+    переписке (см. App.jsx::readDeepLinkThread), а не на общей вкладке."""
+    url = f"{webapp_url.rstrip('/')}/?thread={sender_id}"
+    bot = Bot(token=bot_token)
+    async with bot:
+        await bot.send_message(
+            recipient_id,
+            "✉️ Вам пришло новое сообщение в GURO ID.",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("Открыть сообщения", web_app=WebAppInfo(url=url)),
+            ]]),
+        )
+
+
+def _other_display(profile) -> dict:
+    return {
+        "other_name": profile["name"] or (f"@{profile['username']}" if profile["username"] else None),
+        "other_username": profile["username"],
+    }
+
+
+async def handle_list_messages(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    threads = storage.list_threads(user["id"])
+    result = []
+    for t in threads:
+        other_profile = storage.get_profile(t["other_user_id"])
+        result.append({
+            "other_user_id": t["other_user_id"],
+            **(_other_display(other_profile) if other_profile else {"other_name": None, "other_username": None}),
+            "last_message": t["last_message"],
+            "last_message_at": t["last_message_at"],
+            "unread_count": t["unread_count"],
+        })
+    return web.json_response({"threads": result})
+
+
+async def handle_get_thread(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        other_id = int(request.match_info["user_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    other_profile = storage.get_profile(other_id)
+    if other_profile is None:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+
+    thread = storage.find_thread(user["id"], other_id)
+    messages = []
+    if thread is not None:
+        messages = [
+            {
+                "id": m["id"], "sender_id": m["sender_id"], "body": m["body"],
+                "created_at": m["created_at"], "mine": m["sender_id"] == user["id"],
+            }
+            for m in storage.list_messages(thread["id"])
+        ]
+        storage.mark_thread_read(thread["id"], user["id"])
+
+    return web.json_response({
+        "other_user_id": other_id,
+        **_other_display(other_profile),
+        "messages": messages,
+        # Тред уже есть -> отвечать можно всегда; нового треда ещё нет ->
+        # писать первым можно, только если СМОТРЯЩИЙ (сам user) подписан.
+        "can_send_first": thread is not None or storage.is_subscribed(user["id"]),
+    })
+
+
+_MESSAGE_ERROR_STATUS = {
+    "SELF_MESSAGE": 400,
+    "EMPTY_BODY": 400,
+    "NO_RECIPIENT_PROFILE": 404,
+    "SUBSCRIPTION_REQUIRED": 402,
+    "RATE_LIMITED": 429,
+}
+
+
+async def handle_send_message(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    text = str(body.get("body", ""))
+    try:
+        recipient_id = int(body.get("recipient_id"))
+    except (TypeError, ValueError):
+        return web.json_response({"error": "NO_RECIPIENT_PROFILE"}, status=404)
+
+    try:
+        message = storage.send_message(user["id"], recipient_id, text)
+    except ValueError as e:
+        code = str(e)
+        return web.json_response({"error": code}, status=_MESSAGE_ERROR_STATUS.get(code, 400))
+
+    try:
+        await _notify_new_message(settings.bot_token, settings.guro_id_webapp_url, recipient_id, user["id"])
+    except Exception:  # noqa: BLE001
+        logger.exception("guro_id: не удалось уведомить о новом сообщении user_id=%s", recipient_id)
+
+    return web.json_response({"id": message["id"], "created_at": message["created_at"]})
 
 
 async def handle_set_privacy(request: web.Request) -> web.Response:
@@ -555,6 +666,9 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_get("/api/me", handle_me)
     app.router.add_get("/api/search", handle_search)
     app.router.add_post("/api/partnerships", handle_create_partnership)
+    app.router.add_get("/api/messages", handle_list_messages)
+    app.router.add_get("/api/messages/with/{user_id}", handle_get_thread)
+    app.router.add_post("/api/messages", handle_send_message)
     app.router.add_get("/api/plans", handle_get_plans)
     app.router.add_post("/api/subscribe", handle_subscribe)
     app.router.add_post("/api/subscribe/crypto", handle_subscribe_crypto)

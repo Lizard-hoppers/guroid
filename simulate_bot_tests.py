@@ -3020,6 +3020,123 @@ async def _run_guro_id_api_sim():
                 check(body["is_showcase"] is True, "поиск витрины -> is_showcase=True даже без подписки")
                 check(body["locked"] is False, "поиск витрины -> НЕ запаяволлено")
                 check(len(body["showcase"]["projects"]) > 0, "витрина содержит портфолио проектов")
+
+                # --- личные сообщения внутри прилы (Фаза 1, 11.08.2026) -------
+                # ВАЖНО: auth_300 к этому моменту УЖЕ подписан (см. тест
+                # crypto-вебхука выше, user_id=300 получил подписку через него) —
+                # для проверок "нет подписки" берём отдельного, гарантированно
+                # неподписанного юзера.
+                st.save_profile({"user_id": 350, "username": "nosub", "name": "No Sub"})
+                auth_350 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 350, "username": "nosub"})}
+                check(not app["storage"].is_subscribed(350), "350 действительно не подписан (для чистоты теста)")
+
+                resp = await client.post("/api/messages", headers=auth_350,
+                                          json={"recipient_id": 200, "body": "Привет!"})
+                check(resp.status == 402,
+                      "первое сообщение незнакомцу БЕЗ подписки отправителя -> 402 SUBSCRIPTION_REQUIRED")
+                body = await resp.json()
+                check(body["error"] == "SUBSCRIPTION_REQUIRED", "тело содержит понятный код ошибки")
+
+                resp = await client.post("/api/messages", headers=auth_100,
+                                          json={"recipient_id": 100, "body": "себе"})
+                check(resp.status == 400, "сообщение самому себе -> 400 SELF_MESSAGE")
+
+                resp = await client.post("/api/messages", headers=auth_100,
+                                          json={"recipient_id": 999, "body": "куда?"})
+                check(resp.status == 404, "получатель без анкеты в боте -> 404 NO_RECIPIENT_PROFILE")
+
+                resp = await client.post("/api/messages", headers=auth_100,
+                                          json={"recipient_id": 200, "body": "   "})
+                check(resp.status == 400, "пустое (после strip) сообщение -> 400 EMPTY_BODY")
+
+                # initiator (100, подписан) пишет ПЕРВЫМ confirmer'у (200) -> новый тред
+                resp = await client.post("/api/messages", headers=auth_100,
+                                          json={"recipient_id": 200, "body": "Есть минутка обсудить сделку?"})
+                check(resp.status == 200, "подписанный отправитель пишет первым -> 200")
+                body = await resp.json()
+                check("id" in body, "ответ содержит id созданного сообщения")
+
+                resp = await client.get("/api/me", headers=auth_200)
+                body = await resp.json()
+                check(body["unread_messages"] == 1, "у получателя появилось 1 непрочитанное сообщение")
+
+                resp = await client.get("/api/messages", headers=auth_200)
+                check(resp.status == 200, "GET /api/messages -> 200")
+                body = await resp.json()
+                check(len(body["threads"]) == 1, "у получателя один тред")
+                check(body["threads"][0]["other_user_id"] == 100, "тред с корректным собеседником")
+                check(body["threads"][0]["unread_count"] == 1, "список тредов тоже показывает непрочитанное")
+                check(body["threads"][0]["last_message"] == "Есть минутка обсудить сделку?",
+                      "превью последнего сообщения")
+
+                resp = await client.get("/api/messages/with/100", headers=auth_200)
+                check(resp.status == 200, "GET /api/messages/with/<id> -> 200")
+                body = await resp.json()
+                check(len(body["messages"]) == 1, "в переписке одно сообщение")
+                check(body["messages"][0]["mine"] is False, "сообщение от initiator -> mine=False у confirmer'а")
+                check(body["other_name"] == "Init", "other_name подтягивается из профиля собеседника")
+                check(body["can_send_first"] is True, "тред уже есть -> отвечать можно (can_send_first=True)")
+
+                resp = await client.get("/api/me", headers=auth_200)
+                body = await resp.json()
+                check(body["unread_messages"] == 0,
+                      "просмотр переписки (GET /api/messages/with/) отметил сообщение прочитанным")
+
+                # confirmer (200) отвечает в уже созданном треде
+                resp = await client.post("/api/messages", headers=auth_200,
+                                          json={"recipient_id": 100, "body": "Да, давай завтра в 15:00"})
+                check(resp.status == 200, "ответ в существующем треде -> 200")
+
+                resp = await client.get("/api/me", headers=auth_100)
+                body = await resp.json()
+                check(body["unread_messages"] == 1, "у initiator появилось непрочитанное сообщение-ответ")
+
+                # антиспам: подписанный 100 упирается в дневной лимит новых тредов
+                # (один тред у него уже есть с 200 -> лимит исчерпается раньше конца цикла)
+                for i in range(GC.MESSAGE_MAX_NEW_THREADS_PER_DAY):
+                    st.save_profile({"user_id": 5000 + i, "username": f"spamtarget{i}", "name": f"Target {i}"})
+                    r = await client.post("/api/messages", headers=auth_100,
+                                           json={"recipient_id": 5000 + i, "body": "hi"})
+                    if r.status != 200:
+                        break
+                check(r.status == 429, "после исчерпания дневного лимита новых тредов -> 429 RATE_LIMITED")
+                body = await r.json()
+                check(body["error"] == "RATE_LIMITED", "тело содержит понятный код ошибки")
+
+                # ответ в уже существующем треде НЕ требует подписки отвечающего —
+                # 500 (подписан) пишет первым 600 (НЕ подписан), затем 600 отвечает
+                st.save_profile({"user_id": 500, "username": "sender500", "name": "Sender 500"})
+                st.save_profile({"user_id": 600, "username": "target600", "name": "Target 600"})
+                app["storage"].activate_subscription(500, 30)
+                auth_500 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 500, "username": "sender500"})}
+                auth_600 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 600, "username": "target600"})}
+
+                resp = await client.post("/api/messages", headers=auth_500,
+                                          json={"recipient_id": 600, "body": "Здравствуйте"})
+                check(resp.status == 200,
+                      "подписанный 500 пишет НЕподписанному 600 первым -> 200 (подписка проверяется у ОТПРАВИТЕЛЯ)")
+
+                check(not app["storage"].is_subscribed(600), "600 действительно не подписан (для чистоты теста)")
+                resp = await client.post("/api/messages", headers=auth_600,
+                                          json={"recipient_id": 500, "body": "Добрый день"})
+                check(resp.status == 200,
+                      "600 БЕЗ подписки отвечает в уже существующем треде -> 200 "
+                      "(подписка нужна только чтобы написать первым)")
+
+                resp = await client.get("/api/messages/with/600", headers=auth_500)
+                body = await resp.json()
+                check(len(body["messages"]) == 2, "в треде 500<->600 два сообщения (от каждого по одному)")
+
+                # пустой (ещё не начатый) тред — can_send_first зависит только от
+                # подписки СМОТРЯЩЕГО
+                resp = await client.get("/api/messages/with/200", headers=auth_350)
+                check(resp.status == 200, "GET /api/messages/with/<id> для несуществующего треда -> 200, просто пусто")
+                body = await resp.json()
+                check(body["messages"] == [], "треда ещё нет -> пустой список сообщений")
+                check(body["can_send_first"] is False, "350 не подписан и треда нет -> can_send_first=False")
+
+                resp = await client.get("/api/messages/with/999999", headers=auth_100)
+                check(resp.status == 404, "GET /api/messages/with/<id> для юзера без анкеты -> 404")
             finally:
                 await client.close()
 

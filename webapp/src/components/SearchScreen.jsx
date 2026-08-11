@@ -12,7 +12,11 @@ import {
 import { DeveloperShowcase } from "./DeveloperShowcase.jsx";
 import { haptic } from "../telegram.js";
 
-function ResultCard({ p }) {
+// onWrite передаётся только для РАЗБЛОКИРОВАННОГО профиля (см. рендер ниже) —
+// то же условие подписки смотрящего, что уже пускает писать первым в
+// handle_send_message (storage.send_message), кнопка просто следует
+// готовому серверному правилу, не дублирует его.
+function ResultCard({ p, onWrite }) {
   const heading = p.name === null ? "Скрыто" : p.name || (p.username ? `@${p.username}` : "Без имени");
   return (
     <div className="card">
@@ -25,6 +29,16 @@ function ResultCard({ p }) {
         partnerships={p.confirmed_partnerships}
         daysInCommunity={p.days_in_community}
       />
+      {onWrite && (
+        <button
+          type="button"
+          className="btn secondary"
+          style={{ marginTop: 12 }}
+          onClick={() => onWrite(p.user_id)}
+        >
+          ✉️ Написать
+        </button>
+      )}
     </div>
   );
 }
@@ -48,7 +62,7 @@ function DirectoryRow({ r, onOpen }) {
   );
 }
 
-export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink }) {
+export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, onOpenMessages }) {
   const [query, setQuery] = useState("");
   const [state, setState] = useState(
     deepLinkTargetId ? { loading: true, data: null, error: null } : { loading: false, data: null, error: null },
@@ -169,7 +183,7 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink }
 
       {state.data && state.data.mode === "profile" && !state.data.is_showcase && !state.data.locked && (
         <div>
-          <ResultCard p={state.data} />
+          <ResultCard p={state.data} onWrite={onOpenMessages} />
           <div className="card">
             <h3>История партнёрств контрагента</h3>
             <PartnersList partners={state.data.partners} emptyHint="Пока нет подтверждённых партнёрств." />

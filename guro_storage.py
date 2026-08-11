@@ -32,6 +32,29 @@ CREATE TABLE IF NOT EXISTS partnerships (
     created_at TEXT,
     confirmed_at TEXT
 );
+
+-- Личные сообщения внутри прилы (Фаза 1, 11.08.2026). user_a/user_b всегда
+-- хранятся в канонической паре (меньший id первым, см. _thread_pair) —
+-- один тред на пару людей, независимо от того, кто написал первым.
+CREATE TABLE IF NOT EXISTS guro_threads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_a INTEGER,
+    user_b INTEGER,
+    initiator_id INTEGER,
+    created_at TEXT,
+    last_message_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_guro_threads_pair ON guro_threads(user_a, user_b);
+
+CREATE TABLE IF NOT EXISTS guro_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    thread_id INTEGER,
+    sender_id INTEGER,
+    body TEXT,
+    created_at TEXT,
+    read_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_guro_messages_thread ON guro_messages(thread_id);
 """
 
 
@@ -275,6 +298,113 @@ class GuroStorage:
         )
         self._conn.commit()
         return self.get_partnership(partnership_id)
+
+    # --- личные сообщения (Фаза 1, 11.08.2026) ---------------------------
+
+    @staticmethod
+    def _thread_pair(user_a: int, user_b: int) -> tuple[int, int]:
+        return (user_a, user_b) if user_a <= user_b else (user_b, user_a)
+
+    def find_thread(self, user_a: int, user_b: int) -> sqlite3.Row | None:
+        lo, hi = self._thread_pair(user_a, user_b)
+        return self._conn.execute(
+            "SELECT * FROM guro_threads WHERE user_a=? AND user_b=?", (lo, hi)
+        ).fetchone()
+
+    def list_threads(self, user_id: int) -> list[dict]:
+        """Треды пользователя, самые свежие сверху, с превью последнего
+        сообщения и счётчиком непрочитанных ИМ (не всего в треде)."""
+        rows = self._conn.execute(
+            "SELECT * FROM guro_threads WHERE user_a=? OR user_b=? ORDER BY last_message_at DESC",
+            (user_id, user_id),
+        ).fetchall()
+        result = []
+        for row in rows:
+            other_id = row["user_b"] if row["user_a"] == user_id else row["user_a"]
+            last = self._conn.execute(
+                "SELECT body, created_at FROM guro_messages WHERE thread_id=? ORDER BY id DESC LIMIT 1",
+                (row["id"],),
+            ).fetchone()
+            unread = self._conn.execute(
+                "SELECT COUNT(*) AS n FROM guro_messages WHERE thread_id=? AND sender_id!=? AND read_at IS NULL",
+                (row["id"], user_id),
+            ).fetchone()["n"]
+            result.append({
+                "other_user_id": other_id,
+                "last_message": last["body"] if last else None,
+                "last_message_at": last["created_at"] if last else row["created_at"],
+                "unread_count": unread,
+            })
+        return result
+
+    def list_messages(self, thread_id: int) -> list[sqlite3.Row]:
+        return self._conn.execute(
+            "SELECT * FROM guro_messages WHERE thread_id=? ORDER BY id ASC", (thread_id,)
+        ).fetchall()
+
+    def mark_thread_read(self, thread_id: int, reader_id: int) -> None:
+        self._conn.execute(
+            "UPDATE guro_messages SET read_at=? WHERE thread_id=? AND sender_id!=? AND read_at IS NULL",
+            (self._now_str(), thread_id, reader_id),
+        )
+        self._conn.commit()
+
+    def count_unread_messages(self, user_id: int) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM guro_messages m JOIN guro_threads t ON m.thread_id=t.id "
+            "WHERE (t.user_a=? OR t.user_b=?) AND m.sender_id!=? AND m.read_at IS NULL",
+            (user_id, user_id, user_id),
+        ).fetchone()
+        return row["n"]
+
+    def _count_new_threads_today(self, user_id: int) -> int:
+        today_start = self._now().strftime("%Y-%m-%d 00:00:00")
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM guro_threads WHERE initiator_id=? AND created_at >= ?",
+            (user_id, today_start),
+        ).fetchone()
+        return row["n"]
+
+    def send_message(self, sender_id: int, recipient_id: int, body: str) -> sqlite3.Row:
+        """Поднимает ValueError с кодом: SELF_MESSAGE / EMPTY_BODY /
+        NO_RECIPIENT_PROFILE (бот не может написать юзеру, который никогда
+        не писал боту, тот же случай, что NO_CONFIRMER_PROFILE в
+        create_partnership) / SUBSCRIPTION_REQUIRED (первое сообщение
+        незнакомцу без активной подписки отправителя — писать в уже
+        существующий тред можно и без неё) / RATE_LIMITED (слишком много
+        НОВЫХ тредов за сутки, не ограничивает переписку в открытых)."""
+        if sender_id == recipient_id:
+            raise ValueError("SELF_MESSAGE")
+        body = body.strip()[: GC.MESSAGE_MAX_LENGTH]
+        if not body:
+            raise ValueError("EMPTY_BODY")
+        if self.get_profile(recipient_id) is None:
+            raise ValueError("NO_RECIPIENT_PROFILE")
+
+        thread = self.find_thread(sender_id, recipient_id)
+        now_str = self._now_str()
+        if thread is None:
+            if not self.is_subscribed(sender_id):
+                raise ValueError("SUBSCRIPTION_REQUIRED")
+            if self._count_new_threads_today(sender_id) >= GC.MESSAGE_MAX_NEW_THREADS_PER_DAY:
+                raise ValueError("RATE_LIMITED")
+            lo, hi = self._thread_pair(sender_id, recipient_id)
+            cur = self._conn.execute(
+                "INSERT INTO guro_threads (user_a, user_b, initiator_id, created_at, last_message_at) "
+                "VALUES (?,?,?,?,?)",
+                (lo, hi, sender_id, now_str, now_str),
+            )
+            thread_id = cur.lastrowid
+        else:
+            thread_id = thread["id"]
+
+        cur = self._conn.execute(
+            "INSERT INTO guro_messages (thread_id, sender_id, body, created_at) VALUES (?,?,?,?)",
+            (thread_id, sender_id, body, now_str),
+        )
+        self._conn.execute("UPDATE guro_threads SET last_message_at=? WHERE id=?", (now_str, thread_id))
+        self._conn.commit()
+        return self._conn.execute("SELECT * FROM guro_messages WHERE id=?", (cur.lastrowid,)).fetchone()
 
     # --- статистика для /admin ------------------------------------------
 

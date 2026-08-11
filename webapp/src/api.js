@@ -96,4 +96,20 @@ export function getQr() {
   return request("/api/qr");
 }
 
+// Личные сообщения внутри прилы (Фаза 1, 11.08.2026) — см. guro_id_api.py.
+export function getMessages() {
+  return request("/api/messages");
+}
+
+export function getThread(otherUserId) {
+  return request(`/api/messages/with/${encodeURIComponent(otherUserId)}`);
+}
+
+export function sendMessage({ recipientId, body }) {
+  return request("/api/messages", {
+    method: "POST",
+    body: JSON.stringify({ recipient_id: recipientId, body }),
+  });
+}
+
 export { ApiError };

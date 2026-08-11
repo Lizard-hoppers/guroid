@@ -37,6 +37,7 @@ const ME_PAYLOAD = {
   subscription_status: "inactive",
   subscription_expires_at: null,
   is_subscribed: false,
+  unread_messages: 2,
   privacy: {
     show_name: false,
     show_company: false,
@@ -82,7 +83,27 @@ const SEARCH_LOCKED = {
   locked: true,
 };
 
+// Разблокированный профиль (11.08.2026) — для проверки кнопки "Написать"
+// (появляется только когда locked=false, см. ResultCard в SearchScreen.jsx).
+const SEARCH_UNLOCKED = {
+  mode: "profile",
+  user_id: 888,
+  username: "unlockeduser",
+  name: "Unlocked User",
+  company: "Acme",
+  vertical: "iGaming",
+  reputation_score: 70,
+  confirmed_partnerships: 2,
+  work_status: null,
+  days_in_community: 100,
+  locked: false,
+  partners: [],
+};
+
 let privacyState = { ...ME_PAYLOAD.privacy };
+// Мок личных сообщений (Фаза 1) — простое in-memory состояние на весь прогон.
+let messageThreads = [];
+let messagesByUser = {};
 
 const server = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
   stdio: "pipe",
@@ -135,6 +156,9 @@ await page.route("**/api/search**", (route) => {
   if (q === "target") {
     return route.fulfill({ json: SEARCH_LOCKED });
   }
+  if (q === "unlockeduser") {
+    return route.fulfill({ json: SEARCH_UNLOCKED });
+  }
   if (!ME_PAYLOAD.is_subscribed) {
     return route.fulfill({ status: 402, json: { error: "SUBSCRIPTION_REQUIRED" } });
   }
@@ -170,6 +194,46 @@ await page.route("**/api/work_status", async (route) => {
 await page.route("**/api/qr", (route) =>
   route.fulfill({ json: { deeplink: "https://t.me/GamblingCommunitybot?start=guro_100" } }),
 );
+await page.route("**/api/messages/with/**", (route) => {
+  const url = new URL(route.request().url());
+  const otherId = Number(url.pathname.split("/").pop());
+  route.fulfill({
+    json: {
+      other_user_id: otherId,
+      other_name: otherId === 888 ? "Unlocked User" : `User ${otherId}`,
+      other_username: otherId === 888 ? "unlockeduser" : `user${otherId}`,
+      messages: messagesByUser[otherId] || [],
+      can_send_first: true,
+    },
+  });
+});
+await page.route("**/api/messages", async (route) => {
+  const req = route.request();
+  if (req.method() === "GET") {
+    return route.fulfill({ json: { threads: messageThreads } });
+  }
+  const reqBody = req.postDataJSON();
+  const createdAt = new Date().toISOString();
+  const id = messagesByUser[reqBody.recipient_id]?.length
+    ? messagesByUser[reqBody.recipient_id].length + 1
+    : 1;
+  messagesByUser[reqBody.recipient_id] = [
+    ...(messagesByUser[reqBody.recipient_id] || []),
+    { id, sender_id: ME_PAYLOAD.user_id, body: reqBody.body, created_at: createdAt, mine: true },
+  ];
+  const preview = {
+    other_user_id: reqBody.recipient_id,
+    other_name: reqBody.recipient_id === 888 ? "Unlocked User" : `User ${reqBody.recipient_id}`,
+    other_username: reqBody.recipient_id === 888 ? "unlockeduser" : `user${reqBody.recipient_id}`,
+    last_message: reqBody.body,
+    last_message_at: createdAt,
+    unread_count: 0,
+  };
+  const idx = messageThreads.findIndex((t) => t.other_user_id === reqBody.recipient_id);
+  if (idx >= 0) messageThreads[idx] = preview;
+  else messageThreads.push(preview);
+  route.fulfill({ json: { id, created_at: createdAt } });
+});
 await page.route("**/api/plans", (route) => route.fulfill({
   json: {
     plans: {
@@ -191,6 +255,8 @@ await sleep(2200);
 
 await page.screenshot({ path: "smoke_1_profile.png" });
 console.log("tab=profile ok, screenshot saved");
+const unreadBadgeText = await page.locator(".thread-unread-badge").textContent().catch(() => null);
+console.log("unread messages badge on hub (expect 2):", unreadBadgeText);
 
 async function step(name, fn) {
   try {
@@ -220,6 +286,40 @@ await step("directory-search-locked", async () => {
   const locked = await page.$(".directory-paywall");
   console.log("directory search without subscription -> paywall shown:", !!locked);
   await page.screenshot({ path: "smoke_2c_directory_locked.png" });
+});
+
+await step("search-unlocked-write-message", async () => {
+  // Уже на вкладке "Поиск" (предыдущий шаг directory-search-locked её не
+  // покидал) — повторный клик по УЖЕ активному табу не нужен и ненадёжен
+  // (капля-индикатор с z-index выше кнопки перехватывает pointer events
+  // именно на активном табе, см. TabBar.jsx).
+  await page.fill('input[placeholder="Юзернейм или описание"]', "unlockeduser");
+  await page.getByRole("button", { name: "Найти" }).click();
+  await sleep(500);
+  const writeBtn = page.getByRole("button", { name: "✉️ Написать" });
+  console.log("write button visible on unlocked profile:", await writeBtn.isVisible().catch(() => false));
+  await page.screenshot({ path: "smoke_2f_unlocked_profile.png" });
+
+  await writeBtn.click();
+  await sleep(500);
+  console.log("clicking write opens thread with correct person:",
+    await page.getByText("Unlocked User").isVisible().catch(() => false));
+  await page.screenshot({ path: "smoke_2g_thread_empty.png" });
+
+  await page.fill('textarea[placeholder="Сообщение…"]', "Здравствуйте, интересно обсудить сотрудничество");
+  await page.getByRole("button", { name: "Отправить" }).click();
+  await sleep(500);
+  console.log("sent message bubble visible:",
+    await page.getByText("Здравствуйте, интересно обсудить сотрудничество").isVisible().catch(() => false));
+  await page.screenshot({ path: "smoke_2h_thread_sent.png" });
+
+  await page.getByRole("button", { name: "‹ Сообщения" }).click();
+  await sleep(300);
+  console.log("thread appears in messages list after sending:",
+    await page.getByText("Unlocked User").isVisible().catch(() => false));
+  await page.screenshot({ path: "smoke_2i_messages_list.png" });
+  await page.getByRole("button", { name: "‹ Профиль" }).click();
+  await sleep(300);
 });
 
 await step("goto-confirm", async () => {
@@ -408,6 +508,52 @@ await step("deep-link-target", async () => {
   const urlAfterLoad = page2.url();
   console.log("deep-link: URL cleaned (no ?target=):", !urlAfterLoad.includes("target="));
   await page2.close();
+});
+
+await step("deep-link-thread", async () => {
+  const page3 = await browser.newPage({ viewport: { width: 420, height: 860 } });
+  await page3.addInitScript(() => {
+    window.Telegram = {
+      WebApp: {
+        initData: "mock_init_data",
+        ready() {},
+        expand() {},
+        setHeaderColor() {},
+        setBackgroundColor() {},
+        HapticFeedback: { impactOccurred() {}, notificationOccurred() {}, selectionChanged() {} },
+        openInvoice(url, cb) {
+          cb && cb("paid");
+        },
+        openTelegramLink() {},
+      },
+    };
+  });
+  await page3.route("**/api/me", (route) => route.fulfill({ json: { ...ME_PAYLOAD, privacy: privacyState } }));
+  await page3.route("**/api/messages/with/**", (route) => {
+    const url = new URL(route.request().url());
+    const otherId = Number(url.pathname.split("/").pop());
+    route.fulfill({
+      json: {
+        other_user_id: otherId,
+        other_name: "Unlocked User",
+        other_username: "unlockeduser",
+        messages: messagesByUser[otherId] || [],
+        can_send_first: true,
+      },
+    });
+  });
+  await page3.route("**://telegram.org/js/telegram-web-app.js", (route) => route.abort());
+  // Уведомление о новом сообщении ведёт на ?thread=<id_отправителя> — та же
+  // механика, что ?target= у QR, но открывает переписку, а не Поиск.
+  await page3.goto(`${BASE}/?thread=888`, { waitUntil: "networkidle" });
+  await sleep(2200); // интро
+
+  console.log("thread deep-link: opens conversation directly:",
+    await page3.getByText("Unlocked User").isVisible().catch(() => false));
+  await page3.screenshot({ path: "smoke_9_deeplink_thread.png" });
+  const urlAfterLoad3 = page3.url();
+  console.log("thread deep-link: URL cleaned (no ?thread=):", !urlAfterLoad3.includes("thread="));
+  await page3.close();
 });
 
 console.log("CONSOLE_ERRORS:", JSON.stringify(consoleErrors, null, 2));

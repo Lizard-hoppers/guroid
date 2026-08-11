@@ -137,13 +137,17 @@ _PRIVACY_FIELD_MAP = {
 }
 
 
-def _apply_privacy(summary: dict, privacy: dict) -> dict:
+def _apply_privacy(summary: dict, privacy: dict, *, bypass: bool = False) -> dict:
     """Заменяет на None поля карточки ЧУЖОГО профиля, которые владелец НЕ
     включил в своих настройках (ключ остаётся — фронту проще проверять
     `=== null`, чем угадывать отсутствие ключа). Opt-in: поле видно, только
     если соответствующий тумблер явно включён. На собственный `/api/me` не
     вызывается — там нужен полный набор данных плюс сами настройки, см.
-    handle_me."""
+    handle_me. bypass=True (GC.PRIVILEGED_VIEWER_IDS, 12.08.2026) —
+    административная привилегия конкретных запрашивающих: видят карточку
+    целиком независимо от тумблеров ЦЕЛИ, ничего не редактируется."""
+    if bypass:
+        return dict(summary)
     result = dict(summary)
     for flag, fields in _PRIVACY_FIELD_MAP.items():
         if not privacy.get(flag):
@@ -227,7 +231,7 @@ def _profile_response(storage: GuroStorage, requester_id: int, target_profile) -
     внутри q=)."""
     summary = _profile_summary(storage, target_profile["user_id"])
     privacy = storage.get_privacy(target_profile["user_id"])
-    summary = _apply_privacy(summary, privacy)
+    summary = _apply_privacy(summary, privacy, bypass=requester_id in GC.PRIVILEGED_VIEWER_IDS)
     # target'а (не смотрящего!) подписка гейтит рейтинг/сделки — «рейтинг
     # сгорает без подписки», см. _apply_subscription_gate.
     summary = _apply_subscription_gate(summary, summary["is_subscribed"])
@@ -330,18 +334,22 @@ def _scan_directory_candidates(
     независимо от тумблеров (тот же принцип, что и в остальном приложении),
     поэтому для поиска "кто ищет работу" пропускать людей без единого
     открытого поля было бы неверно — их сигнал "ищу работу" всё равно
-    публичный."""
+    публичный. Привилегированный requester (GC.PRIVILEGED_VIEWER_IDS,
+    12.08.2026) видит ВСЕХ независимо от require_privacy_open — иначе
+    админ-обход приватности не работал бы в directory-поиске/browse, только
+    в точном поиске по юзернейму."""
+    bypass = requester_id in GC.PRIVILEGED_VIEWER_IDS
     matches: list[tuple[int, dict]] = []
     for user_id in storage.list_guro_user_ids():
         if user_id == requester_id:
             continue  # сам себя в directory-режимах видеть незачем
         privacy = storage.get_privacy(user_id)
-        if require_privacy_open and not any(privacy.values()):
+        if require_privacy_open and not bypass and not any(privacy.values()):
             continue  # ничего не открыто -> нечего показывать, не тратим время на профиль
         summary = _profile_summary(storage, user_id)
         if summary is None:
             continue
-        summary = _apply_privacy(summary, privacy)
+        summary = _apply_privacy(summary, privacy, bypass=bypass)
         summary = _apply_subscription_gate(summary, summary["is_subscribed"])
         score = match_fn(summary)
         if score > 0:

@@ -2820,6 +2820,37 @@ async def _run_guro_id_api_sim():
                 body = await resp.json()
                 check(body["cv_skills"] is None, "show_cv выключен -> cv_skills скрыт в чужом поиске")
                 check(body["cv_experience"] == [], "show_cv выключен -> cv_experience = [] (не null) в чужом поиске")
+
+                # Привилегированные наблюдатели (12.08.2026) — GC.PRIVILEGED_VIEWER_IDS
+                # видят карточку целиком, ДАЖЕ ПОКА show_cv/show_name у initiator
+                # выключены (show_name тут ещё ни разу не включался). Бонус
+                # обходит только тумблеры ЦЕЛИ — своя подписка запрашивающего
+                # по-прежнему нужна для полной (не teaser) карточки, поэтому
+                # активируем её тестовому привилегированному аккаунту, как это
+                # будет и в проде ("подписка навсегда" тем же двум ID).
+                app["storage"].activate_subscription(GC.PRIVILEGED_VIEWER_IDS[0], 30)
+                auth_admin = {
+                    "Authorization": "tma " + _guro_make_init_data(
+                        token, {"id": GC.PRIVILEGED_VIEWER_IDS[0], "username": "priv_admin"},
+                    )
+                }
+                resp = await client.get("/api/search?username=initiator", headers=auth_admin)
+                check(resp.status == 200, "GET /api/search привилегированным -> 200")
+                body = await resp.json()
+                check(body["locked"] is False, "привилегированный + своя подписка -> полная карточка, не teaser")
+                check(body["cv_skills"] == "Python, SQL",
+                      "привилегированный видит cv_skills, ХОТЯ show_cv у initiator сейчас выключен")
+                check(body["name"] == "Init",
+                      "привилегированный видит имя, ХОТЯ show_name у initiator ещё ни разу не включался")
+                check(body["company"] == "GURO Co",
+                      "привилегированный видит company ('GURO Co'), ХОТЯ show_company у initiator тоже выключен")
+
+                # непривилегированный (auth_200) в ЭТОТ ЖЕ момент по-прежнему не видит cv_skills —
+                # бонус НЕ снимает приватность глобально, только для этих двух ID
+                resp = await client.get("/api/search?username=initiator", headers=auth_200)
+                body = await resp.json()
+                check(body["cv_skills"] is None, "обычный запрашивающий по-прежнему не видит выключенный show_cv")
+
                 await client.post("/api/privacy", headers=auth_100, json={"field": "show_cv", "value": True})
 
                 resp = await client.post(f"/api/cv/experience/{exp_id}/delete", headers=auth_200)

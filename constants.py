@@ -172,9 +172,11 @@ BANNED_NOTICE_TEXT = (
 
 LANG_SELECT_TEXT = (
     "<b>Welcome to Private Gambling Community!</b>\n"
-    "<blockquote>Please choose your language for the short application form 👇</blockquote>\n"
+    "<blockquote>Start here — please choose your language for the short application form 👇\n"
+    "(the \"GURO ID\" button below opens your app profile, useful once you've registered)</blockquote>\n"
     "<b>Добро пожаловать в Private Gambling Community!</b>\n"
-    "<blockquote>Выберите язык для заполнения короткой анкеты 👇</blockquote>"
+    "<blockquote>Начните здесь — выберите язык для заполнения короткой анкеты 👇\n"
+    "(кнопка «GURO ID» снизу открывает приложение с профилем, пригодится после регистрации)</blockquote>"
 )
 
 WELCOME_TEXT_EN = (

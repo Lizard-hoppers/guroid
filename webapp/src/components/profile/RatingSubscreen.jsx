@@ -1,5 +1,37 @@
+import { useState } from "react";
 import { MetricsRow, PartnersList } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
+
+// Подсказка "как поднять рейтинг" (11.08.2026, по фидбеку владельца —
+// PDF-разбор шаг "У вас низкий рейтинг в индустрии. Как исправить?" не вёл
+// никуда, копия ниже — то же объяснение, что он сам продиктовал). Тот же
+// expand-паттерн, что "Подробнее" в OnboardingScreen.jsx (onboarding-more-link/
+// onboarding-detail), для визуальной согласованности.
+function RatingHelp() {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="card">
+      <button type="button" className="onboarding-more-link" onClick={() => setExpanded((v) => !v)}>
+        {expanded ? "Скрыть" : "Как поднять рейтинг?"}
+      </button>
+      {expanded && (
+        <div className="onboarding-detail">
+          <p>
+            Рейтинг — это сколько людей подтвердило успешные сделки с вами. У кого высокий
+            рейтинг — с тем человеком меньше рисков попасть на деньги.
+          </p>
+          <p>Рейтинг формируется от сделок и найма.</p>
+          <p>
+            Вы и ваш партнёр, с которым уже была успешная сделка, добавляете друг друга по кнопке
+            «Подтвердить партнёрство» во вкладке «Подтвердить». Чем больше успешных сделок или
+            наймов подтверждено — тем выше рейтинг и тем охотнее люди из индустрии пойдут с вами
+            на контакт. Можно добавить всех, с кем вы работали ещё до появления GURO ID.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function RatingSubscreen({ profile, privacy, onPrivacyChange, onBack, onNavigate }) {
   return (
@@ -29,6 +61,7 @@ export function RatingSubscreen({ profile, privacy, onPrivacyChange, onBack, onN
           daysInCommunity={profile.days_in_community}
         />
       </div>
+      <RatingHelp />
       <div className="card">
         <h3>Партнёрства</h3>
         <PartnersList

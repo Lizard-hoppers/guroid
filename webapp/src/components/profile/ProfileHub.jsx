@@ -1,4 +1,4 @@
-import { getAvatarUrl } from "../../telegram.js";
+import { addToHomeScreen, canAddToHomeScreen, getAvatarUrl, haptic } from "../../telegram.js";
 import { initialOf } from "../../utils.js";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import { WorkStatusPicker } from "../Shared.jsx";
@@ -37,6 +37,19 @@ export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, o
           <label>Статус</label>
           <WorkStatusPicker value={profile.work_status} onChange={onWorkStatusChange} />
         </div>
+        {canAddToHomeScreen() && (
+          <button
+            type="button"
+            className="onboarding-more-link"
+            style={{ marginTop: 12 }}
+            onClick={() => {
+              haptic("light");
+              addToHomeScreen();
+            }}
+          >
+            📲 Добавить на экран телефона
+          </button>
+        )}
       </div>
 
       <div className="card">

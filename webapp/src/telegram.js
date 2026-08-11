@@ -43,3 +43,14 @@ export function openInvoice(url, callback) {
 export function getAvatarUrl() {
   return tg?.initDataUnsafe?.user?.photo_url || null;
 }
+
+// "Добавить на рабочий стол" (Bot API 8.0+, 11.08.2026 — владелец пробовал
+// и не нашёл такой опции). Метод есть не у всех клиентов/версий — прячем
+// кнопку, если SDK его не отдаёт, вместо вызова и тихого no-op/ошибки.
+export function canAddToHomeScreen() {
+  return typeof tg?.addToHomeScreen === "function";
+}
+
+export function addToHomeScreen() {
+  if (canAddToHomeScreen()) tg.addToHomeScreen();
+}

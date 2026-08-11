@@ -37,9 +37,20 @@ function IconStar(props) {
   );
 }
 
+function IconBriefcase(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="tab-icon" {...props}>
+      <rect x="3.5" y="7.5" width="17" height="12" rx="2" />
+      <path d="M8.5 7.5V6a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.5 12.5h17" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 const TABS = [
   { key: "profile", labelKey: "tab.profile", Icon: IconUser },
   { key: "search", labelKey: "tab.search", Icon: IconSearch },
+  { key: "vacancies", labelKey: "tab.vacancies", Icon: IconBriefcase },
   { key: "confirm", labelKey: "tab.confirm", Icon: IconHandshake },
   { key: "subscribe", labelKey: "tab.subscribe", Icon: IconStar },
 ];

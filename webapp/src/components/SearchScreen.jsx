@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { search, searchByUserId, browseVertical, ApiError } from "../api.js";
+import { search, searchByUserId, browseVertical, browseResumes, ApiError } from "../api.js";
 import {
   Msg,
   MetricsRow,
@@ -118,7 +118,11 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
   // выполненного платного запроса (описание ИЛИ browse по вертикали),
   // lastQuery хранит, что именно перезапустить при переключении.
   const [sortTop, setSortTop] = useState(false);
-  const [lastQuery, setLastQuery] = useState(null); // {kind: "q"|"vertical", value}
+  const [lastQuery, setLastQuery] = useState(null); // {kind: "q"|"vertical"|"resumes", value}
+  // «Резюме» (Фаза 4, 12.08.2026) — не отдельный экран, а фильтр поверх
+  // browse по вертикали: пока включён, клик по чипу вертикали ищет ТОЛЬКО
+  // тех, кто отметил "Ищу работу" (см. browseResumes/_resume_browse).
+  const [resumesOnly, setResumesOnly] = useState(false);
 
   // Заход по QR (App.jsx передаёт ?target=<id> ОДИН раз, дальше сам гасит
   // проп) — сразу тянем карточку по user_id, минуя ручной ввод.
@@ -135,7 +139,10 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
     setLastQuery({ kind, value });
     setState({ loading: true, data: null, error: null });
     try {
-      const data = kind === "vertical" ? await browseVertical(value, { top }) : await search(value, { top });
+      let data;
+      if (kind === "resumes") data = await browseResumes(value, { top });
+      else if (kind === "vertical") data = await browseVertical(value, { top });
+      else data = await search(value, { top });
       setState({ loading: false, data, error: null });
       haptic("light");
     } catch (error) {
@@ -157,7 +164,12 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
 
   async function onPickVertical(v) {
     setQuery("");
-    await runQuery("vertical", v, sortTop);
+    await runQuery(resumesOnly ? "resumes" : "vertical", v, sortTop);
+  }
+
+  async function onShowAllResumes() {
+    setQuery("");
+    await runQuery("resumes", "", sortTop);
   }
 
   function toggleTop() {
@@ -233,6 +245,15 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
             </button>
           ))}
         </div>
+        <label className="checkbox-row" style={{ marginTop: 10 }}>
+          <input type="checkbox" checked={resumesOnly} onChange={(e) => setResumesOnly(e.target.checked)} />
+          {t("search.resumesToggle")}
+        </label>
+        {resumesOnly && (
+          <button type="button" className="onboarding-more-link" onClick={onShowAllResumes}>
+            {t("search.resumesShowAll")}
+          </button>
+        )}
       </div>
 
       {state.loading && !state.data && <Spinner>{t("search.submitting")}</Spinner>}

@@ -79,8 +79,39 @@ export function browseVertical(vertical, { top } = {}) {
   return request(`/api/search?vertical=${encodeURIComponent(vertical)}${top ? "&top=1" : ""}`);
 }
 
+// «Резюме» (Фаза 4, 12.08.2026) — фильтр work_status=looking поверх того
+// же поиска, vertical опционален (пустая строка/undefined -> без фильтра
+// по вертикали, просто все, кто ищет работу).
+export function browseResumes(vertical, { top } = {}) {
+  return request(
+    `/api/search?resumes=1${vertical ? `&vertical=${encodeURIComponent(vertical)}` : ""}${top ? "&top=1" : ""}`,
+  );
+}
+
 export function getInviteLink() {
   return request("/api/invite_link");
+}
+
+// Вакансии (Фаза 4, 12.08.2026) — публикует только подписчик кабинета
+// рекрутера, просматривает любой с базовой подпиской GURO ID.
+export function getVacancies({ lang, vertical } = {}) {
+  const params = new URLSearchParams();
+  if (lang) params.set("lang", lang);
+  if (vertical) params.set("vertical", vertical);
+  const qs = params.toString();
+  return request(`/api/vacancies${qs ? `?${qs}` : ""}`);
+}
+
+export function getMyVacancies() {
+  return request("/api/vacancies/mine");
+}
+
+export function createVacancy(data) {
+  return request("/api/vacancies", { method: "POST", body: JSON.stringify(data) });
+}
+
+export function closeVacancy(id) {
+  return request(`/api/vacancies/${encodeURIComponent(id)}/close`, { method: "POST" });
 }
 
 // product="recruiter" (Фаза 3) — тарифы/оплата кабинета рекрутера вместо

@@ -347,6 +347,54 @@ await page.route("**/api/plans**", (route) => {
     },
   });
 });
+// Вакансии (Фаза 4, 12.08.2026) — единый обработчик разбирает путь сам,
+// чтобы не воевать за приоритет между **/api/vacancies** и более узкими
+// /mine, /<id>/close (Playwright матчит по своим правилам, проще не рисковать).
+let vacancies = [
+  {
+    id: 1, author_id: 100, company: "GURO Labs", recruiter_name: "Init HR",
+    title: "Existing QA Lead", vertical: "Betting", seniority: "Lead", location: "Remote",
+    remote: true, relocation: false, salary_from: null, salary_to: null, salary_negotiable: true,
+    description: "Уже существующая вакансия для проверки списка", lang: "ru", status: "active",
+    created_at: "2026-08-01 10:00:00",
+  },
+];
+await page.route("**/api/vacancies**", (route) => {
+  const req = route.request();
+  const url = new URL(req.url());
+  const path = url.pathname;
+
+  if (path === "/api/vacancies/mine") {
+    return route.fulfill({ json: { vacancies } });
+  }
+  const closeMatch = path.match(/^\/api\/vacancies\/(\d+)\/close$/);
+  if (closeMatch) {
+    const v = vacancies.find((x) => x.id === Number(closeMatch[1]));
+    if (v) v.status = "closed";
+    return route.fulfill({ json: { status: "closed" } });
+  }
+  if (req.method() === "POST") {
+    const body = req.postDataJSON();
+    const nv = {
+      id: vacancies.length + 1, author_id: 100, company: "GURO Labs", recruiter_name: "Init HR",
+      title: body.title, vertical: body.vertical, seniority: body.seniority, location: body.location,
+      remote: !!body.remote, relocation: !!body.relocation,
+      salary_from: body.salary_from, salary_to: body.salary_to, salary_negotiable: !!body.salary_negotiable,
+      description: body.description, lang: body.lang, status: "active", created_at: new Date().toISOString(),
+    };
+    vacancies.push(nv);
+    return route.fulfill({ json: nv });
+  }
+  if (!ME_PAYLOAD.is_subscribed) {
+    return route.fulfill({ status: 402, json: { error: "SUBSCRIPTION_REQUIRED" } });
+  }
+  const lang = url.searchParams.get("lang");
+  const vertical = url.searchParams.get("vertical");
+  let results = vacancies.filter((v) => v.status === "active");
+  if (lang) results = results.filter((v) => v.lang === lang);
+  if (vertical) results = results.filter((v) => v.vertical === vertical);
+  route.fulfill({ json: { vacancies: results } });
+});
 await page.route("**://telegram.org/js/telegram-web-app.js", (route) => route.abort());
 
 await page.goto(BASE, { waitUntil: "networkidle" });
@@ -624,6 +672,72 @@ await step("browse-by-vertical-and-top-sort", async () => {
   await page.screenshot({ path: "smoke_2k_browse_top_sorted.png" });
 });
 
+await step("resumes-filter", async () => {
+  // Всё ещё на "Поиск" — "Резюме" (Фаза 4) это чекбокс поверх browse по
+  // вертикали, не отдельная вкладка.
+  await page.getByRole("checkbox", { name: /ищет работу/ }).click();
+  await sleep(200);
+  await page.getByRole("button", { name: "Показать всех, кто ищет работу" }).click();
+  await sleep(400);
+  await page.screenshot({ path: "smoke_2l_resumes.png" });
+  console.log("resumes filter step ran without crash (mock has no looking-for-work fixtures)");
+});
+
+await step("vacancies-tab-upsell", async () => {
+  await page.getByRole("button", { name: "Вакансии", exact: true }).click();
+  await sleep(400);
+  await page.screenshot({ path: "smoke_11a_vacancies_upsell.png" });
+  console.log("existing vacancy card visible:",
+    await page.getByText("Existing QA Lead").isVisible().catch(() => false));
+  console.log("publish button hidden without recruiter subscription:",
+    await page.getByRole("button", { name: "➕ Опубликовать вакансию" }).isVisible().catch(() => false));
+});
+
+await step("vacancies-publish-and-close", async () => {
+  // Симулируем активную подписку рекрутера на моке (тот же приём, что и в
+  // profile-subscription-gate выше — прямая мутация мок-состояния).
+  recruiterState.is_recruiter_subscribed = true;
+  await page.getByRole("button", { name: "Профиль" }).click();
+  await sleep(300);
+  await page.getByRole("button", { name: "Вакансии", exact: true }).click();
+  await sleep(400);
+
+  const publishBtn = page.getByRole("button", { name: "➕ Опубликовать вакансию" });
+  console.log("publish button visible with recruiter subscription:",
+    await publishBtn.isVisible().catch(() => false));
+  await publishBtn.click();
+  await sleep(300);
+
+  await page.fill('input[placeholder="Например: Senior Product Manager"]', "New Talent Lead");
+  // "Gambling" встречается дважды на странице (фильтр доски + чип формы) —
+  // берём именно тот, что внутри формы (form -> getByRole сужает поиск).
+  await page.locator("form").getByRole("button", { name: "Gambling", exact: true }).click();
+  await page.selectOption("select", "Senior");
+  await page.fill('input[placeholder="Malta, Cyprus…"]', "Cyprus");
+  await page.getByText("Можно удалённо").click();
+  await page.getByText("По договорённости (не указывать вилку)").click();
+  await page.fill("textarea", "Ищем сильного лида в казино-направление");
+  await page.screenshot({ path: "smoke_11b_vacancy_form_filled.png" });
+
+  await page.getByRole("button", { name: "Опубликовать", exact: true }).click();
+  await sleep(400);
+  await page.screenshot({ path: "smoke_11c_vacancy_published.png" });
+  console.log("new vacancy visible in public list:",
+    await page.getByText("New Talent Lead").isVisible().catch(() => false));
+  console.log("new vacancy visible in Мои вакансии:",
+    await page.getByText("Мои вакансии").isVisible().catch(() => false));
+
+  const closeButtons = page.getByRole("button", { name: "Закрыть" });
+  const closeCount = await closeButtons.count();
+  console.log("close buttons in Мои вакансии:", closeCount);
+  if (closeCount > 0) {
+    await closeButtons.first().click();
+    await sleep(400);
+    await page.screenshot({ path: "smoke_11d_vacancy_closed.png" });
+    console.log("closed badge visible:", await page.getByText("Закрыта").isVisible().catch(() => false));
+  }
+});
+
 await step("onboarding-no-profile", async () => {
   const page3 = await browser.newPage({ viewport: { width: 420, height: 860 } });
   await page3.addInitScript(() => {
@@ -677,8 +791,12 @@ await step("drag-tab-blob", async () => {
   const startY = box.y + box.height / 2;
   await page.mouse.move(startX, startY);
   await page.mouse.down();
-  // тащим каплю через весь таббар вправо, до раздела "Подписка"
-  await page.mouse.move(startX + box.width * 2.6, startY, { steps: 12 });
+  // тащим каплю через весь таббар вправо, до последнего раздела ("Подписка") —
+  // намеренный ЗАВЕДОМЫЙ перебор (не x2.6, а x10 ширины капли), а не число,
+  // подогнанное под конкретное количество табов: dragConstraints={barRef}
+  // всё равно клэмпит каплю к правому краю бара, так что перебор безопасен
+  // и переживёт добавление новых вкладок (5 табов после Фазы 4 вместо 4).
+  await page.mouse.move(startX + box.width * 10, startY, { steps: 12 });
   await page.mouse.up();
   await sleep(700); // дать пружине довертеться/успокоиться
   await page.screenshot({ path: "smoke_6_blob_dragged.png" });

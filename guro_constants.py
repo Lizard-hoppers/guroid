@@ -160,3 +160,14 @@ DIRECTORY_QUERY_MAX_KEYWORDS = 10
 # новым людям (не ограничивает переписку в уже открытых тредах).
 MESSAGE_MAX_LENGTH = 2000
 MESSAGE_MAX_NEW_THREADS_PER_DAY = 20
+
+# Вакансии (Фаза 4, 12.08.2026) — публикует ТОЛЬКО подписчик кабинета
+# рекрутера (решение владельца), просматривает любой с базовой подпиской
+# GURO ID (тот же пейволл, что у остального поиска). Отклик — через уже
+# готовые личные сообщения (Фаза 1), отдельного механизма не заводим.
+VACANCY_TITLE_MAX = 120
+VACANCY_DESCRIPTION_MAX = 2000
+VACANCY_LANGS = ("ru", "en")
+VACANCY_STATUS_ACTIVE = "active"
+VACANCY_STATUS_CLOSED = "closed"
+VACANCY_LIST_LIMIT = 30

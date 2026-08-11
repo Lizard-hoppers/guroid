@@ -318,18 +318,25 @@ def _searchable_text(summary: dict) -> str:
     return " ".join(str(summary.get(f) or "") for f in _DIRECTORY_TEXT_FIELDS).lower()
 
 
-def _scan_directory_candidates(storage: GuroStorage, requester_id: int, match_fn) -> list[tuple[int, dict]]:
-    """Общий проход по всем GURO ID пользователям для обоих directory-режимов
-    (поиск по описанию и browse по вертикали, 11.08.2026) — экономит поход
-    в БД для тех, кто вообще ничего не открыл тумблерами приватности.
+def _scan_directory_candidates(
+    storage: GuroStorage, requester_id: int, match_fn, *, require_privacy_open: bool = True,
+) -> list[tuple[int, dict]]:
+    """Общий проход по всем GURO ID пользователям для всех directory-режимов
+    (поиск по описанию, browse по вертикали, резюме — Фазы 2/4) — экономит
+    поход в БД для тех, кто вообще ничего не открыл тумблерами приватности.
     match_fn(summary) -> int > 0, чтобы попасть в выдачу (сила совпадения,
-    используется для сортировки), иначе кандидат исключается."""
+    используется для сортировки), иначе кандидат исключается.
+    require_privacy_open=False (резюме, Фаза 4) — work_status виден ВСЕГДА
+    независимо от тумблеров (тот же принцип, что и в остальном приложении),
+    поэтому для поиска "кто ищет работу" пропускать людей без единого
+    открытого поля было бы неверно — их сигнал "ищу работу" всё равно
+    публичный."""
     matches: list[tuple[int, dict]] = []
     for user_id in storage.list_guro_user_ids():
         if user_id == requester_id:
             continue  # сам себя в directory-режимах видеть незачем
         privacy = storage.get_privacy(user_id)
-        if not any(privacy.values()):
+        if require_privacy_open and not any(privacy.values()):
             continue  # ничего не открыто -> нечего показывать, не тратим время на профиль
         summary = _profile_summary(storage, user_id)
         if summary is None:
@@ -406,12 +413,37 @@ def _directory_browse(storage: GuroStorage, requester_id: int, vertical: str, *,
     return _rank_directory_matches(matches, top=top)
 
 
+def _resume_browse(storage: GuroStorage, requester_id: int, vertical: str | None, *, top: bool) -> dict:
+    """«Резюме» (Фаза 4, 12.08.2026) — не отдельный экран/эндпоинт, а
+    доп. фильтр к тому же поиску: показывает только тех, кто отметил
+    статус «Ищу работу» (work_status=looking), опционально ещё и по
+    вертикали. require_privacy_open=False — см. _scan_directory_candidates."""
+    vertical_lower = (vertical or "").strip().lower()
+
+    def match_fn(summary: dict) -> int:
+        if summary.get("work_status") != GC.WORK_STATUS_LOOKING:
+            return 0
+        if not vertical_lower:
+            return 1
+        v = (summary.get("vertical") or "").lower()
+        if v == vertical_lower:
+            return 1
+        if vertical_lower == "other" and v.startswith("other"):
+            return 1
+        return 0
+
+    matches = _scan_directory_candidates(storage, requester_id, match_fn, require_privacy_open=False)
+    return _rank_directory_matches(matches, top=top)
+
+
 async def handle_search(request: web.Request) -> web.Response:
     """Режимы запроса:
     - `user_id=<id>` — точный переход по ID (QR, клик по результату поиска).
     - `username=<name>` — точный переход по юзернейму (внутреннее использование).
     - `vertical=<v>` — browse по вертикали (11.08.2026, см. _directory_browse),
       платный, как и q=-описание.
+    - `resumes=1` (Фаза 4, 12.08.2026) — «резюме»: только work_status=looking,
+      можно сочетать с `vertical=` для сужения. Платный (см. _resume_browse).
     - `q=<текст>` — УНИВЕРСАЛЬНЫЙ поиск (10.08.2026, единственный режим,
       доступный из формы поиска фронта): сперва пробуем точный юзернейм
       (бесплатный тизер, как раньше) — не нашли, значит это уже описание,
@@ -425,6 +457,7 @@ async def handle_search(request: web.Request) -> web.Response:
     query = request.query.get("q", "")
     vertical = request.query.get("vertical", "").strip()
     top = request.query.get("top") == "1"
+    resumes = request.query.get("resumes") == "1"
 
     if request.query.get("workspace") == "recruiter":
         # Просмотр ЧУЖОГО кабинета рекрутера (Фаза 3) — резолвим человека
@@ -473,6 +506,11 @@ async def handle_search(request: web.Request) -> web.Response:
         if target_profile is None:
             return web.json_response({"error": "NOT_FOUND"}, status=404)
         return web.json_response(_profile_response(storage, requester["id"], target_profile))
+
+    if resumes:
+        if not storage.is_subscribed(requester["id"]):
+            return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
+        return web.json_response(_resume_browse(storage, requester["id"], vertical or None, top=top))
 
     if vertical:
         if not storage.is_subscribed(requester["id"]):
@@ -763,6 +801,98 @@ async def handle_invite_link(request: web.Request) -> web.Response:
     return web.json_response({"link": link})
 
 
+def _vacancy_public(storage: GuroStorage, row) -> dict:
+    """Подмешивает компанию/имя автора из ЕГО кабинета рекрутера — вакансия
+    сама по себе не хранит company, чтобы не дублировать данные, которые
+    уже живут в guro_recruiter_profiles."""
+    recruiter = storage.get_recruiter_extra(row["author_id"])
+    return {
+        "id": row["id"],
+        "author_id": row["author_id"],
+        "company": recruiter["company"],
+        "recruiter_name": recruiter["name"],
+        "title": row["title"],
+        "vertical": row["vertical"],
+        "seniority": row["seniority"],
+        "location": row["location"],
+        "remote": bool(row["remote"]),
+        "relocation": bool(row["relocation"]),
+        "salary_from": row["salary_from"],
+        "salary_to": row["salary_to"],
+        "salary_negotiable": bool(row["salary_negotiable"]),
+        "description": row["description"],
+        "lang": row["lang"],
+        "status": row["status"],
+        "created_at": row["created_at"],
+    }
+
+
+async def handle_list_vacancies(request: web.Request) -> web.Response:
+    """Просмотр доски — по БАЗОВОЙ подписке GURO ID (тот же пейволл, что и
+    у остального поиска), публиковать может только подписчик кабинета
+    рекрутера (см. handle_create_vacancy)."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    if not storage.is_subscribed(user["id"]):
+        return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
+    lang = request.query.get("lang") or None
+    vertical = request.query.get("vertical") or None
+    rows = storage.list_vacancies(lang=lang, vertical=vertical)
+    return web.json_response({"vacancies": [_vacancy_public(storage, r) for r in rows]})
+
+
+async def handle_my_vacancies(request: web.Request) -> web.Response:
+    """Свои вакансии (включая закрытые) — для управления, доступно любому
+    (даже если подписка рекрутера с тех пор истекла — старые публикации
+    остаются видны владельцу для архивации)."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    rows = storage.list_my_vacancies(user["id"])
+    return web.json_response({"vacancies": [_vacancy_public(storage, r) for r in rows]})
+
+
+async def handle_create_vacancy(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    if not storage.is_recruiter_subscribed(user["id"]):
+        return web.json_response({"error": "RECRUITER_SUBSCRIPTION_REQUIRED"}, status=402)
+    body = await request.json()
+    title = str(body.get("title", "")).strip()[: GC.VACANCY_TITLE_MAX]
+    if not title:
+        return web.json_response({"error": "TITLE_REQUIRED"}, status=400)
+    lang = str(body.get("lang", "ru"))
+    if lang not in GC.VACANCY_LANGS:
+        lang = "ru"
+    description = str(body.get("description", "")).strip()[: GC.VACANCY_DESCRIPTION_MAX] or None
+    vacancy = storage.create_vacancy(
+        user["id"],
+        title=title,
+        vertical=body.get("vertical") or None,
+        seniority=body.get("seniority") or None,
+        location=body.get("location") or None,
+        remote=bool(body.get("remote")),
+        relocation=bool(body.get("relocation")),
+        salary_from=_parse_amount(body.get("salary_from")),
+        salary_to=_parse_amount(body.get("salary_to")),
+        salary_negotiable=bool(body.get("salary_negotiable")),
+        description=description,
+        lang=lang,
+    )
+    return web.json_response(_vacancy_public(storage, vacancy))
+
+
+async def handle_close_vacancy(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        vacancy_id = int(request.match_info["vacancy_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    if not storage.close_vacancy(vacancy_id, user["id"]):
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    return web.json_response({"status": "closed"})
+
+
 # product -> тарифная сетка. Обобщено под ключ продукта (Фаза 3, 12.08.2026)
 # вместо копипасты Stars+крипто-эндпоинтов под кабинет рекрутера — одна
 # проверенная в проде платёжная цепочка на оба продукта.
@@ -961,6 +1091,10 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/recruiter/privacy", handle_set_recruiter_privacy)
     app.router.add_get("/api/qr", handle_get_qr)
     app.router.add_get("/api/invite_link", handle_invite_link)
+    app.router.add_get("/api/vacancies", handle_list_vacancies)
+    app.router.add_get("/api/vacancies/mine", handle_my_vacancies)
+    app.router.add_post("/api/vacancies", handle_create_vacancy)
+    app.router.add_post("/api/vacancies/{vacancy_id}/close", handle_close_vacancy)
     if WEBAPP_DIST.exists():
         # add_static не отдаёт index.html на "/" сам по себе (показал бы
         # листинг директории) — раздаём его явным роутом, остальное статикой.

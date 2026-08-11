@@ -3193,6 +3193,112 @@ async def _run_guro_id_api_sim():
                 check(not app["storage"].is_subscribed(355),
                       "crypto webhook recruiter НЕ активирует базовую GURO ID подписку (разные продукты)")
 
+                # --- Фаза 4 (12.08.2026): вакансии + резюме ---------------------
+                resp = await client.post("/api/vacancies", headers=auth_200, json={"title": "PM"})
+                check(resp.status == 402,
+                      "POST /api/vacancies без подписки РЕКРУТЕРА (даже с базовой) -> 402")
+                body = await resp.json()
+                check(body["error"] == "RECRUITER_SUBSCRIPTION_REQUIRED", "тело содержит понятный код ошибки")
+
+                resp = await client.post("/api/vacancies", headers=auth_100, json={"title": "   "})
+                check(resp.status == 400, "POST /api/vacancies с пустым (после strip) заголовком -> 400")
+
+                # auth_100 (initiator) уже подписан на кабинет рекрутера и заполнил
+                # company="GURO Recruiting" в предыдущем блоке тестов (Фаза 3)
+                resp = await client.post("/api/vacancies", headers=auth_100, json={
+                    "title": "Senior Product Manager", "vertical": "Gambling", "seniority": "Senior",
+                    "location": "Malta", "remote": True, "relocation": False,
+                    "salary_from": "3000", "salary_to": "5000", "salary_negotiable": False,
+                    "description": "Ищем продакта в казино-направление", "lang": "ru",
+                })
+                check(resp.status == 200, "POST /api/vacancies валидный запрос (recruiter подписан) -> 200")
+                body = await resp.json()
+                vacancy_ru_id = body["id"]
+                check(body["company"] == "GURO Recruiting",
+                      "company подтягивается из кабинета рекрутера автора, не хранится в самой вакансии")
+                check(body["status"] == "active", "новая вакансия сразу активна")
+
+                resp = await client.post("/api/vacancies", headers=auth_100, json={
+                    "title": "Head of Marketing", "vertical": "Crypto", "lang": "en",
+                })
+                check(resp.status == 200, "вторая вакансия (en) -> 200")
+                vacancy_en_id = (await resp.json())["id"]
+
+                st.save_profile({"user_id": 496, "username": "nosub4", "name": "No Sub 4"})
+                auth_496 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 496, "username": "nosub4"})}
+                resp = await client.get("/api/vacancies", headers=auth_496)
+                check(resp.status == 402, "GET /api/vacancies без БАЗОВОЙ подписки смотрящего -> 402")
+
+                resp = await client.get("/api/vacancies", headers=auth_200)
+                check(resp.status == 200, "GET /api/vacancies с базовой подпиской -> 200 (подписка рекрутера НЕ нужна)")
+                body = await resp.json()
+                titles = [v["title"] for v in body["vacancies"]]
+                check("Senior Product Manager" in titles and "Head of Marketing" in titles,
+                      "обе активные вакансии видны в общей выдаче")
+
+                resp = await client.get("/api/vacancies?lang=en", headers=auth_200)
+                body = await resp.json()
+                en_titles = [v["title"] for v in body["vacancies"]]
+                check("Head of Marketing" in en_titles and "Senior Product Manager" not in en_titles,
+                      "?lang=en фильтрует по языку публикации")
+
+                resp = await client.get("/api/vacancies?vertical=Crypto", headers=auth_200)
+                body = await resp.json()
+                check(all(v["vertical"] == "Crypto" for v in body["vacancies"]), "?vertical= фильтрует по вертикали")
+
+                resp = await client.get("/api/vacancies/mine", headers=auth_100)
+                check(resp.status == 200, "GET /api/vacancies/mine -> 200")
+                body = await resp.json()
+                check(len(body["vacancies"]) == 2, "у автора обе его вакансии видны в /mine")
+
+                resp = await client.post(f"/api/vacancies/{vacancy_ru_id}/close", headers=auth_200)
+                check(resp.status == 404, "закрыть чужую вакансию -> 404 (не автор)")
+
+                resp = await client.post(f"/api/vacancies/{vacancy_ru_id}/close", headers=auth_100)
+                check(resp.status == 200, "автор закрывает свою вакансию -> 200")
+                body = await resp.json()
+                check(body["status"] == "closed", "статус вакансии сменился на closed")
+
+                resp = await client.get("/api/vacancies", headers=auth_200)
+                body = await resp.json()
+                check("Senior Product Manager" not in [v["title"] for v in body["vacancies"]],
+                      "закрытая вакансия пропадает из общей выдачи")
+
+                resp = await client.get("/api/vacancies/mine", headers=auth_100)
+                body = await resp.json()
+                check(len(body["vacancies"]) == 2,
+                      "но в /mine у автора закрытая вакансия всё ещё видна (для истории/архива)")
+
+                # «Резюме» — не отдельный экран, а фильтр work_status=looking
+                # поверх того же поиска; НЕ требует ни подписки, ни единого
+                # открытого privacy-тумблера у самого кандидата (work_status
+                # публичен всегда, тот же принцип, что и везде в приложении).
+                st.save_profile({"user_id": 497, "username": "resumeuser1", "name": "Resume One", "vertical": "Gambling"})
+                app["storage"].set_work_status(497, "looking")
+                st.save_profile({"user_id": 498, "username": "resumeuser2", "name": "Resume Two", "vertical": "Gambling"})
+                app["storage"].set_work_status(498, "working")
+
+                resp = await client.get("/api/search?resumes=1", headers=auth_496)
+                check(resp.status == 402, "GET /api/search?resumes=1 без подписки смотрящего -> 402")
+
+                resp = await client.get("/api/search?resumes=1", headers=auth_200)
+                check(resp.status == 200, "GET /api/search?resumes=1 с подпиской -> 200")
+                body = await resp.json()
+                check(body["mode"] == "list", "резюме-режим -> mode=list")
+                resume_ids = [r["user_id"] for r in body["results"]]
+                check(497 in resume_ids,
+                      "resumeuser1 (work_status=looking) найден, ХОТЯ не открыл ни одного privacy-тумблера")
+                check(498 not in resume_ids, "resumeuser2 (work_status=working) НЕ попадает в резюме-выдачу")
+                found_resume = next(r for r in body["results"] if r["user_id"] == 497)
+                check(found_resume["name"] is None,
+                      "имя всё равно скрыто (privacy не открыт) — виден только сам факт 'ищу работу'")
+                check(found_resume["work_status"] == "looking", "work_status виден в результате резюме-поиска")
+
+                resp = await client.get("/api/search?resumes=1&vertical=Crypto", headers=auth_200)
+                body = await resp.json()
+                check(497 not in [r["user_id"] for r in body["results"]],
+                      "resumes=1 + vertical= сужает выдачу (resumeuser1 в Gambling, не Crypto)")
+
                 # витрина разработчика — своя карточка, без пейволла, без анкеты в profiles
                 auth_dev = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 777, "username": "lizard_hoppers"})}
                 resp = await client.get("/api/me", headers=auth_dev)

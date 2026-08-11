@@ -2868,22 +2868,35 @@ async def _run_guro_id_api_sim():
                     "vertical": "Крипто", "profession": "Trader",
                 })  # ни один privacy-тумблер не включён -> невидим для directory-поиска вообще
 
-                resp = await client.get("/api/directory?q=крипто", headers=auth_ghost)
-                check(resp.status == 402, "GET /api/directory без подписки у смотрящего -> 402 SUBSCRIPTION_REQUIRED")
+                # УНИВЕРСАЛЬНЫЙ поиск (10.08.2026): один инпут ?q=, бэкенд сам решает —
+                # точный юзернейм -> бесплатный тизер-профиль (mode=profile), иначе
+                # (нет такого юзернейма) -> платный directory-поиск (mode=list)
+                resp = await client.get("/api/search?q=initiator", headers=auth_ghost)
+                check(resp.status == 200,
+                      "q= точно совпал с юзернеймом -> 200 БЕЗ подписки (это режим profile, не list)")
+                body = await resp.json()
+                check(body["mode"] == "profile", "q= с точным юзернеймом -> mode=profile")
+                check(body["locked"] is True, "но карточка всё равно тизер, т.к. auth_ghost не подписан")
+
+                resp = await client.get("/api/search?q=крипто", headers=auth_ghost)
+                check(resp.status == 402,
+                      "q= НЕ совпал ни с одним юзернеймом -> это описание -> 402 без подписки смотрящего")
                 body = await resp.json()
                 check(body["error"] == "SUBSCRIPTION_REQUIRED", "тело ответа содержит понятный код ошибки")
 
                 # auth_200 (confirmer) уже подписан с самого начала теста (см. paywall-тест выше)
-                resp = await client.get("/api/directory?q=", headers=auth_200)
-                check(resp.status == 200, "GET /api/directory без query -> 200, просто пусто")
+                resp = await client.get("/api/search?q=", headers=auth_200)
+                check(resp.status == 200, "GET /api/search?q= (пусто) -> 200, просто пустой список")
                 body = await resp.json()
-                check(body["results"] == [], "пустой запрос -> пустой список, не вся база")
+                check(body["mode"] == "list" and body["results"] == [],
+                      "пустой query -> mode=list с пустым results, не вся база")
 
-                resp = await client.get("/api/directory?q=крипто", headers=auth_200)
-                check(resp.status == 200, "GET /api/directory с подпиской -> 200")
+                resp = await client.get("/api/search?q=крипто", headers=auth_200)
+                check(resp.status == 200, "q= с подпиской смотрящего, без совпадения по юзернейму -> 200")
                 body = await resp.json()
+                check(body["mode"] == "list", "q= без точного юзернейма -> mode=list (directory-режим)")
                 ids = [r["user_id"] for r in body["results"]]
-                check(400 in ids, "directory-поиск по 'крипто' находит user 400 (открыл show_vertical)")
+                check(400 in ids, "поиск по 'крипто' находит user 400 (открыл show_vertical)")
                 check(401 not in ids,
                       "user 401 совпадает по тексту, НО ни один privacy-тумблер не включён -> не находится")
                 found = next(r for r in body["results"] if r["user_id"] == 400)
@@ -2891,12 +2904,18 @@ async def _run_guro_id_api_sim():
                 check(found["company"] is None,
                       "company НЕ была открыта тумблером -> скрыта даже в найденном результате")
                 check(found["reputation_score"] is not None,
-                      "user 400 подписан -> его репутация видна в directory-результате")
+                      "user 400 подписан -> его репутация видна в результате")
 
-                resp = await client.get("/api/directory?q=менеджер", headers=auth_100)
+                resp = await client.get("/api/search?q=менеджер", headers=auth_100)
                 body = await resp.json()
                 self_ids = [r["user_id"] for r in body["results"]]
-                check(100 not in self_ids, "directory-поиск никогда не возвращает самого запрашивающего")
+                check(100 not in self_ids, "поиск по описанию никогда не возвращает самого запрашивающего")
+
+                resp = await client.get("/api/search?q=cryptomgr", headers=auth_200)
+                body = await resp.json()
+                check(body["mode"] == "profile" and body["user_id"] == 400,
+                      "q= точно совпал с юзернеймом user 400 -> находит ЕГО ОДНОГО (mode=profile), "
+                      "а не список по совпадению 'crypto' в других полях")
 
                 resp = await client.post("/api/partnerships", headers=auth_100,
                                           json={"confirmer_username": "nobody"})

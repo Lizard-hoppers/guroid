@@ -37,16 +37,15 @@ export function getMe() {
   return request("/api/me");
 }
 
-export function search(username) {
-  return request(`/api/search?username=${encodeURIComponent(username)}`);
+// Универсальный поиск (10.08.2026): одно поле q= — бэкенд сам решает,
+// точный это юзернейм (mode=profile) или описание (mode=list,
+// платный directory-поиск), см. handle_search в guro_id_api.py.
+export function search(query) {
+  return request(`/api/search?q=${encodeURIComponent(query)}`);
 }
 
 export function searchByUserId(userId) {
   return request(`/api/search?user_id=${encodeURIComponent(userId)}`);
-}
-
-export function directorySearch(query) {
-  return request(`/api/directory?q=${encodeURIComponent(query)}`);
 }
 
 export function createPartnership({ confirmerUsername, vertical, geo }) {

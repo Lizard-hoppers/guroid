@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { search, searchByUserId, directorySearch, ApiError } from "../api.js";
+import { search, searchByUserId, ApiError } from "../api.js";
 import {
   Msg,
   MetricsRow,
@@ -29,9 +29,9 @@ function ResultCard({ p }) {
   );
 }
 
-// Компактная строка результата directory-поиска (поиск по описанию, не по
-// юзернейму) — тап открывает полную карточку тем же кодом, что и обычный
-// поиск (см. onOpen -> searchByUserId в SearchScreen).
+// Компактная строка результата поиска по описанию (mode=list) — тап
+// открывает полную карточку тем же кодом, что и обычный поиск по
+// юзернейму (см. onOpen -> searchByUserId).
 function DirectoryRow({ r, onOpen }) {
   const heading = r.name || (r.username ? `@${r.username}` : "Без имени");
   return (
@@ -49,22 +49,13 @@ function DirectoryRow({ r, onOpen }) {
 }
 
 export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink }) {
-  const [username, setUsername] = useState("");
+  const [query, setQuery] = useState("");
   const [state, setState] = useState(
     deepLinkTargetId ? { loading: true, data: null, error: null } : { loading: false, data: null, error: null },
   );
-  const [query, setQuery] = useState("");
-  const [dirState, setDirState] = useState({
-    loading: false,
-    results: null,
-    truncated: false,
-    subscriptionRequired: false,
-    error: null,
-  });
 
   // Заход по QR (App.jsx передаёт ?target=<id> ОДИН раз, дальше сам гасит
-  // проп) — сразу тянем карточку по user_id, минуя ручной ввод юзернейма.
-  // Тот же пейволл, что у обычного поиска (см. ResultCard/LockedOverlay ниже).
+  // проп) — сразу тянем карточку по user_id, минуя ручной ввод.
   useEffect(() => {
     if (!deepLinkTargetId) return;
     onConsumeDeepLink?.();
@@ -74,9 +65,13 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Одно поле на всё (10.08.2026): бэкенд сам решает, что это — точный
+  // юзернейм (бесплатный тизер-профиль, mode=profile) или описание вроде
+  // «менеджер в крипто» (платный поиск по открытым полям всего
+  // комьюнити, mode=list), см. handle_search в guro_id_api.py.
   async function onSubmit(e) {
     e.preventDefault();
-    const q = username.trim().replace(/^@/, "");
+    const q = query.trim().replace(/^@/, "");
     if (!q) return;
     setState({ loading: true, data: null, error: null });
     try {
@@ -89,26 +84,7 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink }
     }
   }
 
-  // Поиск по описанию ("менеджер в крипто") — список совпадений среди
-  // ОТКРЫТЫХ (privacy-тумблерами) полей всего комьюнити. Целиком платная
-  // фича: без подписки самого ищущего сервер отдаёт 402, список не строим.
-  async function onDirectorySubmit(e) {
-    e.preventDefault();
-    const q = query.trim();
-    if (!q) return;
-    setDirState({ loading: true, results: null, truncated: false, subscriptionRequired: false, error: null });
-    try {
-      const { results, truncated } = await directorySearch(q);
-      setDirState({ loading: false, results, truncated, subscriptionRequired: false, error: null });
-      haptic("light");
-    } catch (error) {
-      const subscriptionRequired = error instanceof ApiError && error.status === 402;
-      setDirState({ loading: false, results: null, truncated: false, subscriptionRequired, error });
-      haptic("error");
-    }
-  }
-
-  async function openFromDirectory(userId) {
+  async function openFromList(userId) {
     setState({ loading: true, data: null, error: null });
     haptic("select");
     try {
@@ -119,75 +95,44 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink }
     }
   }
 
+  const subscriptionRequired = state.error instanceof ApiError && state.error.status === 402;
+
   return (
     <div>
       <div className="card">
         <h3>Поиск</h3>
+        <div className="partner-meta" style={{ marginBottom: 10 }}>
+          Юзернейм — бесплатно (тизер-карточка). Описание, например «менеджер в крипто» —
+          ищем среди того, что участники сами открыли в профиле (по подписке).
+        </div>
         <form onSubmit={onSubmit}>
           <input
             type="text"
-            placeholder="Поиск по юзернейму"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Юзернейм или описание"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
           />
-          <button className="btn" type="submit" disabled={state.loading || !username.trim()}>
+          <button className="btn" type="submit" disabled={state.loading || !query.trim()}>
             {state.loading ? "Ищем…" : "Найти"}
           </button>
         </form>
       </div>
 
-      <div className="card">
-        <h3>Поиск по описанию</h3>
-        <div className="partner-meta" style={{ marginBottom: 10 }}>
-          Например: «менеджер в крипто». Ищем среди того, что участники сами открыли в профиле.
-        </div>
-        <form onSubmit={onDirectorySubmit}>
-          <input
-            type="text"
-            placeholder="Кого вы ищете?"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <button className="btn" type="submit" disabled={dirState.loading || !query.trim()}>
-            {dirState.loading ? "Ищем…" : "Искать"}
+      {state.loading && !state.data && <Spinner>Ищем…</Spinner>}
+
+      {subscriptionRequired && (
+        <div className="directory-paywall">
+          <strong>Поиск по описанию — по подписке</strong>
+          <p className="partner-meta">
+            Без подписки доступен только точный поиск по юзернейму.
+          </p>
+          <button className="btn" style={{ width: "auto", padding: "10px 20px" }} onClick={() => onNavigate("subscribe")}>
+            Оформить подписку
           </button>
-        </form>
+        </div>
+      )}
 
-        {dirState.subscriptionRequired && (
-          <div className="directory-paywall">
-            <strong>Поиск по описанию — по подписке</strong>
-            <p className="partner-meta">
-              Без подписки доступен только точный поиск по юзернейму выше.
-            </p>
-            <button className="btn" style={{ width: "auto", padding: "10px 20px" }} onClick={() => onNavigate("subscribe")}>
-              Оформить подписку
-            </button>
-          </div>
-        )}
-
-        {dirState.error && !dirState.subscriptionRequired && <Msg type="error">Ошибка поиска.</Msg>}
-
-        {dirState.results && dirState.results.length === 0 && (
-          <div className="partner-meta">Ничего не нашлось. Попробуйте другое описание.</div>
-        )}
-
-        {dirState.results && dirState.results.length > 0 && (
-          <div className="directory-results">
-            {dirState.results.map((r) => (
-              <DirectoryRow key={r.user_id} r={r} onOpen={openFromDirectory} />
-            ))}
-            {dirState.truncated && (
-              <div className="partner-meta" style={{ marginTop: 8 }}>
-                Показаны не все совпадения — уточните запрос.
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {state.loading && !state.data && <Spinner>Открываем профиль…</Spinner>}
-
-      {state.error && (
+      {state.error && !subscriptionRequired && (
         <Msg type="error">
           {state.error instanceof ApiError && state.error.code === "NOT_FOUND"
             ? "Такой участник не найден в GURO ID."
@@ -195,15 +140,34 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink }
         </Msg>
       )}
 
-      {state.data && state.data.is_showcase && <DeveloperShowcase data={state.data} />}
+      {state.data && state.data.mode === "list" && state.data.results.length === 0 && (
+        <div className="partner-meta">Ничего не нашлось. Попробуйте другое описание.</div>
+      )}
 
-      {state.data && !state.data.is_showcase && state.data.locked && (
+      {state.data && state.data.mode === "list" && state.data.results.length > 0 && (
+        <div className="directory-results">
+          {state.data.results.map((r) => (
+            <DirectoryRow key={r.user_id} r={r} onOpen={openFromList} />
+          ))}
+          {state.data.truncated && (
+            <div className="partner-meta" style={{ marginTop: 8 }}>
+              Показаны не все совпадения — уточните запрос.
+            </div>
+          )}
+        </div>
+      )}
+
+      {state.data && state.data.mode === "profile" && state.data.is_showcase && (
+        <DeveloperShowcase data={state.data} />
+      )}
+
+      {state.data && state.data.mode === "profile" && !state.data.is_showcase && state.data.locked && (
         <LockedOverlay onUnlock={() => onNavigate("subscribe")}>
           <ResultCard p={state.data} />
         </LockedOverlay>
       )}
 
-      {state.data && !state.data.is_showcase && !state.data.locked && (
+      {state.data && state.data.mode === "profile" && !state.data.is_showcase && !state.data.locked && (
         <div>
           <ResultCard p={state.data} />
           <div className="card">

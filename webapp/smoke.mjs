@@ -72,6 +72,7 @@ const SUBSCRIBED_EXTRAS = {
 };
 
 const SEARCH_LOCKED = {
+  mode: "profile",
   user_id: 555,
   username: "target",
   name: "Target User",
@@ -122,7 +123,35 @@ await page.addInitScript(() => {
 });
 
 await page.route("**/api/me", (route) => route.fulfill({ json: { ...ME_PAYLOAD, privacy: privacyState } }));
-await page.route("**/api/search**", (route) => route.fulfill({ json: SEARCH_LOCKED }));
+// Универсальный поиск (10.08.2026): один эндпоинт /api/search?q= — точный
+// юзернейм "target" отдаёт тизер-профиль (mode=profile), любой другой
+// текст трактуется как описание (mode=list, платный directory-режим).
+await page.route("**/api/search**", (route) => {
+  const url = new URL(route.request().url());
+  if (url.searchParams.get("user_id")) {
+    return route.fulfill({ json: SEARCH_LOCKED });
+  }
+  const q = url.searchParams.get("q") || "";
+  if (q === "target") {
+    return route.fulfill({ json: SEARCH_LOCKED });
+  }
+  if (!ME_PAYLOAD.is_subscribed) {
+    return route.fulfill({ status: 402, json: { error: "SUBSCRIPTION_REQUIRED" } });
+  }
+  return route.fulfill({
+    json: {
+      mode: "list",
+      results: [
+        {
+          user_id: 700, username: "cryptoguy", name: "Crypto Guy", vertical: "Крипто",
+          profession: "Manager", company: null, work_status: "looking",
+          reputation_score: 72.0, confirmed_partnerships: 3,
+        },
+      ],
+      truncated: false,
+    },
+  });
+});
 await page.route("**/api/privacy", async (route) => {
   const body = route.request().postDataJSON();
   privacyState = { ...privacyState, [body.field]: body.value };
@@ -141,23 +170,6 @@ await page.route("**/api/work_status", async (route) => {
 await page.route("**/api/qr", (route) =>
   route.fulfill({ json: { deeplink: "https://t.me/GamblingCommunitybot?start=guro_100" } }),
 );
-await page.route("**/api/directory**", (route) => {
-  if (!ME_PAYLOAD.is_subscribed) {
-    return route.fulfill({ status: 402, json: { error: "SUBSCRIPTION_REQUIRED" } });
-  }
-  return route.fulfill({
-    json: {
-      results: [
-        {
-          user_id: 700, username: "cryptoguy", name: "Crypto Guy", vertical: "Крипто",
-          profession: "Manager", company: null, work_status: "looking",
-          reputation_score: 72.0, confirmed_partnerships: 3,
-        },
-      ],
-      truncated: false,
-    },
-  });
-});
 await page.route("**/api/plans", (route) => route.fulfill({
   json: {
     plans: {
@@ -196,14 +208,14 @@ await step("goto-search", async () => {
   await page.screenshot({ path: "smoke_2a_search_tab.png" });
 });
 await step("search-fill", async () => {
-  await page.fill('input[placeholder="Поиск по юзернейму"]', "target");
+  await page.fill('input[placeholder="Юзернейм или описание"]', "target");
   await page.getByRole("button", { name: "Найти" }).click();
   await sleep(500);
   await page.screenshot({ path: "smoke_2b_search_result.png" });
 });
 await step("directory-search-locked", async () => {
-  await page.fill('input[placeholder="Кого вы ищете?"]', "менеджер крипто");
-  await page.getByRole("button", { name: "Искать" }).click();
+  await page.fill('input[placeholder="Юзернейм или описание"]', "менеджер крипто");
+  await page.getByRole("button", { name: "Найти" }).click();
   await sleep(400);
   const locked = await page.$(".directory-paywall");
   console.log("directory search without subscription -> paywall shown:", !!locked);
@@ -290,8 +302,8 @@ await step("profile-subscription-gate", async () => {
 await step("directory-search-subscribed", async () => {
   await page.getByRole("button", { name: "Поиск" }).click();
   await sleep(400);
-  await page.fill('input[placeholder="Кого вы ищете?"]', "менеджер крипто");
-  await page.getByRole("button", { name: "Искать" }).click();
+  await page.fill('input[placeholder="Юзернейм или описание"]', "менеджер крипто");
+  await page.getByRole("button", { name: "Найти" }).click();
   await sleep(400);
   const rows = await page.$$(".directory-row");
   console.log("directory search results found (subscribed):", rows.length);

@@ -179,28 +179,11 @@ async def handle_me(request: web.Request) -> web.Response:
     return web.json_response(summary)
 
 
-async def handle_search(request: web.Request) -> web.Response:
-    settings, storage = request.app["settings"], request.app["storage"]
-    requester = _auth(request, settings)
-    username = request.query.get("username", "")
-    user_id_param = request.query.get("user_id", "")
-    if GS.is_showcase_username(username):
-        # Витрина видна ВСЕМ полностью, без пейволла — это самореклама, не
-        # обычный профиль участника.
-        return web.json_response(GS.PAYLOAD)
-
-    if user_id_param:
-        # Заход по QR (?target=<id> у Mini App, см. App.jsx) — ищем по ID,
-        # не по юзернейму (тот мог смениться, ID стабилен).
-        try:
-            target_profile = storage.get_profile(int(user_id_param))
-        except ValueError:
-            target_profile = None
-    else:
-        target_profile = storage.find_profile_by_username(username)
-    if target_profile is None:
-        return web.json_response({"error": "NOT_FOUND"}, status=404)
-
+def _profile_response(storage: GuroStorage, requester_id: int, target_profile) -> dict:
+    """Строит JSON для ОДНОГО профиля — полная карточка, если requester
+    подписан, иначе урезанный бесплатный тизер (ТЗ экран 2). Общая логика
+    для всех трёх режимов handle_search (user_id=/username=/точный матч
+    внутри q=)."""
     summary = _profile_summary(storage, target_profile["user_id"])
     privacy = storage.get_privacy(target_profile["user_id"])
     summary = _apply_privacy(summary, privacy)
@@ -208,16 +191,17 @@ async def handle_search(request: web.Request) -> web.Response:
     # сгорает без подписки», см. _apply_subscription_gate.
     summary = _apply_subscription_gate(summary, summary["is_subscribed"])
 
-    if storage.is_subscribed(requester["id"]):
+    if storage.is_subscribed(requester_id):
         summary["locked"] = False
-        return web.json_response(summary)
+        summary["mode"] = "profile"
+        return summary
 
-    # Пейволл (ТЗ экран 2): без подписки — урезанная карточка. Поля через
-    # .get() — приватность/subscription-гейт уже могли убрать
+    # Поля через .get() — приватность/subscription-гейт уже могли убрать
     # name/reputation_score выше. work_status — сознательное исключение из
     # пейволла (см. GC.WORK_STATUS_*): виден бесплатно, как маркер
     # "Open to Work", даже без подписки смотрящего.
-    return web.json_response({
+    return {
+        "mode": "profile",
         "user_id": summary["user_id"],
         "username": summary["username"],
         "name": summary.get("name"),
@@ -225,7 +209,7 @@ async def handle_search(request: web.Request) -> web.Response:
         "confirmed_partnerships": summary["confirmed_partnerships"],
         "work_status": summary.get("work_status"),
         "locked": True,
-    })
+    }
 
 
 # Поля, участвующие в directory-поиске по описанию (10.08.2026) — только
@@ -240,25 +224,16 @@ def _searchable_text(summary: dict) -> str:
     return " ".join(str(summary.get(f) or "") for f in _DIRECTORY_TEXT_FIELDS).lower()
 
 
-async def handle_directory_search(request: web.Request) -> web.Response:
-    """Поиск ПО ОПИСАНИЮ ("менеджер в крипто"), а не по точному юзернейму
-    (см. handle_search) — отдаёт СПИСОК всех, у кого есть совпадение среди
-    полей, которые они САМИ открыли тумблерами приватности. Целиком платная
-    фича (решение владельца, 10.08.2026) — без подписки СМОТРЯЩЕГО ни
-    одного результата не отдаём, даже тизером."""
-    settings, storage = request.app["settings"], request.app["storage"]
-    requester = _auth(request, settings)
-    if not storage.is_subscribed(requester["id"]):
-        return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
-
-    query = request.query.get("q", "").strip().lower()
-    if not query:
-        return web.json_response({"results": [], "truncated": False})
-    keywords = query.split()[: GC.DIRECTORY_QUERY_MAX_KEYWORDS]
-
+def _directory_search(storage: GuroStorage, requester_id: int, query: str) -> dict:
+    """Поиск ПО ОПИСАНИЮ ("менеджер в крипто") — список всех, у кого есть
+    совпадение среди полей, которые они САМИ открыли тумблерами
+    приватности. Вызывается из handle_search, когда q= не совпал ни с
+    одним точным юзернеймом (см. режимы ниже) — доступ уже проверен
+    вызывающим (платная фича, 402 без подписки)."""
+    keywords = query.lower().split()[: GC.DIRECTORY_QUERY_MAX_KEYWORDS]
     matches: list[tuple[int, dict]] = []
     for user_id in storage.list_guro_user_ids():
-        if user_id == requester["id"]:
+        if user_id == requester_id:
             continue  # сам себя в directory-поиске видеть незачем
         privacy = storage.get_privacy(user_id)
         if not any(privacy.values()):
@@ -289,7 +264,57 @@ async def handle_directory_search(request: web.Request) -> web.Response:
         }
         for _, s in top
     ]
-    return web.json_response({"results": results, "truncated": len(matches) > len(top)})
+    return {"mode": "list", "results": results, "truncated": len(matches) > len(top)}
+
+
+async def handle_search(request: web.Request) -> web.Response:
+    """Три режима запроса:
+    - `user_id=<id>` — точный переход по ID (QR, клик по результату поиска).
+    - `username=<name>` — точный переход по юзернейму (внутреннее использование).
+    - `q=<текст>` — УНИВЕРСАЛЬНЫЙ поиск (10.08.2026, единственный режим,
+      доступный из формы поиска фронта): сперва пробуем точный юзернейм
+      (бесплатный тизер, как раньше) — не нашли, значит это уже описание,
+      платный directory-поиск по открытым полям (см. _directory_search)."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    requester = _auth(request, settings)
+    username = request.query.get("username", "")
+    user_id_param = request.query.get("user_id", "")
+    query = request.query.get("q", "")
+
+    if GS.is_showcase_username(username or query):
+        # Витрина видна ВСЕМ полностью, без пейволла — это самореклама, не
+        # обычный профиль участника.
+        return web.json_response({**GS.PAYLOAD, "mode": "profile"})
+
+    if user_id_param:
+        # Заход по QR (?target=<id> у Mini App, см. App.jsx) — ищем по ID,
+        # не по юзернейму (тот мог смениться, ID стабилен).
+        try:
+            target_profile = storage.get_profile(int(user_id_param))
+        except ValueError:
+            target_profile = None
+        if target_profile is None:
+            return web.json_response({"error": "NOT_FOUND"}, status=404)
+        return web.json_response(_profile_response(storage, requester["id"], target_profile))
+
+    if username:
+        target_profile = storage.find_profile_by_username(username)
+        if target_profile is None:
+            return web.json_response({"error": "NOT_FOUND"}, status=404)
+        return web.json_response(_profile_response(storage, requester["id"], target_profile))
+
+    q = query.strip()
+    if not q:
+        return web.json_response({"mode": "list", "results": [], "truncated": False})
+
+    target_profile = storage.find_profile_by_username(q)
+    if target_profile is not None:
+        return web.json_response(_profile_response(storage, requester["id"], target_profile))
+
+    # Не нашли точного юзернейма -> это описание, платный directory-поиск.
+    if not storage.is_subscribed(requester["id"]):
+        return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
+    return web.json_response(_directory_search(storage, requester["id"], q))
 
 
 async def _notify_confirmer(bot_token: str, confirmer_id: int, initiator_username: str, partnership_id: int) -> None:
@@ -529,7 +554,6 @@ def create_app(settings: Settings) -> web.Application:
     app["storage"] = GuroStorage(settings.database_path)
     app.router.add_get("/api/me", handle_me)
     app.router.add_get("/api/search", handle_search)
-    app.router.add_get("/api/directory", handle_directory_search)
     app.router.add_post("/api/partnerships", handle_create_partnership)
     app.router.add_get("/api/plans", handle_get_plans)
     app.router.add_post("/api/subscribe", handle_subscribe)

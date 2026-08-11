@@ -164,9 +164,34 @@ def _apply_subscription_gate(summary: dict, is_subscribed: bool) -> dict:
     return result
 
 
+def _recruiter_summary(storage: GuroStorage, user_id: int) -> dict:
+    """Кабинет рекрутера (Фаза 3, 12.08.2026) — САТЕЛЛИТ личного профиля,
+    своя витрина + своя ОТДЕЛЬНАЯ подписка (рейтинг/партнёрства остаются
+    общими, берутся из личного /api/me). is_recruiter_subscribed=False не
+    404-ит (в отличие от NO_PROFILE у личного профиля) — фронт сам решает,
+    показать апсейл или редактор, витрина технически "существует" с
+    первого же запроса (get_or_create)."""
+    row = storage.get_or_create_recruiter_profile(user_id)
+    extra = storage.get_recruiter_extra(user_id)
+    return {
+        "workspace": "recruiter",
+        "user_id": user_id,
+        **extra,
+        "recruiter_subscription_status": row["subscription_status"],
+        "recruiter_subscription_expires_at": row["subscription_expires_at"],
+        "is_recruiter_subscribed": storage.is_recruiter_subscribed(user_id),
+    }
+
+
 async def handle_me(request: web.Request) -> web.Response:
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
+
+    if request.query.get("workspace") == "recruiter":
+        summary = _recruiter_summary(storage, user["id"])
+        summary["privacy"] = storage.get_recruiter_privacy(user["id"])
+        return web.json_response(summary)
+
     # Витрина разработчика — статичная карточка вместо профиля из БД (у автора
     # может не быть анкеты в этом конкретном боте), см. guro_showcase.py.
     # Приватность — исключение: это НАСТРОЙКИ САМОГО аккаунта, а не данные из
@@ -227,6 +252,56 @@ def _profile_response(storage: GuroStorage, requester_id: int, target_profile) -
         "reputation_score": summary.get("reputation_score"),
         "confirmed_partnerships": summary["confirmed_partnerships"],
         "work_status": summary.get("work_status"),
+        "locked": True,
+    }
+
+
+# Аналог _PRIVACY_FIELD_MAP для кабинета рекрутера (Фаза 3) — те же 9
+# тумблеров (переиспользуем PRIVACY_FIELDS, отдельного набора не заводили),
+# но show_tenure/show_reputation тут ни на что не влияют — стаж/рейтинг
+# остаются свойством ЛИЧНОГО профиля, у витрины рекрутера их просто нет.
+_RECRUITER_PRIVACY_FIELD_MAP = {
+    "show_name": ("name",),
+    "show_company": ("company",),
+    "show_vertical": ("vertical",),
+    "show_profession": ("profession",),
+    "show_cv": ("cv_text",),
+    "show_contacts": ("website",),
+    "show_offers": ("offering",),
+}
+
+
+def _apply_recruiter_privacy(summary: dict, privacy: dict) -> dict:
+    result = dict(summary)
+    for flag, fields in _RECRUITER_PRIVACY_FIELD_MAP.items():
+        if not privacy.get(flag):
+            for field in fields:
+                result[field] = None
+    return result
+
+
+def _recruiter_profile_response(storage: GuroStorage, requester_id: int, target_user_id: int) -> dict | None:
+    """Карточка ЧУЖОГО кабинета рекрутера. None, если у цели нет активной
+    подписки рекрутера — её витрины формально не существует для чужих,
+    даже если запись в guro_recruiter_profiles уже создана (например, она
+    успела открыть свой /api/me?workspace=recruiter один раз до оплаты)."""
+    if not storage.is_recruiter_subscribed(target_user_id):
+        return None
+    extra = storage.get_recruiter_extra(target_user_id)
+    privacy = storage.get_recruiter_privacy(target_user_id)
+    summary = {"workspace": "recruiter", "mode": "profile", "user_id": target_user_id, **extra}
+    summary = _apply_recruiter_privacy(summary, privacy)
+
+    if storage.is_subscribed(requester_id):
+        summary["locked"] = False
+        return summary
+
+    return {
+        "workspace": "recruiter",
+        "mode": "profile",
+        "user_id": target_user_id,
+        "name": summary.get("name"),
+        "company": summary.get("company"),
         "locked": True,
     }
 
@@ -350,6 +425,32 @@ async def handle_search(request: web.Request) -> web.Response:
     query = request.query.get("q", "")
     vertical = request.query.get("vertical", "").strip()
     top = request.query.get("top") == "1"
+
+    if request.query.get("workspace") == "recruiter":
+        # Просмотр ЧУЖОГО кабинета рекрутера (Фаза 3) — резолвим человека
+        # ровно так же, как в личном режиме (по id/юзернейму/q=), но
+        # отдаём recruiter-карточку вместо обычной. Витрины разработчика
+        # и directory-режимов (vertical=/описание) у рекрутера нет —
+        # только точный переход на конкретного человека.
+        target_id: int | None = None
+        if user_id_param:
+            try:
+                target_id = int(user_id_param)
+            except ValueError:
+                target_id = None
+        elif username:
+            target_profile = storage.find_profile_by_username(username)
+            target_id = target_profile["user_id"] if target_profile else None
+        else:
+            q = query.strip()
+            target_profile = storage.find_profile_by_username(q) if q else None
+            target_id = target_profile["user_id"] if target_profile else None
+        if target_id is None:
+            return web.json_response({"error": "NOT_FOUND"}, status=404)
+        response = _recruiter_profile_response(storage, requester["id"], target_id)
+        if response is None:
+            return web.json_response({"error": "NO_RECRUITER_PROFILE"}, status=404)
+        return web.json_response(response)
 
     if GS.is_showcase_username(username or query):
         # Витрина видна ВСЕМ полностью, без пейволла — это самореклама, не
@@ -591,6 +692,35 @@ async def handle_set_profile_field(request: web.Request) -> web.Response:
     return web.json_response(extra)
 
 
+async def handle_set_recruiter_profile_field(request: web.Request) -> web.Response:
+    """Редактирование витрины кабинета рекрутера (Фаза 3) — отдельный
+    эндпоинт, а не workspace= у /api/profile, чтобы не разводить в одном
+    хендлере два разных набора допустимых полей и таблиц."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    field = str(body.get("field", ""))
+    value = str(body.get("value", "")).strip()[:2000] or None
+    try:
+        extra = storage.set_recruiter_extra_field(user["id"], field, value)
+    except ValueError:
+        return web.json_response({"error": "UNKNOWN_FIELD"}, status=400)
+    return web.json_response(extra)
+
+
+async def handle_set_recruiter_privacy(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    field = str(body.get("field", ""))
+    value = bool(body.get("value"))
+    try:
+        privacy = storage.set_recruiter_privacy_field(user["id"], field, value)
+    except ValueError:
+        return web.json_response({"error": "UNKNOWN_FIELD"}, status=400)
+    return web.json_response(privacy)
+
+
 async def handle_set_work_status(request: web.Request) -> web.Response:
     """Публичный статус трудоустройства (looking/neutral/working/выкл) —
     НЕ через generic set_extra_profile_field, т.к. это не свободный текст,
@@ -633,20 +763,39 @@ async def handle_invite_link(request: web.Request) -> web.Response:
     return web.json_response({"link": link})
 
 
-def _plan_or_none(body: dict) -> tuple[str, dict] | None:
+# product -> тарифная сетка. Обобщено под ключ продукта (Фаза 3, 12.08.2026)
+# вместо копипасты Stars+крипто-эндпоинтов под кабинет рекрутера — одна
+# проверенная в проде платёжная цепочка на оба продукта.
+_PRODUCT_PLANS = {"guro_id": GC.SUBSCRIPTION_PLANS, "recruiter": GC.RECRUITER_SUBSCRIPTION_PLANS}
+_PRODUCT_PAYLOAD_PREFIX = {"guro_id": "guro_id_subscription", "recruiter": "guro_id_recruiter_subscription"}
+_PRODUCT_TITLE = {"guro_id": "GURO ID — подписка", "recruiter": "GURO ID — кабинет рекрутера"}
+_PRODUCT_DESCRIPTION = {
+    "guro_id": "Полный поиск и просмотр профилей участников GURO ID: рейтинг, история партнёрств.",
+    "recruiter": "Кабинет рекрутера GURO ID: отдельная витрина, публикация вакансий, просмотр резюме.",
+}
+
+
+def _plan_or_none(body: dict) -> tuple[str, str, dict] | None:
+    product = str(body.get("product", "guro_id"))
+    plans = _PRODUCT_PLANS.get(product)
+    if plans is None:
+        return None
     plan = str(body.get("plan", ""))
-    cfg = GC.SUBSCRIPTION_PLANS.get(plan)
-    return (plan, cfg) if cfg else None
+    cfg = plans.get(plan)
+    return (product, plan, cfg) if cfg else None
 
 
 async def handle_get_plans(request: web.Request) -> web.Response:
     """Единый источник цен для фронта (Stars + крипто-эквивалент) — чтобы
     числа в UI никогда не разъезжались с тем, что реально спишут.
     crypto_enabled=False, пока владелец не пропишет CRYPTOBOT_API_TOKEN —
-    фронт по этому флагу прячет кнопку крипто-оплаты, а не бьётся в 503."""
+    фронт по этому флагу прячет кнопку крипто-оплаты, а не бьётся в 503.
+    ?product=recruiter (Фаза 3) — тарифы кабинета рекрутера вместо базовых."""
     settings = request.app["settings"]
+    product = request.query.get("product", "guro_id")
+    plans_source = _PRODUCT_PLANS.get(product, GC.SUBSCRIPTION_PLANS)
     plans = {}
-    for key, cfg in GC.SUBSCRIPTION_PLANS.items():
+    for key, cfg in plans_source.items():
         plans[key] = {
             **cfg,
             "crypto_price_usd": round(cfg["stars_price"] * GC.STARS_TO_USD_RATE, 2),
@@ -659,20 +808,21 @@ async def handle_subscribe(request: web.Request) -> web.Response:
     settings = request.app["settings"]
     user = _auth(request, settings)
     body = await request.json()
-    plan_pair = _plan_or_none(body)
-    if plan_pair is None:
+    plan_triplet = _plan_or_none(body)
+    if plan_triplet is None:
         return web.json_response({"error": "UNKNOWN_PLAN"}, status=400)
-    plan, cfg = plan_pair
+    product, plan, cfg = plan_triplet
+    title = _PRODUCT_TITLE[product]
 
     bot = Bot(token=settings.bot_token)
     async with bot:
         link = await bot.create_invoice_link(
-            title=f"GURO ID — подписка ({cfg['label'].lower()})",
-            description="Полный поиск и просмотр профилей участников GURO ID: рейтинг, история партнёрств.",
-            payload=f"guro_id_subscription:{plan}:{user['id']}",
+            title=f"{title} ({cfg['label'].lower()})",
+            description=_PRODUCT_DESCRIPTION[product],
+            payload=f"{_PRODUCT_PAYLOAD_PREFIX[product]}:{plan}:{user['id']}",
             provider_token=None,  # не нужен для Telegram Stars (Bot API 7.4+)
             currency="XTR",
-            prices=[LabeledPrice(f"Подписка GURO ID — {cfg['label']}", cfg["stars_price"])],
+            prices=[LabeledPrice(f"{title} — {cfg['label']}", cfg["stars_price"])],
         )
     return web.json_response({"invoice_link": link})
 
@@ -686,10 +836,11 @@ async def handle_subscribe_crypto(request: web.Request) -> web.Response:
         return web.json_response({"error": "CRYPTO_NOT_CONFIGURED"}, status=503)
     user = _auth(request, settings)
     body = await request.json()
-    plan_pair = _plan_or_none(body)
-    if plan_pair is None:
+    plan_triplet = _plan_or_none(body)
+    if plan_triplet is None:
         return web.json_response({"error": "UNKNOWN_PLAN"}, status=400)
-    plan, cfg = plan_pair
+    product, plan, cfg = plan_triplet
+    title = _PRODUCT_TITLE[product]
     amount = round(cfg["stars_price"] * GC.STARS_TO_USD_RATE, 2)
 
     try:
@@ -697,12 +848,13 @@ async def handle_subscribe_crypto(request: web.Request) -> web.Response:
             settings.cryptobot_api_token,
             asset=GC.CRYPTO_ASSET,
             amount=amount,
-            description=f"GURO ID — подписка ({cfg['label'].lower()})",
-            payload=f"guro_id_subscription:{plan}:{user['id']}",
+            description=f"{title} ({cfg['label'].lower()})",
+            payload=f"{_PRODUCT_PAYLOAD_PREFIX[product]}:{plan}:{user['id']}",
             paid_btn_url=settings.community_invite_url,
         )
     except GCR.CryptoBotError:
-        logger.exception("guro_id: не удалось создать crypto-инвойс для user_id=%s plan=%s", user["id"], plan)
+        logger.exception("guro_id: не удалось создать crypto-инвойс для user_id=%s product=%s plan=%s",
+                          user["id"], product, plan)
         return web.json_response({"error": "CRYPTO_INVOICE_FAILED"}, status=502)
 
     pay_url = invoice.get("pay_url") or invoice.get("bot_invoice_url") or invoice.get("mini_app_invoice_url")
@@ -713,7 +865,8 @@ async def handle_crypto_webhook(request: web.Request) -> web.Response:
     """CryptoBot шлёт сюда POST при оплате инвойса (настраивается в
     дашборде приложения, см. OPERATIONS.md). Подпись обязательна — без нее
     кто угодно мог бы дёрнуть этот адрес и активировать себе подписку
-    бесплатно."""
+    бесплатно. Определяем продукт по префиксу payload (Фаза 3) —
+    guro_id_subscription: / guro_id_recruiter_subscription:."""
     settings, storage = request.app["settings"], request.app["storage"]
     if not settings.cryptobot_api_token:
         return web.Response(status=503)
@@ -730,18 +883,38 @@ async def handle_crypto_webhook(request: web.Request) -> web.Response:
 
     invoice = data.get("payload") or {}
     payload_str = invoice.get("payload", "")
-    if not payload_str.startswith("guro_id_subscription:"):
+    product = next(
+        (p for p, prefix in _PRODUCT_PAYLOAD_PREFIX.items() if payload_str.startswith(prefix + ":")), None,
+    )
+    if product is None:
         return web.Response(status=200)
 
-    parts = payload_str.split(":")  # guro_id_subscription:<plan>:<user_id>
+    parts = payload_str.split(":")  # <prefix>:<plan>:<user_id>
     plan = parts[1] if len(parts) > 1 else "monthly"
-    cfg = GC.SUBSCRIPTION_PLANS.get(plan, GC.SUBSCRIPTION_PLANS["monthly"])
+    plans = _PRODUCT_PLANS[product]
+    cfg = plans.get(plan, plans["monthly"])
     try:
         user_id = int(parts[2]) if len(parts) > 2 else None
     except ValueError:
         user_id = None
     if user_id is None:
         logger.warning("guro_id: crypto webhook без user_id в payload: %s", payload_str)
+        return web.Response(status=200)
+
+    if product == "recruiter":
+        expires_at = storage.activate_recruiter_subscription(user_id, cfg["duration_days"])
+        logger.info(
+            "guro_id: подписка рекрутера активирована через крипту user_id=%s plan=%s до %s",
+            user_id, plan, expires_at,
+        )
+        try:
+            async with Bot(token=settings.bot_token) as bot:
+                await bot.send_message(
+                    user_id,
+                    f"✅ Кабинет рекрутера GURO ID активирован до {expires_at[:10]} (оплата в крипте).",
+                )
+        except Exception:  # noqa: BLE001
+            logger.exception("guro_id: не удалось уведомить о recruiter crypto-оплате user_id=%s", user_id)
         return web.Response(status=200)
 
     expires_at = storage.activate_subscription(user_id, cfg["duration_days"])
@@ -784,6 +957,8 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/privacy", handle_set_privacy)
     app.router.add_post("/api/profile", handle_set_profile_field)
     app.router.add_post("/api/work_status", handle_set_work_status)
+    app.router.add_post("/api/recruiter/profile", handle_set_recruiter_profile_field)
+    app.router.add_post("/api/recruiter/privacy", handle_set_recruiter_privacy)
     app.router.add_get("/api/qr", handle_get_qr)
     app.router.add_get("/api/invite_link", handle_invite_link)
     if WEBAPP_DIST.exists():

@@ -21,8 +21,10 @@ const VERTICALS = ["Gambling", "Betting", "Crypto", "Dating", "E-Commerce", "Fin
 // onWrite передаётся только для РАЗБЛОКИРОВАННОГО профиля (см. рендер ниже) —
 // то же условие подписки смотрящего, что уже пускает писать первым в
 // handle_send_message (storage.send_message), кнопка просто следует
-// готовому серверному правилу, не дублирует его.
-function ResultCard({ p, onWrite }) {
+// готовому серверному правилу, не дублирует его. onViewRecruiter — только
+// если у человека есть активный кабинет рекрутера (has_recruiter_profile,
+// Фаза 3), не запрашиваем recruiter-карточку вслепую на каждый профиль.
+function ResultCard({ p, onWrite, onViewRecruiter }) {
   const heading = p.name === null ? "Скрыто" : p.name || (p.username ? `@${p.username}` : "Без имени");
   return (
     <div className="card">
@@ -45,6 +47,37 @@ function ResultCard({ p, onWrite }) {
           ✉️ Написать
         </button>
       )}
+      {p.has_recruiter_profile && onViewRecruiter && (
+        <button
+          type="button"
+          className="btn secondary"
+          style={{ marginTop: 8 }}
+          onClick={onViewRecruiter}
+        >
+          🧑‍💼 Посмотреть как рекрутера
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Карточка кабинета рекрутера контрагента (Фаза 3) — упрощённая версия
+// ResultCard: своя вертикаль/компания/должность + CV/сайт/полезен, без
+// рейтинга/партнёрств (те остаются свойством личного профиля).
+function RecruiterResultCard({ p, onBackToPersonal }) {
+  const heading = p.name || (p.username ? `@${p.username}` : "Без имени");
+  return (
+    <div className="card">
+      <button type="button" className="subscreen-back" onClick={onBackToPersonal} style={{ marginBottom: 10 }}>
+        ‹ Личный профиль
+      </button>
+      <h2>{heading}</h2>
+      <IdentityLine label="Компания: " value={p.company} />
+      <IdentityLine label="Вертикаль: " value={p.vertical} />
+      <IdentityLine label="Должность: " value={p.profession} />
+      {p.cv_text && <div className="partner-meta" style={{ marginTop: 8 }}>{p.cv_text}</div>}
+      {p.website && <div className="partner-meta" style={{ marginTop: 4 }}>Сайт: {p.website}</div>}
+      {p.offering && <div className="partner-meta" style={{ marginTop: 4 }}>Чем полезен: {p.offering}</div>}
     </div>
   );
 }
@@ -136,6 +169,31 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
     }
   }
 
+  // Переключение личный/рекрутер для УЖЕ ОТКРЫТОГО чужого профиля (Фаза 3).
+  async function viewRecruiterCard() {
+    const userId = state.data?.user_id;
+    if (!userId) return;
+    setState({ loading: true, data: null, error: null });
+    try {
+      const data = await searchByUserId(userId, { workspace: "recruiter" });
+      setState({ loading: false, data, error: null });
+    } catch (error) {
+      setState({ loading: false, data: null, error });
+    }
+  }
+
+  async function backToPersonalCard() {
+    const userId = state.data?.user_id;
+    if (!userId) return;
+    setState({ loading: true, data: null, error: null });
+    try {
+      const data = await searchByUserId(userId);
+      setState({ loading: false, data, error: null });
+    } catch (error) {
+      setState({ loading: false, data: null, error });
+    }
+  }
+
   const subscriptionRequired = state.error instanceof ApiError && state.error.status === 402;
 
   return (
@@ -216,19 +274,25 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
         </div>
       )}
 
+      {state.data && state.data.mode === "profile" && state.data.workspace === "recruiter" && !state.data.locked && (
+        <RecruiterResultCard p={state.data} onBackToPersonal={backToPersonalCard} />
+      )}
+
       {state.data && state.data.mode === "profile" && state.data.is_showcase && (
         <DeveloperShowcase data={state.data} />
       )}
 
-      {state.data && state.data.mode === "profile" && !state.data.is_showcase && state.data.locked && (
+      {state.data && state.data.mode === "profile" && !state.data.is_showcase &&
+        state.data.workspace !== "recruiter" && state.data.locked && (
         <LockedOverlay onUnlock={() => onNavigate("subscribe")}>
           <ResultCard p={state.data} />
         </LockedOverlay>
       )}
 
-      {state.data && state.data.mode === "profile" && !state.data.is_showcase && !state.data.locked && (
+      {state.data && state.data.mode === "profile" && !state.data.is_showcase &&
+        state.data.workspace !== "recruiter" && !state.data.locked && (
         <div>
-          <ResultCard p={state.data} onWrite={onOpenMessages} />
+          <ResultCard p={state.data} onWrite={onOpenMessages} onViewRecruiter={viewRecruiterCard} />
           <div className="card">
             <h3>История партнёрств контрагента</h3>
             <PartnersList partners={state.data.partners} emptyHint="Пока нет подтверждённых партнёрств." />

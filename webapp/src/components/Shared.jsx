@@ -176,7 +176,10 @@ export function IdentityLine({ label, value }) {
 // Поле профиля, которого нет в анкете бота (GC.EXTRA_PROFILE_FIELDS) —
 // единственный способ его заполнить/поменять это прямо здесь, в отличие от
 // полей анкеты (name/company/vertical и т.п.), те остаются read-only.
-export function EditableField({ field, label, placeholder, value, multiline, onSaved }) {
+// saveField (Фаза 3, 12.08.2026) — по умолчанию личный профиль
+// (setProfileField), RecruiterHub передаёт setRecruiterProfileField, чтобы
+// переиспользовать этот же компонент для витрины рекрутера без дублирования.
+export function EditableField({ field, label, placeholder, value, multiline, onSaved, saveField = setProfileField }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value || "");
   const [saving, setSaving] = useState(false);
@@ -192,7 +195,7 @@ export function EditableField({ field, label, placeholder, value, multiline, onS
     setSaving(true);
     setError("");
     try {
-      const updated = await setProfileField(field, draft.trim());
+      const updated = await saveField(field, draft.trim());
       onSaved(updated[field]);
       setEditing(false);
       haptic("success");

@@ -19,7 +19,13 @@ export const PRIVACY_LABELS = {
   show_offers: "Офферы (ищу / полезен)",
 };
 
-export function PrivacyToggles({ privacy, onChange, fields, hint }) {
+// savePrivacyField/labels (Фаза 3, 12.08.2026) — по умолчанию личный
+// профиль (setPrivacyField/PRIVACY_LABELS), RecruiterHub передаёт свои
+// (setRecruiterPrivacyField + уточнённые подписи — у витрины рекрутера
+// нет LinkedIn/"ищу", только сайт/"полезен").
+export function PrivacyToggles({
+  privacy, onChange, fields, hint, savePrivacyField = setPrivacyField, labels = PRIVACY_LABELS,
+}) {
   const [pending, setPending] = useState(null);
   const [error, setError] = useState("");
 
@@ -30,7 +36,7 @@ export function PrivacyToggles({ privacy, onChange, fields, hint }) {
     setError("");
     onChange({ ...privacy, [key]: next }); // оптимистичное обновление
     try {
-      const updated = await setPrivacyField(key, next);
+      const updated = await savePrivacyField(key, next);
       onChange(updated);
       haptic("select");
     } catch {
@@ -49,7 +55,7 @@ export function PrivacyToggles({ privacy, onChange, fields, hint }) {
       {fields.map((key) => (
         <div className="privacy-row" key={key}>
           <div>
-            <div className="privacy-row-label">{PRIVACY_LABELS[key]}</div>
+            <div className="privacy-row-label">{labels[key]}</div>
             <div className="privacy-row-note">
               {privacy[key] ? "Видно всем в поиске" : "Скрыто от чужого поиска"}
             </div>

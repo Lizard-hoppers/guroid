@@ -11,7 +11,16 @@ const COMPARE_ROWS = [
   { label: "История партнёрств контрагента", tier: "paid" },
 ];
 
-export function SubscribeScreen() {
+// Кабинет рекрутера (Фаза 3, 12.08.2026) — та же оплата Stars+крипто, что у
+// базовой подписки, параметризована по product вместо копии экрана.
+const RECRUITER_COMPARE_ROWS = [
+  { label: "Рейтинг и партнёрства (общие с личным профилем)", tier: "free" },
+  { label: "Отдельная витрина: имя/компания/CV рекрутера", tier: "paid" },
+  { label: "Видимость витрины другим участникам GURO ID", tier: "paid" },
+];
+
+export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
+  const isRecruiter = product === "recruiter";
   const [me, setMe] = useState(null);
   const [plansData, setPlansData] = useState(null);
   const [selected, setSelected] = useState("monthly");
@@ -20,22 +29,29 @@ export function SubscribeScreen() {
   const [justPaid, setJustPaid] = useState(false);
 
   useEffect(() => {
-    getMe()
+    getMe({ workspace: isRecruiter ? "recruiter" : undefined })
       .then(setMe)
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [justPaid]);
 
   useEffect(() => {
-    getPlans()
+    getPlans({ product })
       .then(setPlansData)
       .catch(() => {});
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product]);
+
+  useEffect(() => {
+    if (justPaid) onSubscribed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [justPaid]);
 
   async function onSubscribeStars() {
     setBusy(true);
     setError("");
     try {
-      const { invoice_link } = await subscribe(selected);
+      const { invoice_link } = await subscribe(selected, { product });
       openInvoice(invoice_link, (status) => {
         setBusy(false);
         if (status === "paid") {
@@ -54,7 +70,7 @@ export function SubscribeScreen() {
     setBusy(true);
     setError("");
     try {
-      const { pay_url } = await subscribeCrypto(selected);
+      const { pay_url } = await subscribeCrypto(selected, { product });
       openTelegramLink(pay_url);
       // Крипто-платёж подтверждается вебхуком асинхронно (не сразу, как
       // Stars) — статус подписки обновится при следующем открытии профиля.
@@ -66,25 +82,29 @@ export function SubscribeScreen() {
     }
   }
 
-  const isSubscribed = justPaid || me?.is_subscribed;
+  const isSubscribed = justPaid || (isRecruiter ? me?.is_recruiter_subscribed : me?.is_subscribed);
+  const expiresAt = isRecruiter ? me?.recruiter_subscription_expires_at : me?.subscription_expires_at;
   const plan = plansData?.plans?.[selected];
 
   return (
     <div className="card">
-      <h3>Подписка GURO ID</h3>
+      <h3>{isRecruiter ? "Подписка на кабинет рекрутера" : "Подписка GURO ID"}</h3>
       {isSubscribed ? (
         <Msg type="ok">
           Подписка активна
-          {me?.subscription_expires_at ? ` до ${formatDate(me.subscription_expires_at)}` : ""}.
+          {expiresAt ? ` до ${formatDate(expiresAt)}` : ""}.
         </Msg>
       ) : (
         <>
           <div className="privacy-hint">
-            Без активной подписки ваш рейтинг и история сделок скрыты — ни вам, ни другим
-            (данные не удаляются, подписка просто держит их видимыми). Полный поиск и
-            просмотр чужих профилей — тоже по подписке.
+            {isRecruiter
+              ? "Кабинет рекрутера — отдельная подписка поверх базовой GURO ID: своя витрина " +
+                "(имя/компания/CV), не влияет на личный профиль. Рейтинг и партнёрства остаются общими."
+              : "Без активной подписки ваш рейтинг и история сделок скрыты — ни вам, ни другим " +
+                "(данные не удаляются, подписка просто держит их видимыми). Полный поиск и " +
+                "просмотр чужих профилей — тоже по подписке."}
           </div>
-          {COMPARE_ROWS.map((r) => (
+          {(isRecruiter ? RECRUITER_COMPARE_ROWS : COMPARE_ROWS).map((r) => (
             <div className="compare-row" key={r.label}>
               <span>{r.label}</span>
               <span className={r.tier}>{r.tier === "free" ? "бесплатно" : "по подписке"}</span>

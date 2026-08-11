@@ -409,6 +409,36 @@ label {
   border: 1px solid rgba(107, 191, 138, 0.35);
 }
 
+/* --- Переключатель Личный/Рекрутер (Фаза 3, 12.08.2026) --- */
+
+.workspace-switch {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  background: #ffffff0d;
+  border: 1px solid var(--glass-border);
+}
+
+.workspace-switch button {
+  flex: 1;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-family: Poppins, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.workspace-switch button.is-active {
+  background: linear-gradient(135deg, var(--gold), #a9822b);
+  color: #1a1206;
+}
+
 .compare-row {
   display: flex;
   justify-content: space-between;

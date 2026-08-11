@@ -33,8 +33,10 @@ async function request(path, options = {}) {
   return body;
 }
 
-export function getMe() {
-  return request("/api/me");
+// workspace="recruiter" (Фаза 3, 12.08.2026) — кабинет рекрутера вместо
+// личного профиля, см. guro_id_api.py::_recruiter_summary.
+export function getMe({ workspace } = {}) {
+  return request(`/api/me${workspace ? `?workspace=${workspace}` : ""}`);
 }
 
 // Универсальный поиск (10.08.2026): одно поле q= — бэкенд сам решает,
@@ -46,8 +48,10 @@ export function search(query, { top } = {}) {
   return request(`/api/search?q=${encodeURIComponent(query)}${top ? "&top=1" : ""}`);
 }
 
-export function searchByUserId(userId) {
-  return request(`/api/search?user_id=${encodeURIComponent(userId)}`);
+export function searchByUserId(userId, { workspace } = {}) {
+  return request(
+    `/api/search?user_id=${encodeURIComponent(userId)}${workspace ? `&workspace=${workspace}` : ""}`,
+  );
 }
 
 export function createPartnership({
@@ -79,16 +83,18 @@ export function getInviteLink() {
   return request("/api/invite_link");
 }
 
-export function getPlans() {
-  return request("/api/plans");
+// product="recruiter" (Фаза 3) — тарифы/оплата кабинета рекрутера вместо
+// базовой подписки GURO ID, та же платёжная цепочка на бэкенде.
+export function getPlans({ product } = {}) {
+  return request(`/api/plans${product ? `?product=${product}` : ""}`);
 }
 
-export function subscribe(plan) {
-  return request("/api/subscribe", { method: "POST", body: JSON.stringify({ plan }) });
+export function subscribe(plan, { product } = {}) {
+  return request("/api/subscribe", { method: "POST", body: JSON.stringify({ plan, product }) });
 }
 
-export function subscribeCrypto(plan) {
-  return request("/api/subscribe/crypto", { method: "POST", body: JSON.stringify({ plan }) });
+export function subscribeCrypto(plan, { product } = {}) {
+  return request("/api/subscribe/crypto", { method: "POST", body: JSON.stringify({ plan, product }) });
 }
 
 export function setPrivacyField(field, value) {
@@ -100,6 +106,22 @@ export function setPrivacyField(field, value) {
 
 export function setProfileField(field, value) {
   return request("/api/profile", {
+    method: "POST",
+    body: JSON.stringify({ field, value }),
+  });
+}
+
+// Кабинет рекрутера (Фаза 3) — отдельная витрина/приватность, отдельные
+// эндпоинты (не workspace= у /api/profile — разные таблицы/наборы полей).
+export function setRecruiterProfileField(field, value) {
+  return request("/api/recruiter/profile", {
+    method: "POST",
+    body: JSON.stringify({ field, value }),
+  });
+}
+
+export function setRecruiterPrivacyField(field, value) {
+  return request("/api/recruiter/privacy", {
     method: "POST",
     body: JSON.stringify({ field, value }),
   });

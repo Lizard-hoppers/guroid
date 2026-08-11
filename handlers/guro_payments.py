@@ -13,26 +13,36 @@ import guro_tags as GT
 
 logger = logging.getLogger(__name__)
 
-_PAYLOAD_PREFIX = "guro_id_subscription:"
+# product -> (payload-префикс, тарифная сетка). Кабинет рекрутера (Фаза 3,
+# 12.08.2026) добавлен рядом с базовой подпиской — тот же payload-формат
+# '<префикс>:<plan>:<user_id>', просто другой продукт/таблица активации.
+_PRODUCTS = {
+    "guro_id": ("guro_id_subscription", GC.SUBSCRIPTION_PLANS),
+    "recruiter": ("guro_id_recruiter_subscription", GC.RECRUITER_SUBSCRIPTION_PLANS),
+}
 
 
-def _plan_from_payload(invoice_payload: str) -> tuple[str, dict]:
-    """payload формата 'guro_id_subscription:<plan>:<user_id>'. Неизвестный/
-    отсутствующий план -> тихо откатываемся на месячный (не должно случаться
-    в проде — план валидируется ещё при создании инвойса в guro_id_api.py,
-    это защита на случай рассинхрона версий фронта/бэкенда)."""
-    rest = invoice_payload[len(_PAYLOAD_PREFIX):]
-    plan = rest.split(":")[0]
-    cfg = GC.SUBSCRIPTION_PLANS.get(plan)
-    if cfg is None:
-        logger.warning("guro_payments: неизвестный план '%s' в payload, откат на monthly", plan)
-        plan, cfg = "monthly", GC.SUBSCRIPTION_PLANS["monthly"]
-    return plan, cfg
+def _match_payload(invoice_payload: str) -> tuple[str, dict] | None:
+    """payload формата '<префикс>:<plan>:<user_id>'. Возвращает (product,
+    plan_cfg) или None, если префикс не наш (чужой payload в проекте
+    сейчас нет других invoice-флоу, но на всякий случай не отвечаем).
+    Неизвестный/отсутствующий план -> тихо откатываемся на месячный (план
+    валидируется ещё при создании инвойса в guro_id_api.py, это защита на
+    случай рассинхрона версий фронта/бэкенда)."""
+    for product, (prefix, plans) in _PRODUCTS.items():
+        if invoice_payload.startswith(prefix + ":"):
+            plan = invoice_payload[len(prefix) + 1:].split(":")[0]
+            cfg = plans.get(plan)
+            if cfg is None:
+                logger.warning("guro_payments: неизвестный план '%s' для %s, откат на monthly", plan, product)
+                cfg = plans["monthly"]
+            return product, cfg
+    return None
 
 
 async def on_guro_pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.pre_checkout_query
-    if query.invoice_payload.startswith(_PAYLOAD_PREFIX):
+    if _match_payload(query.invoice_payload) is not None:
         await query.answer(ok=True)
     # чужой payload (в проекте сейчас нет других invoice-флоу) — намеренно не
     # отвечаем, чтобы не подтверждать чужой платёж по ошибке.
@@ -40,10 +50,20 @@ async def on_guro_pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def on_guro_successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     payment = update.message.successful_payment
-    if not payment.invoice_payload.startswith(_PAYLOAD_PREFIX):
+    matched = _match_payload(payment.invoice_payload)
+    if matched is None:
         return
-    _plan, cfg = _plan_from_payload(payment.invoice_payload)
+    product, cfg = matched
     storage = context.bot_data["guro_storage"]
+
+    if product == "recruiter":
+        expires_at = storage.activate_recruiter_subscription(update.effective_user.id, cfg["duration_days"])
+        await update.message.reply_text(
+            f"✅ Кабинет рекрутера GURO ID активирован до {expires_at[:10]} — "
+            "публикация вакансий и просмотр резюме открыты."
+        )
+        return
+
     expires_at = storage.activate_subscription(update.effective_user.id, cfg["duration_days"])
     await update.message.reply_text(
         f"✅ Подписка GURO ID активирована до {expires_at[:10]} — полный поиск и просмотр профилей открыты."

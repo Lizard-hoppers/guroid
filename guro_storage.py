@@ -55,6 +55,19 @@ CREATE TABLE IF NOT EXISTS guro_messages (
     read_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_guro_messages_thread ON guro_messages(thread_id);
+
+-- Кабинет рекрутера (Фаза 3, 12.08.2026) — САТЕЛЛИТ к guro_users, не
+-- трогает его. Рейтинг/партнёрства/базовая подписка GURO ID остаются
+-- общими и берутся из guro_users/partnerships как обычно; тут только
+-- отдельная витрина (RECRUITER_EXTRA_FIELDS + PRIVACY_FIELDS-тумблеры,
+-- добавляются мягкой миграцией ниже) и своя, ОТДЕЛЬНАЯ подписка.
+CREATE TABLE IF NOT EXISTS guro_recruiter_profiles (
+    user_id INTEGER PRIMARY KEY,
+    subscription_status TEXT DEFAULT 'inactive',
+    subscription_expires_at TEXT,
+    created_at TEXT,
+    updated_at TEXT
+);
 """
 
 
@@ -87,6 +100,13 @@ class GuroStorage:
         self._ensure_column("partnerships", "amount_paid", "REAL")
         self._ensure_column("partnerships", "review", "TEXT")
         self._ensure_column("partnerships", "amount_visible", "INTEGER DEFAULT 0")
+        # Фаза 3 (12.08.2026) — витрина кабинета рекрутера, тот же набор
+        # тумблеров приватности, что у личного профиля (PRIVACY_FIELDS),
+        # применённый к ДРУГОЙ таблице — коллизий нет.
+        for field in GC.RECRUITER_EXTRA_FIELDS:
+            self._ensure_column("guro_recruiter_profiles", field, "TEXT")
+        for field in GC.PRIVACY_FIELDS:
+            self._ensure_column("guro_recruiter_profiles", field, "INTEGER DEFAULT 0")
         self._conn.commit()
 
     def _ensure_column(self, table: str, column: str, ddl: str) -> None:
@@ -209,6 +229,77 @@ class GuroStorage:
         )
         self._conn.commit()
         return self.get_work_status(user_id)
+
+    # --- кабинет рекрутера (Фаза 3, 12.08.2026) --------------------------
+
+    def get_or_create_recruiter_profile(self, user_id: int) -> sqlite3.Row:
+        row = self._conn.execute(
+            "SELECT * FROM guro_recruiter_profiles WHERE user_id=?", (user_id,)
+        ).fetchone()
+        if row is not None:
+            return row
+        self._conn.execute(
+            "INSERT INTO guro_recruiter_profiles (user_id, created_at, updated_at) VALUES (?,?,?)",
+            (user_id, self._now_str(), self._now_str()),
+        )
+        self._conn.commit()
+        return self._conn.execute(
+            "SELECT * FROM guro_recruiter_profiles WHERE user_id=?", (user_id,)
+        ).fetchone()
+
+    def is_recruiter_subscribed(self, user_id: int) -> bool:
+        row = self._conn.execute(
+            "SELECT subscription_status, subscription_expires_at FROM guro_recruiter_profiles WHERE user_id=?",
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        return GL.subscription_active(
+            row["subscription_status"], GL.parse_db_datetime(row["subscription_expires_at"]), self._now(),
+        )
+
+    def activate_recruiter_subscription(self, user_id: int, duration_days: int) -> str:
+        self.get_or_create_recruiter_profile(user_id)
+        expires_at = GL.subscription_expires_at(self._now(), duration_days)
+        self._conn.execute(
+            "UPDATE guro_recruiter_profiles SET subscription_status=?, subscription_expires_at=?, "
+            "updated_at=? WHERE user_id=?",
+            (GC.SUBSCRIPTION_ACTIVE, GL.format_db_datetime(expires_at), self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return GL.format_db_datetime(expires_at)
+
+    def get_recruiter_extra(self, user_id: int) -> dict:
+        row = self.get_or_create_recruiter_profile(user_id)
+        return {field: row[field] for field in GC.RECRUITER_EXTRA_FIELDS}
+
+    def set_recruiter_extra_field(self, user_id: int, field: str, value: str | None) -> dict:
+        """Поднимает ValueError('UNKNOWN_FIELD') — тот же приём, что и
+        set_extra_profile_field у личного профиля."""
+        if field not in GC.RECRUITER_EXTRA_FIELDS:
+            raise ValueError("UNKNOWN_FIELD")
+        self.get_or_create_recruiter_profile(user_id)
+        self._conn.execute(
+            f"UPDATE guro_recruiter_profiles SET {field}=?, updated_at=? WHERE user_id=?",
+            (value, self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return self.get_recruiter_extra(user_id)
+
+    def get_recruiter_privacy(self, user_id: int) -> dict:
+        row = self.get_or_create_recruiter_profile(user_id)
+        return {field: bool(row[field]) for field in GC.PRIVACY_FIELDS}
+
+    def set_recruiter_privacy_field(self, user_id: int, field: str, value: bool) -> dict:
+        if field not in GC.PRIVACY_FIELDS:
+            raise ValueError("UNKNOWN_FIELD")
+        self.get_or_create_recruiter_profile(user_id)
+        self._conn.execute(
+            f"UPDATE guro_recruiter_profiles SET {field}=?, updated_at=? WHERE user_id=?",
+            (1 if value else 0, self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return self.get_recruiter_privacy(user_id)
 
     # --- partnerships -------------------------------------------------------
 

@@ -105,6 +105,23 @@ const SEARCH_UNLOCKED = {
   days_in_community: 100,
   locked: false,
   partners: [],
+  has_recruiter_profile: true,
+};
+
+// Мок кабинета рекрутера (Фаза 3, 12.08.2026) — простое in-memory
+// состояние своего кабинета + статичная карточка чужого (unlockeduser).
+let recruiterState = {
+  workspace: "recruiter",
+  user_id: 100,
+  name: null, company: null, vertical: null, profession: null,
+  cv_text: null, website: null, offering: null,
+  recruiter_subscription_status: "inactive",
+  recruiter_subscription_expires_at: null,
+  is_recruiter_subscribed: false,
+  privacy: {
+    show_name: false, show_company: false, show_vertical: false, show_profession: false,
+    show_tenure: false, show_reputation: false, show_cv: false, show_contacts: false, show_offers: false,
+  },
 };
 
 let privacyState = { ...ME_PAYLOAD.privacy };
@@ -153,12 +170,42 @@ await page.addInitScript(() => {
   };
 });
 
-await page.route("**/api/me", (route) => route.fulfill({ json: { ...ME_PAYLOAD, privacy: privacyState } }));
+await page.route("**/api/me**", (route) => {
+  const url = new URL(route.request().url());
+  if (url.searchParams.get("workspace") === "recruiter") {
+    return route.fulfill({ json: recruiterState });
+  }
+  return route.fulfill({ json: { ...ME_PAYLOAD, privacy: privacyState } });
+});
+await page.route("**/api/recruiter/profile", async (route) => {
+  const body = route.request().postDataJSON();
+  recruiterState[body.field] = body.value;
+  route.fulfill({ json: { [body.field]: body.value } });
+});
+await page.route("**/api/recruiter/privacy", async (route) => {
+  const body = route.request().postDataJSON();
+  recruiterState.privacy = { ...recruiterState.privacy, [body.field]: body.value };
+  route.fulfill({ json: recruiterState.privacy });
+});
+await page.route("**/api/subscribe", (route) =>
+  route.fulfill({ json: { invoice_link: "https://t.me/fake_invoice_link" } }),
+);
 // Универсальный поиск (10.08.2026): один эндпоинт /api/search?q= — точный
 // юзернейм "target" отдаёт тизер-профиль (mode=profile), любой другой
 // текст трактуется как описание (mode=list, платный directory-режим).
 await page.route("**/api/search**", (route) => {
   const url = new URL(route.request().url());
+  if (url.searchParams.get("workspace") === "recruiter") {
+    return route.fulfill({
+      json: {
+        mode: "profile", workspace: "recruiter", locked: false,
+        user_id: 888, username: "unlockeduser", name: "Unlocked Recruiter",
+        company: "Acme Talent", vertical: "iGaming", profession: "Talent Lead",
+        cv_text: "Нанимаю продакт-менеджеров и байеров.", website: "acme-talent.example",
+        offering: "Быстрый подбор под iGaming",
+      },
+    });
+  }
   if (url.searchParams.get("user_id")) {
     return route.fulfill({ json: SEARCH_LOCKED });
   }
@@ -271,18 +318,35 @@ await page.route("**/api/messages", async (route) => {
   else messageThreads.push(preview);
   route.fulfill({ json: { id, created_at: createdAt } });
 });
-await page.route("**/api/plans", (route) => route.fulfill({
-  json: {
-    plans: {
-      monthly: { label: "Месяц", duration_days: 30, stars_price: 650, crypto_price_usd: 9.75, crypto_asset: "USDT" },
-      yearly: {
-        label: "Год", duration_days: 365, stars_price: 6600, stars_price_full: 7800,
-        crypto_price_usd: 99, crypto_asset: "USDT",
+await page.route("**/api/plans**", (route) => {
+  const url = new URL(route.request().url());
+  if (url.searchParams.get("product") === "recruiter") {
+    return route.fulfill({
+      json: {
+        plans: {
+          monthly: { label: "Месяц", duration_days: 30, stars_price: 800, crypto_price_usd: 12, crypto_asset: "USDT" },
+          yearly: {
+            label: "Год", duration_days: 365, stars_price: 7000, stars_price_full: 9600,
+            crypto_price_usd: 105, crypto_asset: "USDT",
+          },
+        },
+        crypto_enabled: true,
       },
+    });
+  }
+  return route.fulfill({
+    json: {
+      plans: {
+        monthly: { label: "Месяц", duration_days: 30, stars_price: 650, crypto_price_usd: 9.75, crypto_asset: "USDT" },
+        yearly: {
+          label: "Год", duration_days: 365, stars_price: 6600, stars_price_full: 7800,
+          crypto_price_usd: 99, crypto_asset: "USDT",
+        },
+      },
+      crypto_enabled: true,
     },
-    crypto_enabled: true,
-  },
-}));
+  });
+});
 await page.route("**://telegram.org/js/telegram-web-app.js", (route) => route.abort());
 
 await page.goto(BASE, { waitUntil: "networkidle" });
@@ -450,6 +514,58 @@ await step("contacts-qr-shortcut-and-invite", async () => {
   console.log("invite colleague opened share link:", openedLinks[openedLinks.length - 1]);
   await page.screenshot({ path: "smoke_5j_invite_colleague.png" });
   await page.getByRole("button", { name: "‹ Профиль" }).click();
+  await sleep(300);
+});
+
+await step("recruiter-workspace-subscribe-and-edit", async () => {
+  await page.getByRole("button", { name: "Рекрутер", exact: true }).click();
+  await sleep(400);
+  await page.screenshot({ path: "smoke_6a_recruiter_upsell.png" });
+  console.log("recruiter upsell shows correct price (800⭐):",
+    await page.getByText("800 ⭐").isVisible().catch(() => false));
+
+  await page.getByRole("button", { name: /Оформить/ }).click();
+  await sleep(400);
+  await page.screenshot({ path: "smoke_6b_recruiter_editor.png" });
+  console.log("recruiter editor visible right after subscribe:",
+    await page.getByText("Имя / подпись").isVisible().catch(() => false));
+
+  await page.getByRole("button", { name: "Заполнить" }).first().click();
+  await sleep(200);
+  await page.fill('input[placeholder="Например: Иван Петров, HR отдел"]', "Init HR");
+  await page.getByRole("button", { name: "Сохранить" }).click();
+  await sleep(300);
+  console.log("recruiter name field saved:", await page.getByText("Init HR").isVisible().catch(() => false));
+
+  const toggles = await page.$$(".switch .slider");
+  console.log("recruiter privacy toggles rendered (expect 7):", toggles.length);
+  await page.screenshot({ path: "smoke_6c_recruiter_filled.png" });
+
+  await page.getByRole("button", { name: "Личный", exact: true }).click();
+  await sleep(300);
+});
+
+await step("view-recruiter-card-of-other-user", async () => {
+  await page.getByRole("button", { name: "Поиск" }).click();
+  await sleep(300);
+  await page.fill('input[placeholder="Юзернейм или описание"]', "unlockeduser");
+  await page.getByRole("button", { name: "Найти" }).click();
+  await sleep(500);
+  const viewRecruiterBtn = page.getByRole("button", { name: "🧑‍💼 Посмотреть как рекрутера" });
+  console.log("view-as-recruiter button visible:", await viewRecruiterBtn.isVisible().catch(() => false));
+  await viewRecruiterBtn.click();
+  await sleep(400);
+  console.log("recruiter card of other user shown:",
+    await page.getByText("Unlocked Recruiter").isVisible().catch(() => false));
+  await page.screenshot({ path: "smoke_2m_other_recruiter_card.png" });
+  await page.getByRole("button", { name: "‹ Личный профиль" }).click();
+  await sleep(400);
+  console.log("back to personal card:",
+    await page.getByText("Unlocked User").isVisible().catch(() => false));
+
+  // Возвращаемся на вкладку "Профиль" — следующий по сценарию шаг
+  // (profile-subscription-gate) ожидает именно это состояние.
+  await page.getByRole("button", { name: "Профиль" }).click();
   await sleep(300);
 });
 

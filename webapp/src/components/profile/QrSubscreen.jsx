@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { getQr } from "../../api.js";
 import { Msg, Spinner } from "../Shared.jsx";
+import { useLang } from "../../i18n.jsx";
 
 export function QrSubscreen({ onBack }) {
+  const { t } = useLang();
   const [state, setState] = useState({ loading: true, dataUrl: null, error: null });
 
   useEffect(() => {
@@ -26,19 +28,16 @@ export function QrSubscreen({ onBack }) {
   return (
     <div>
       <button type="button" className="subscreen-back" onClick={onBack}>
-        ‹ Профиль
+        {t("common.back")}
       </button>
       <div className="card qr-card">
-        <h3>Мой QR</h3>
-        {state.loading && <Spinner>Готовим QR…</Spinner>}
-        {state.error && <Msg type="error">Не удалось получить QR. Попробуйте позже.</Msg>}
+        <h3>{t("qr.title")}</h3>
+        {state.loading && <Spinner>{t("qr.preparing")}</Spinner>}
+        {state.error && <Msg type="error">{t("qr.error")}</Msg>}
         {state.dataUrl && (
           <>
-            <img src={state.dataUrl} alt="QR-код профиля GURO ID" />
-            <div className="partner-meta">
-              Покажите этот код — сканирующий откроет ваш профиль в GURO ID через бота.
-              Полную карточку увидят только с активной подпиской.
-            </div>
+            <img src={state.dataUrl} alt="GURO ID QR" />
+            <div className="partner-meta">{t("qr.hint")}</div>
           </>
         )}
       </div>

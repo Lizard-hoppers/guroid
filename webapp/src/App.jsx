@@ -8,6 +8,26 @@ import { ConfirmScreen } from "./components/ConfirmScreen.jsx";
 import { SubscribeScreen } from "./components/SubscribeScreen.jsx";
 import { SlotIntro } from "./components/SlotIntro.jsx";
 import { BRAND_WORD_1, BRAND_WORD_2 } from "./brandLetters.js";
+import { LangProvider, useLang } from "./i18n.jsx";
+
+// Переключатель RU/EN в правом верхнем углу (12.08.2026, по просьбе
+// владельца) — текстовые буквы, не флаги (тот же принцип, что и у
+// языковых кнопок бота, см. constants.py: без флага РФ). Каждый
+// компонент читает язык через useLang() напрямую (React Context) —
+// проп через весь дерево тянуть не нужно.
+function LanguageSwitch() {
+  const { lang, setLang } = useLang();
+  return (
+    <div className="lang-switch">
+      <button type="button" className={lang === "ru" ? "is-active" : ""} onClick={() => setLang("ru")}>
+        RU
+      </button>
+      <button type="button" className={lang === "en" ? "is-active" : ""} onClick={() => setLang("en")}>
+        EN
+      </button>
+    </div>
+  );
+}
 
 const SCREENS = {
   profile: ProfileScreen,
@@ -48,7 +68,8 @@ function readDeepLinkThread() {
   return new URLSearchParams(window.location.search).get("thread");
 }
 
-export default function App() {
+function AppShell() {
+  const { t } = useLang();
   const [intro, setIntro] = useState(true);
   const initialTargetRef = useRef(readDeepLinkTarget());
   const targetConsumedRef = useRef(false);
@@ -98,6 +119,7 @@ export default function App() {
       {!intro && (
         <div className="app">
           <div className="header">
+            <LanguageSwitch />
             <div className="brand">
               {BRAND_WORD_1.map((l) => (
                 <motion.span key={l.id} layoutId={`brand-${l.id}`} className="brand-letter">
@@ -117,7 +139,7 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3, duration: 0.3 }}
             >
-              Партнёрства и репутация комьюнити GURO
+              {t("app.subtitle")}
             </motion.div>
           </div>
 
@@ -154,5 +176,13 @@ export default function App() {
         </div>
       )}
     </LayoutGroup>
+  );
+}
+
+export default function App() {
+  return (
+    <LangProvider>
+      <AppShell />
+    </LangProvider>
   );
 }

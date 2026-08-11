@@ -2,20 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import { getThread, sendMessage, ApiError } from "../../api.js";
 import { Spinner, Msg } from "../Shared.jsx";
 import { haptic } from "../../telegram.js";
+import { useLang } from "../../i18n.jsx";
 
-const ERROR_MESSAGES = {
-  SUBSCRIPTION_REQUIRED:
-    "Чтобы написать первым, нужна активная подписка GURO ID — вы уже видели полный профиль " +
-    "этого человека, если общаетесь впервые.",
-  RATE_LIMITED: "Слишком много новых переписок за сегодня. Попробуйте завтра.",
-  NO_RECIPIENT_PROFILE: "Этот пользователь ещё не проходил анкету бота.",
-  EMPTY_BODY: "Сообщение не может быть пустым.",
+const ERROR_KEYS = {
+  SUBSCRIPTION_REQUIRED: "thread.error.SUBSCRIPTION_REQUIRED",
+  RATE_LIMITED: "thread.error.RATE_LIMITED",
+  NO_RECIPIENT_PROFILE: "thread.error.NO_RECIPIENT_PROFILE",
+  EMPTY_BODY: "thread.error.EMPTY_BODY",
 };
 
 // Переписка с ОДНИМ человеком (адресуется по его user_id, не по id треда —
 // тред может ещё не существовать в БД, если сообщений ещё не было, см.
 // GET /api/messages/with/<user_id> в guro_id_api.py).
 export function ThreadScreen({ otherUserId, onBack }) {
+  const { t } = useLang();
   const [state, setState] = useState({ loading: true, data: null, error: null });
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -55,28 +55,26 @@ export function ThreadScreen({ otherUserId, onBack }) {
     }
   }
 
-  if (state.loading) return <Spinner>Загружаем переписку…</Spinner>;
-  if (state.error) return <Msg type="error">Не удалось открыть переписку.</Msg>;
+  if (state.loading) return <Spinner>{t("thread.loading")}</Spinner>;
+  if (state.error) return <Msg type="error">{t("thread.loadError")}</Msg>;
 
   const { data } = state;
-  const heading = data.other_name || (data.other_username ? `@${data.other_username}` : "Без имени");
+  const heading = data.other_name || (data.other_username ? `@${data.other_username}` : t("common.noName"));
   const errorText = sendError
-    ? (sendError instanceof ApiError && ERROR_MESSAGES[sendError.code]) || "Не получилось отправить сообщение."
+    ? t((sendError instanceof ApiError && ERROR_KEYS[sendError.code]) || "thread.error.generic")
     : null;
 
   return (
     <div>
       <button type="button" className="subscreen-back" onClick={onBack}>
-        ‹ Сообщения
+        {t("common.backToMessages")}
       </button>
       <div className="card">
         <h3>{heading}</h3>
         <div className="thread-messages">
           {data.messages.length === 0 && (
             <div className="partner-meta">
-              {data.can_send_first
-                ? "Переписки пока нет — напишите первое сообщение."
-                : "Написать первым можно только тем, чей профиль вы открыли по подписке GURO ID."}
+              {data.can_send_first ? t("thread.emptyCanSend") : t("thread.emptyCannotSend")}
             </div>
           )}
           {data.messages.map((m) => (
@@ -90,13 +88,13 @@ export function ThreadScreen({ otherUserId, onBack }) {
           <form onSubmit={onSend} className="thread-composer">
             <textarea
               rows={2}
-              placeholder="Сообщение…"
+              placeholder={t("thread.placeholder")}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               disabled={sending}
             />
             <button className="btn" type="submit" disabled={sending || !draft.trim()}>
-              {sending ? "Отправляем…" : "Отправить"}
+              {sending ? t("thread.sending") : t("thread.send")}
             </button>
           </form>
         )}

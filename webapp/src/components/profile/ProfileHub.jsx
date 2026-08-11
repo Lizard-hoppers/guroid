@@ -2,21 +2,23 @@ import { addToHomeScreen, canAddToHomeScreen, getAvatarUrl, haptic } from "../..
 import { initialOf } from "../../utils.js";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import { WorkStatusPicker } from "../Shared.jsx";
+import { useLang } from "../../i18n.jsx";
 
 const MENU = [
-  { key: "rating", label: "Мой рейтинг" },
-  { key: "cv", label: "Моё CV" },
-  { key: "contacts", label: "Мои контакты" },
-  { key: "offers", label: "Мои офферы" },
-  { key: "messages", label: "Мои сообщения" },
-  { key: "qr", label: "Мой QR" },
+  { key: "rating", labelKey: "hub.menu.rating" },
+  { key: "cv", labelKey: "hub.menu.cv" },
+  { key: "contacts", labelKey: "hub.menu.contacts" },
+  { key: "offers", labelKey: "hub.menu.offers" },
+  { key: "messages", labelKey: "hub.menu.messages" },
+  { key: "qr", labelKey: "hub.menu.qr" },
 ];
 
 // Главная страница профиля — визитка (аватар/имя/должность/компания/
-// вертикаль) + меню из 4 разделов. Метрики/партнёры/CV/контакты/офферы
+// вертикаль) + меню из разделов. Метрики/партнёры/CV/контакты/офферы
 // раньше были на одном экране, теперь разнесены по своим под-экранам
 // (см. profile/*.jsx), сюда попадает только сама визитка.
 export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, onWorkStatusChange }) {
+  const { t } = useLang();
   const avatarUrl = getAvatarUrl();
   return (
     <div>
@@ -28,14 +30,14 @@ export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, o
             <div className="profile-avatar-fallback">{initialOf(profile.name, profile.username)}</div>
           )}
           <div className="profile-header-info">
-            <h2>{profile.name || (profile.username ? `@${profile.username}` : "Без имени")}</h2>
+            <h2>{profile.name || (profile.username ? `@${profile.username}` : t("common.noName"))}</h2>
             {profile.profession && <div className="profile-header-sub">{profile.profession}</div>}
             {profile.company && <div className="profile-header-sub">{profile.company}</div>}
           </div>
         </div>
         {profile.vertical && <span className="profile-vertical-badge">{profile.vertical}</span>}
         <div className="work-status-section">
-          <label>Статус</label>
+          <label>{t("hub.status")}</label>
           <WorkStatusPicker value={profile.work_status} onChange={onWorkStatusChange} />
         </div>
         {canAddToHomeScreen() && (
@@ -48,7 +50,7 @@ export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, o
               addToHomeScreen();
             }}
           >
-            📲 Добавить на экран телефона
+            {t("hub.addToHome")}
           </button>
         )}
       </div>
@@ -62,7 +64,7 @@ export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, o
             onClick={() => onNavigateSub(m.key)}
           >
             <span>
-              {m.label}
+              {t(m.labelKey)}
               {m.key === "messages" && profile.unread_messages > 0 && (
                 <span className="thread-unread-badge">{profile.unread_messages}</span>
               )}
@@ -76,7 +78,7 @@ export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, o
         privacy={privacy}
         onChange={onPrivacyChange}
         fields={["show_name", "show_company", "show_vertical", "show_profession"]}
-        hint="Эти поля видны в вашей визитке тем, кто ищет вас в GURO ID. По умолчанию скрыты — включите то, что хотите показать."
+        hint={t("hub.privacyHint")}
       />
     </div>
   );

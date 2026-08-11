@@ -3,23 +3,31 @@ import { getMe, getPlans, subscribe, subscribeCrypto } from "../api.js";
 import { Msg } from "./Shared.jsx";
 import { openInvoice, openTelegramLink, haptic } from "../telegram.js";
 import { formatDate } from "../utils.js";
+import { useLang } from "../i18n.jsx";
 
 const COMPARE_ROWS = [
-  { label: "Статус трудоустройства (виден всем)", tier: "free" },
-  { label: "Ваш рейтинг и история сделок/найма", tier: "paid" },
-  { label: "Полный поиск по юзернейму", tier: "paid" },
-  { label: "История партнёрств контрагента", tier: "paid" },
+  "subscribe.compare.workStatus",
+  "subscribe.compare.rating",
+  "subscribe.compare.search",
+  "subscribe.compare.history",
 ];
 
 // Кабинет рекрутера (Фаза 3, 12.08.2026) — та же оплата Stars+крипто, что у
 // базовой подписки, параметризована по product вместо копии экрана.
 const RECRUITER_COMPARE_ROWS = [
-  { label: "Рейтинг и партнёрства (общие с личным профилем)", tier: "free" },
-  { label: "Отдельная витрина: имя/компания/CV рекрутера", tier: "paid" },
-  { label: "Видимость витрины другим участникам GURO ID", tier: "paid" },
+  "subscribe.compareRecruiter.rating",
+  "subscribe.compareRecruiter.showcase",
+  "subscribe.compareRecruiter.visibility",
 ];
 
+// Тир строки в COMPARE_ROWS вычисляется по позиции — первая всегда
+// бесплатная (статус трудоустройства / общий рейтинг), остальные платные.
+// Не идеально общее решение, но проще, чем городить отдельный объект ради
+// одного булева флага на 3-4 строки.
+const FREE_ROW_INDEX = { guro_id: 0, recruiter: 0 };
+
 export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
+  const { t } = useLang();
   const isRecruiter = product === "recruiter";
   const [me, setMe] = useState(null);
   const [plansData, setPlansData] = useState(null);
@@ -61,7 +69,7 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
       });
     } catch {
       setBusy(false);
-      setError("Не получилось создать счёт. Попробуйте ещё раз.");
+      setError(t("subscribe.starsError"));
       haptic("error");
     }
   }
@@ -75,7 +83,7 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
       // Крипто-платёж подтверждается вебхуком асинхронно (не сразу, как
       // Stars) — статус подписки обновится при следующем открытии профиля.
     } catch {
-      setError("Не получилось создать крипто-счёт. Попробуйте ещё раз.");
+      setError(t("subscribe.cryptoError"));
       haptic("error");
     } finally {
       setBusy(false);
@@ -85,29 +93,26 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
   const isSubscribed = justPaid || (isRecruiter ? me?.is_recruiter_subscribed : me?.is_subscribed);
   const expiresAt = isRecruiter ? me?.recruiter_subscription_expires_at : me?.subscription_expires_at;
   const plan = plansData?.plans?.[selected];
+  const compareRows = isRecruiter ? RECRUITER_COMPARE_ROWS : COMPARE_ROWS;
+  const freeIndex = FREE_ROW_INDEX[product] ?? -1;
 
   return (
     <div className="card">
-      <h3>{isRecruiter ? "Подписка на кабинет рекрутера" : "Подписка GURO ID"}</h3>
+      <h3>{isRecruiter ? t("subscribe.titleRecruiter") : t("subscribe.titleGuro")}</h3>
       {isSubscribed ? (
         <Msg type="ok">
-          Подписка активна
-          {expiresAt ? ` до ${formatDate(expiresAt)}` : ""}.
+          {t("subscribe.active")}
+          {expiresAt ? t("subscribe.activeUntil", { date: formatDate(expiresAt) }) : ""}.
         </Msg>
       ) : (
         <>
-          <div className="privacy-hint">
-            {isRecruiter
-              ? "Кабинет рекрутера — отдельная подписка поверх базовой GURO ID: своя витрина " +
-                "(имя/компания/CV), не влияет на личный профиль. Рейтинг и партнёрства остаются общими."
-              : "Без активной подписки ваш рейтинг и история сделок скрыты — ни вам, ни другим " +
-                "(данные не удаляются, подписка просто держит их видимыми). Полный поиск и " +
-                "просмотр чужих профилей — тоже по подписке."}
-          </div>
-          {(isRecruiter ? RECRUITER_COMPARE_ROWS : COMPARE_ROWS).map((r) => (
-            <div className="compare-row" key={r.label}>
-              <span>{r.label}</span>
-              <span className={r.tier}>{r.tier === "free" ? "бесплатно" : "по подписке"}</span>
+          <div className="privacy-hint">{isRecruiter ? t("subscribe.hintRecruiter") : t("subscribe.hintGuro")}</div>
+          {compareRows.map((key, i) => (
+            <div className="compare-row" key={key}>
+              <span>{t(key)}</span>
+              <span className={i === freeIndex ? "free" : "paid"}>
+                {i === freeIndex ? t("subscribe.free") : t("subscribe.paid")}
+              </span>
             </div>
           ))}
 
@@ -130,7 +135,7 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
                   <div className="plan-card-price-main">{p.stars_price} ⭐</div>
                   {p.stars_price_full && (
                     <div className="plan-card-badge">
-                      экономия {p.stars_price_full - p.stars_price} ⭐
+                      {t("subscribe.economy", { amount: p.stars_price_full - p.stars_price })}
                     </div>
                   )}
                 </button>
@@ -139,14 +144,14 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
           )}
 
           <button className="btn" onClick={onSubscribeStars} disabled={busy || !plan}>
-            {busy ? "Готовим счёт…" : `Оформить · ${plan ? `${plan.stars_price} ⭐` : "…"} Telegram Stars`}
+            {busy ? t("subscribe.preparingInvoice") : t("subscribe.payStars", { price: plan ? plan.stars_price : "…" })}
           </button>
 
           {plansData?.crypto_enabled && plan && (
             <button className="btn secondary" onClick={onSubscribeCrypto} disabled={busy}>
               {busy
-                ? "Готовим счёт…"
-                : `Оплатить ${plan.crypto_price_usd} ${plan.crypto_asset} (крипто)`}
+                ? t("subscribe.preparingInvoice")
+                : t("subscribe.payCrypto", { amount: plan.crypto_price_usd, asset: plan.crypto_asset })}
             </button>
           )}
 

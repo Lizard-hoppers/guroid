@@ -11,11 +11,15 @@ import {
 } from "./Shared.jsx";
 import { DeveloperShowcase } from "./DeveloperShowcase.jsx";
 import { haptic } from "../telegram.js";
+import { useLang } from "../i18n.jsx";
 
 // Канонический список вертикалей — ровно constants.VERTICALS в боте (то,
 // что реально пишется в profiles.vertical при регистрации, см.
 // handlers/flow.py). Browse по вертикали (Фаза 2, 11.08.2026) matches
-// именно эти значения (см. guro_id_api._directory_browse).
+// именно эти значения (см. guro_id_api._directory_browse). Значения не
+// переводим — это канонические английские метки, показываются как есть
+// в обоих языках интерфейса (та же логика, что и остальной раздел
+// профиля, где vertical хранится/отображается по-английски).
 const VERTICALS = ["Gambling", "Betting", "Crypto", "Dating", "E-Commerce", "FinTech", "Nutra", "Other"];
 
 // onWrite передаётся только для РАЗБЛОКИРОВАННОГО профиля (см. рендер ниже) —
@@ -25,13 +29,14 @@ const VERTICALS = ["Gambling", "Betting", "Crypto", "Dating", "E-Commerce", "Fin
 // если у человека есть активный кабинет рекрутера (has_recruiter_profile,
 // Фаза 3), не запрашиваем recruiter-карточку вслепую на каждый профиль.
 function ResultCard({ p, onWrite, onViewRecruiter }) {
-  const heading = p.name === null ? "Скрыто" : p.name || (p.username ? `@${p.username}` : "Без имени");
+  const { t } = useLang();
+  const heading = p.name === null ? t("common.hidden") : p.name || (p.username ? `@${p.username}` : t("common.noName"));
   return (
     <div className="card">
       <h2 className={p.name === null ? "hidden-value" : ""}>{heading}</h2>
       <WorkStatusBadge status={p.work_status} />
-      <IdentityLine label="Вертикаль: " value={p.vertical} />
-      <IdentityLine label="Компания: " value={p.company} />
+      <IdentityLine label={t("identity.vertical")} value={p.vertical} />
+      <IdentityLine label={t("identity.company")} value={p.company} />
       <MetricsRow
         reputation={p.reputation_score}
         partnerships={p.confirmed_partnerships}
@@ -44,7 +49,7 @@ function ResultCard({ p, onWrite, onViewRecruiter }) {
           style={{ marginTop: 12 }}
           onClick={() => onWrite(p.user_id)}
         >
-          ✉️ Написать
+          {t("messageBtn")}
         </button>
       )}
       {p.has_recruiter_profile && onViewRecruiter && (
@@ -54,7 +59,7 @@ function ResultCard({ p, onWrite, onViewRecruiter }) {
           style={{ marginTop: 8 }}
           onClick={onViewRecruiter}
         >
-          🧑‍💼 Посмотреть как рекрутера
+          {t("recruiterViewBtn")}
         </button>
       )}
     </div>
@@ -65,19 +70,20 @@ function ResultCard({ p, onWrite, onViewRecruiter }) {
 // ResultCard: своя вертикаль/компания/должность + CV/сайт/полезен, без
 // рейтинга/партнёрств (те остаются свойством личного профиля).
 function RecruiterResultCard({ p, onBackToPersonal }) {
-  const heading = p.name || (p.username ? `@${p.username}` : "Без имени");
+  const { t } = useLang();
+  const heading = p.name || (p.username ? `@${p.username}` : t("common.noName"));
   return (
     <div className="card">
       <button type="button" className="subscreen-back" onClick={onBackToPersonal} style={{ marginBottom: 10 }}>
-        ‹ Личный профиль
+        {t("common.backToPersonal")}
       </button>
       <h2>{heading}</h2>
-      <IdentityLine label="Компания: " value={p.company} />
-      <IdentityLine label="Вертикаль: " value={p.vertical} />
-      <IdentityLine label="Должность: " value={p.profession} />
+      <IdentityLine label={t("recruiterCard.company")} value={p.company} />
+      <IdentityLine label={t("recruiterCard.vertical")} value={p.vertical} />
+      <IdentityLine label={t("recruiterCard.profession")} value={p.profession} />
       {p.cv_text && <div className="partner-meta" style={{ marginTop: 8 }}>{p.cv_text}</div>}
-      {p.website && <div className="partner-meta" style={{ marginTop: 4 }}>Сайт: {p.website}</div>}
-      {p.offering && <div className="partner-meta" style={{ marginTop: 4 }}>Чем полезен: {p.offering}</div>}
+      {p.website && <div className="partner-meta" style={{ marginTop: 4 }}>{t("recruiterCard.website")}{p.website}</div>}
+      {p.offering && <div className="partner-meta" style={{ marginTop: 4 }}>{t("recruiterCard.offering")}{p.offering}</div>}
     </div>
   );
 }
@@ -86,7 +92,8 @@ function RecruiterResultCard({ p, onBackToPersonal }) {
 // (mode=list) — тап открывает полную карточку тем же кодом, что и обычный
 // поиск по юзернейму (см. onOpen -> searchByUserId).
 function DirectoryRow({ r, onOpen }) {
-  const heading = r.name || (r.username ? `@${r.username}` : "Без имени");
+  const { t } = useLang();
+  const heading = r.name || (r.username ? `@${r.username}` : t("common.noName"));
   return (
     <button type="button" className="directory-row" onClick={() => onOpen(r.user_id)}>
       <div className="directory-row-main">
@@ -102,6 +109,7 @@ function DirectoryRow({ r, onOpen }) {
 }
 
 export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, onOpenMessages }) {
+  const { t } = useLang();
   const [query, setQuery] = useState("");
   const [state, setState] = useState(
     deepLinkTargetId ? { loading: true, data: null, error: null } : { loading: false, data: null, error: null },
@@ -199,25 +207,24 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
   return (
     <div>
       <div className="card">
-        <h3>Поиск</h3>
+        <h3>{t("search.title")}</h3>
         <div className="partner-meta" style={{ marginBottom: 10 }}>
-          Юзернейм — бесплатно (тизер-карточка). Описание, например «менеджер в крипто» —
-          ищем среди того, что участники сами открыли в профиле (по подписке).
+          {t("search.hint")}
         </div>
         <form onSubmit={onSubmit}>
           <input
             type="text"
-            placeholder="Юзернейм или описание"
+            placeholder={t("search.placeholder")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
           <button className="btn" type="submit" disabled={state.loading || !query.trim()}>
-            {state.loading ? "Ищем…" : "Найти"}
+            {state.loading ? t("search.submitting") : t("search.submit")}
           </button>
         </form>
 
         <div className="partner-meta" style={{ margin: "12px 0 6px" }}>
-          Или посмотрите по вертикали, если не знаете юзернейм (по подписке):
+          {t("search.browseHint")}
         </div>
         <div className="vertical-chips">
           {VERTICALS.map((v) => (
@@ -228,16 +235,14 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
         </div>
       </div>
 
-      {state.loading && !state.data && <Spinner>Ищем…</Spinner>}
+      {state.loading && !state.data && <Spinner>{t("search.submitting")}</Spinner>}
 
       {subscriptionRequired && (
         <div className="directory-paywall">
-          <strong>Поиск по описанию и вертикалям — по подписке</strong>
-          <p className="partner-meta">
-            Без подписки доступен только точный поиск по юзернейму.
-          </p>
+          <strong>{t("search.paywallTitle")}</strong>
+          <p className="partner-meta">{t("search.paywallText")}</p>
           <button className="btn" style={{ width: "auto", padding: "10px 20px" }} onClick={() => onNavigate("subscribe")}>
-            Оформить подписку
+            {t("rating.subscribeCta")}
           </button>
         </div>
       )}
@@ -245,20 +250,20 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
       {state.error && !subscriptionRequired && (
         <Msg type="error">
           {state.error instanceof ApiError && state.error.code === "NOT_FOUND"
-            ? "Такой участник не найден в GURO ID."
-            : "Ошибка поиска."}
+            ? t("search.notFound")
+            : t("search.genericError")}
         </Msg>
       )}
 
       {state.data && state.data.mode === "list" && (
         <label className="checkbox-row" style={{ margin: "12px 2px" }}>
           <input type="checkbox" checked={sortTop} onChange={toggleTop} />
-          🏆 Сначала высокий рейтинг
+          {t("search.topToggle")}
         </label>
       )}
 
       {state.data && state.data.mode === "list" && state.data.results.length === 0 && (
-        <div className="partner-meta">Ничего не нашлось. Попробуйте другое описание или вертикаль.</div>
+        <div className="partner-meta">{t("search.emptyList")}</div>
       )}
 
       {state.data && state.data.mode === "list" && state.data.results.length > 0 && (
@@ -268,7 +273,7 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
           ))}
           {state.data.truncated && (
             <div className="partner-meta" style={{ marginTop: 8 }}>
-              Показаны не все совпадения — уточните запрос.
+              {t("search.truncated")}
             </div>
           )}
         </div>
@@ -294,8 +299,8 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
         <div>
           <ResultCard p={state.data} onWrite={onOpenMessages} onViewRecruiter={viewRecruiterCard} />
           <div className="card">
-            <h3>История партнёрств контрагента</h3>
-            <PartnersList partners={state.data.partners} emptyHint="Пока нет подтверждённых партнёрств." />
+            <h3>{t("rating.otherHistoryTitle")}</h3>
+            <PartnersList partners={state.data.partners} emptyHint={t("rating.emptyOther")} />
           </div>
         </div>
       )}

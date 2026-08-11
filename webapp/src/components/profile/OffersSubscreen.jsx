@@ -1,26 +1,26 @@
 import { EditableField } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
+import { useLang } from "../../i18n.jsx";
 
 export function OffersSubscreen({ profile, privacy, onPrivacyChange, onFieldSaved, onBack }) {
+  const { t } = useLang();
   return (
     <div>
       <button type="button" className="subscreen-back" onClick={onBack}>
-        ‹ Профиль
+        {t("common.back")}
       </button>
       <div className="card">
-        <h3>Мои офферы</h3>
-        <label>Я ищу</label>
+        <h3>{t("offers.title")}</h3>
+        <label>{t("offers.lookingForLabel")}</label>
         {profile.looking_for ? (
           <div className="editable-field-value">{profile.looking_for}</div>
         ) : (
-          <div className="editable-field-empty">
-            не указано — заполняется в анкете @GamblingCommunitybot
-          </div>
+          <div className="editable-field-empty">{t("offers.lookingForEmpty")}</div>
         )}
         <EditableField
           field="offering"
-          label="Я полезен"
-          placeholder="Например: могу подключить трафик, есть база рекламодателей…"
+          label={t("offers.offeringLabel")}
+          placeholder={t("offers.offeringPlaceholder")}
           value={profile.offering}
           multiline
           onSaved={(v) => onFieldSaved("offering", v)}
@@ -30,7 +30,7 @@ export function OffersSubscreen({ profile, privacy, onPrivacyChange, onFieldSave
         privacy={privacy}
         onChange={onPrivacyChange}
         fields={["show_offers"]}
-        hint="Управляет показом обоих полей разом — «ищу» и «полезен»."
+        hint={t("offers.privacyHint")}
       />
     </div>
   );

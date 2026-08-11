@@ -12,11 +12,13 @@ import { QrSubscreen } from "./profile/QrSubscreen.jsx";
 import { MessagesScreen } from "./profile/MessagesScreen.jsx";
 import { OnboardingScreen } from "./profile/OnboardingScreen.jsx";
 import { RecruiterHub } from "./profile/RecruiterHub.jsx";
+import { useLang } from "../i18n.jsx";
 
 // Переключатель Личный/Рекрутер (Фаза 3, 12.08.2026) — рендерится только
 // на "хабах" (ProfileHub / RecruiterHub), не внутри под-экранов, чтобы не
 // загромождать сфокусированные single-purpose экраны.
 function WorkspaceSwitch({ workspace, onChange }) {
+  const { t } = useLang();
   return (
     <div className="workspace-switch">
       <button
@@ -24,20 +26,21 @@ function WorkspaceSwitch({ workspace, onChange }) {
         className={workspace === "personal" ? "is-active" : ""}
         onClick={() => onChange("personal")}
       >
-        Личный
+        {t("workspace.personal")}
       </button>
       <button
         type="button"
         className={workspace === "recruiter" ? "is-active" : ""}
         onClick={() => onChange("recruiter")}
       >
-        Рекрутер
+        {t("workspace.recruiter")}
       </button>
     </div>
   );
 }
 
 export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTarget }) {
+  const { t } = useLang();
   const [workspace, setWorkspace] = useState("personal");
   const [state, setState] = useState({ loading: true, data: null, error: null });
   const [recruiterState, setRecruiterState] = useState({ loading: true, data: null, error: null });
@@ -78,13 +81,13 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace]);
 
-  if (state.loading) return <Spinner>Загружаем профиль…</Spinner>;
+  if (state.loading) return <Spinner>{t("profileScreen.loading")}</Spinner>;
 
   if (state.error) {
     if (state.error instanceof ApiError && state.error.code === "NO_PROFILE") {
       return <OnboardingScreen />;
     }
-    return <Msg type="error">Не удалось загрузить профиль. Попробуйте позже.</Msg>;
+    return <Msg type="error">{t("profileScreen.loadError")}</Msg>;
   }
 
   const p = state.data;
@@ -118,7 +121,7 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
           privacy={p.privacy}
           onChange={updatePrivacy}
           fields={Object.keys(PRIVACY_LABELS)}
-          hint="По умолчанию ничего не видно чужим, кроме факта участия в GURO ID и партнёрств."
+          hint={t("showcase.privacyHint")}
         />
       </div>
     );
@@ -128,8 +131,8 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
     return (
       <div>
         <WorkspaceSwitch workspace={workspace} onChange={switchWorkspace} />
-        {recruiterState.loading && <Spinner>Загружаем кабинет рекрутера…</Spinner>}
-        {recruiterState.error && <Msg type="error">Не удалось загрузить кабинет рекрутера.</Msg>}
+        {recruiterState.loading && <Spinner>{t("recruiter.loading")}</Spinner>}
+        {recruiterState.error && <Msg type="error">{t("recruiter.loadError")}</Msg>}
         {recruiterState.data && (
           <RecruiterHub
             data={recruiterState.data}

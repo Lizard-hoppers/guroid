@@ -3,22 +3,24 @@ import { motion } from "framer-motion";
 import { formatDate, initialOf } from "../utils.js";
 import { setProfileField, setWorkStatus } from "../api.js";
 import { haptic } from "../telegram.js";
+import { useLang } from "../i18n.jsx";
 
 // Статус трудоустройства (10.08.2026) — публичный маркер вроде "Open to
 // Work" в LinkedIn, виден ВСЕМ бесплатно (даже без подписки), не тумблер
 // приватности. 4-е состояние "выкл" = null, бейдж просто не рисуется.
 export const WORK_STATUS_META = {
-  looking: { emoji: "🟢", label: "Ищу работу" },
-  neutral: { emoji: "❕", label: "Нейтральный" },
-  working: { emoji: "🔴", label: "Уже работаю" },
+  looking: { emoji: "🟢", labelKey: "workStatus.looking" },
+  neutral: { emoji: "❕", labelKey: "workStatus.neutral" },
+  working: { emoji: "🔴", labelKey: "workStatus.working" },
 };
 
 export function WorkStatusBadge({ status }) {
+  const { t } = useLang();
   const meta = WORK_STATUS_META[status];
   if (!meta) return null;
   return (
     <span className={`work-status-badge work-status-${status}`}>
-      {meta.emoji} {meta.label}
+      {meta.emoji} {t(meta.labelKey)}
     </span>
   );
 }
@@ -28,6 +30,7 @@ export function WorkStatusBadge({ status }) {
 // (не требует отдельного "Сохранить", как EditableField — тут не текст,
 // а закрытый выбор одного из вариантов).
 export function WorkStatusPicker({ value, onChange }) {
+  const { t } = useLang();
   const [saving, setSaving] = useState(false);
 
   async function pick(next) {
@@ -54,7 +57,7 @@ export function WorkStatusPicker({ value, onChange }) {
           onClick={() => pick(key)}
           disabled={saving}
         >
-          {meta.emoji} {meta.label}
+          {meta.emoji} {t(meta.labelKey)}
         </button>
       ))}
       <button
@@ -63,7 +66,7 @@ export function WorkStatusPicker({ value, onChange }) {
         onClick={() => pick(null)}
         disabled={saving}
       >
-        Выкл
+        {t("workStatus.off")}
       </button>
     </div>
   );
@@ -88,11 +91,12 @@ function Metric({ label, value }) {
 }
 
 export function MetricsRow({ reputation, partnerships, daysInCommunity }) {
+  const { t } = useLang();
   return (
     <div className="metrics-row">
-      <Metric label="Рейтинг" value={reputation} />
-      <Metric label="Партнёрств" value={partnerships} />
-      <Metric label="Дней в комьюнити" value={daysInCommunity} />
+      <Metric label={t("metric.rating")} value={reputation} />
+      <Metric label={t("metric.partnerships")} value={partnerships} />
+      <Metric label={t("metric.daysInCommunity")} value={daysInCommunity} />
     </div>
   );
 }
@@ -103,7 +107,8 @@ export function MetricsRow({ reputation, partnerships, daysInCommunity }) {
 // (guro_id_api._profile_summary), поэтому здесь просто рендерим то, что
 // пришло — без своей логики видимости.
 export function PartnerRow({ partner }) {
-  const displayName = partner.name || (partner.username ? `@${partner.username}` : "Без имени");
+  const { t } = useLang();
+  const displayName = partner.name || (partner.username ? `@${partner.username}` : t("common.noName"));
   const hasAmount = partner.amount_received != null || partner.amount_paid != null;
   return (
     <div className="partner-row">
@@ -119,15 +124,16 @@ export function PartnerRow({ partner }) {
         {partner.offer && <div className="partner-offer">{partner.offer}</div>}
         {hasAmount && (
           <div className="partner-meta">
-            {partner.amount_received != null && `Получено: $${partner.amount_received}`}
+            {partner.amount_received != null && `${t("partner.amountReceived")}: $${partner.amount_received}`}
             {partner.amount_received != null && partner.amount_paid != null && " · "}
-            {partner.amount_paid != null && `Оплачено: $${partner.amount_paid}`}
-            {" (со слов инициатора)"}
+            {partner.amount_paid != null && `${t("partner.amountPaid")}: $${partner.amount_paid}`}
+            {" "}
+            {t("partner.amountNote")}
           </div>
         )}
         {partner.review && <div className="partner-review">«{partner.review}»</div>}
       </div>
-      {!partner.counts_toward_rating && <span className="badge-unrated">не влияет на рейтинг</span>}
+      {!partner.counts_toward_rating && <span className="badge-unrated">{t("partner.notRated")}</span>}
     </div>
   );
 }
@@ -156,11 +162,12 @@ export function PartnersList({ partners, emptyHint }) {
 // guro_id_api._apply_privacy — редактирует именно в null, не убирает ключ).
 // value === undefined/"" -> поле просто не заполнено в анкете, строку не рисуем.
 export function IdentityLine({ label, value }) {
+  const { t } = useLang();
   if (value === null) {
     return (
       <div className="partner-meta">
         {label}
-        <span className="hidden-value">Скрыто</span>
+        <span className="hidden-value">{t("common.hidden")}</span>
       </div>
     );
   }
@@ -173,13 +180,11 @@ export function IdentityLine({ label, value }) {
   );
 }
 
-// Поле профиля, которого нет в анкете бота (GC.EXTRA_PROFILE_FIELDS) —
-// единственный способ его заполнить/поменять это прямо здесь, в отличие от
-// полей анкеты (name/company/vertical и т.п.), те остаются read-only.
 // saveField (Фаза 3, 12.08.2026) — по умолчанию личный профиль
 // (setProfileField), RecruiterHub передаёт setRecruiterProfileField, чтобы
 // переиспользовать этот же компонент для витрины рекрутера без дублирования.
 export function EditableField({ field, label, placeholder, value, multiline, onSaved, saveField = setProfileField }) {
+  const { t } = useLang();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value || "");
   const [saving, setSaving] = useState(false);
@@ -200,7 +205,7 @@ export function EditableField({ field, label, placeholder, value, multiline, onS
       setEditing(false);
       haptic("success");
     } catch {
-      setError("Не получилось сохранить. Попробуйте ещё раз.");
+      setError(t("common.saveError"));
       haptic("error");
     } finally {
       setSaving(false);
@@ -223,7 +228,7 @@ export function EditableField({ field, label, placeholder, value, multiline, onS
         />
         <div className="editable-field-actions">
           <button className="btn" style={{ marginTop: 8 }} onClick={save} disabled={saving}>
-            {saving ? "Сохраняем…" : "Сохранить"}
+            {saving ? t("common.saving") : t("common.save")}
           </button>
           <button
             className="btn secondary"
@@ -231,7 +236,7 @@ export function EditableField({ field, label, placeholder, value, multiline, onS
             onClick={() => setEditing(false)}
             disabled={saving}
           >
-            Отмена
+            {t("common.cancel")}
           </button>
         </div>
         <Msg type="error">{error}</Msg>
@@ -245,28 +250,27 @@ export function EditableField({ field, label, placeholder, value, multiline, onS
       {value ? (
         <div className="editable-field-value">{value}</div>
       ) : (
-        <div className="editable-field-empty">не заполнено</div>
+        <div className="editable-field-empty">{t("common.notFilled")}</div>
       )}
       <button className="btn secondary" style={{ marginTop: 8 }} onClick={startEdit}>
-        {value ? "Изменить" : "Заполнить"}
+        {value ? t("common.edit") : t("common.fill")}
       </button>
     </div>
   );
 }
 
 export function LockedOverlay({ children, onUnlock }) {
+  const { t } = useLang();
   return (
     <div className="card locked-overlay">
       <div className="locked-content">{children}</div>
       <div className="locked-cta">
         <div>
-          <strong>Полная карточка профиля</strong>
-          <div className="privacy-summary-note">
-            Полный профиль, партнёры и история — по подписке GURO ID
-          </div>
+          <strong>{t("locked.title")}</strong>
+          <div className="privacy-summary-note">{t("locked.note")}</div>
         </div>
         <button className="btn" style={{ width: "auto", padding: "10px 20px" }} onClick={onUnlock}>
-          Оформить подписку
+          {t("rating.subscribeCta")}
         </button>
       </div>
     </div>

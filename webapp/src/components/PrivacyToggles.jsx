@@ -2,30 +2,33 @@ import { useState } from "react";
 import { setPrivacyField } from "../api.js";
 import { haptic } from "../telegram.js";
 import { Msg } from "./Shared.jsx";
+import { useLang } from "../i18n.jsx";
 
-// Полный словарь подписей — каждый экран передаёт СВОЙ подмножество полей
-// через проп `fields` (например, только show_cv на экране CV), а не весь
-// список сразу. Opt-in: по умолчанию всё выключено (скрыто), человек сам
-// включает то, что хочет показать — см. guro_constants.PRIVACY_FIELDS.
+// Полный словарь ключей перевода — каждый экран передаёт СВОЙ подмножество
+// полей через проп `fields` (например, только show_cv на экране CV), а не
+// весь список сразу. Opt-in: по умолчанию всё выключено (скрыто), человек
+// сам включает то, что хочет показать — см. guro_constants.PRIVACY_FIELDS.
 export const PRIVACY_LABELS = {
-  show_name: "Имя",
-  show_company: "Компания",
-  show_vertical: "Вертикаль / специализация",
-  show_profession: "Должность",
-  show_tenure: "Стаж в комьюнити",
-  show_reputation: "Рейтинг",
-  show_cv: "CV",
-  show_contacts: "Контакты (LinkedIn, сайт)",
-  show_offers: "Офферы (ищу / полезен)",
+  show_name: "privacy.label.show_name",
+  show_company: "privacy.label.show_company",
+  show_vertical: "privacy.label.show_vertical",
+  show_profession: "privacy.label.show_profession",
+  show_tenure: "privacy.label.show_tenure",
+  show_reputation: "privacy.label.show_reputation",
+  show_cv: "privacy.label.show_cv",
+  show_contacts: "privacy.label.show_contacts",
+  show_offers: "privacy.label.show_offers",
 };
 
 // savePrivacyField/labels (Фаза 3, 12.08.2026) — по умолчанию личный
 // профиль (setPrivacyField/PRIVACY_LABELS), RecruiterHub передаёт свои
-// (setRecruiterPrivacyField + уточнённые подписи — у витрины рекрутера
-// нет LinkedIn/"ищу", только сайт/"полезен").
+// (setRecruiterPrivacyField + уточнённые ключи — у витрины рекрутера
+// нет LinkedIn/"ищу", только сайт/"полезен"). labels — словарь key ->
+// ключ перевода (не сам текст), т.к. язык может переключиться в рантайме.
 export function PrivacyToggles({
   privacy, onChange, fields, hint, savePrivacyField = setPrivacyField, labels = PRIVACY_LABELS,
 }) {
+  const { t } = useLang();
   const [pending, setPending] = useState(null);
   const [error, setError] = useState("");
 
@@ -41,7 +44,7 @@ export function PrivacyToggles({
       haptic("select");
     } catch {
       onChange({ ...privacy, [key]: prev }); // откат при ошибке
-      setError("Не получилось сохранить настройку. Попробуйте ещё раз.");
+      setError(t("privacy.saveError"));
       haptic("error");
     } finally {
       setPending(null);
@@ -50,14 +53,14 @@ export function PrivacyToggles({
 
   return (
     <div className="card">
-      <h3>Приватность</h3>
+      <h3>{t("privacy.title")}</h3>
       {hint && <div className="privacy-hint">{hint}</div>}
       {fields.map((key) => (
         <div className="privacy-row" key={key}>
           <div>
-            <div className="privacy-row-label">{labels[key]}</div>
+            <div className="privacy-row-label">{t(labels[key])}</div>
             <div className="privacy-row-note">
-              {privacy[key] ? "Видно всем в поиске" : "Скрыто от чужого поиска"}
+              {privacy[key] ? t("privacy.visible") : t("privacy.hidden")}
             </div>
           </div>
           <label className="switch">

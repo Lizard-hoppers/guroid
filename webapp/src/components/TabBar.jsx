@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, useAnimation, useMotionValue, useSpring, useTransform, useVelocity } from "framer-motion";
+import { useLang } from "../i18n.jsx";
 
 function IconUser(props) {
   return (
@@ -37,10 +38,10 @@ function IconStar(props) {
 }
 
 const TABS = [
-  { key: "profile", label: "Профиль", Icon: IconUser },
-  { key: "search", label: "Поиск", Icon: IconSearch },
-  { key: "confirm", label: "Подтвердить", Icon: IconHandshake },
-  { key: "subscribe", label: "Подписка", Icon: IconStar },
+  { key: "profile", labelKey: "tab.profile", Icon: IconUser },
+  { key: "search", labelKey: "tab.search", Icon: IconSearch },
+  { key: "confirm", labelKey: "tab.confirm", Icon: IconHandshake },
+  { key: "subscribe", labelKey: "tab.subscribe", Icon: IconStar },
 ];
 
 // Пружина ближе к iOS-стилю "liquid glass": высокое демпфирование
@@ -51,6 +52,7 @@ const TABS = [
 const WOBBLE = { type: "spring", stiffness: 280, damping: 28, mass: 1 };
 
 export function TabBar({ active, onChange }) {
+  const { t } = useLang();
   const barRef = useRef(null);
   const [tabWidth, setTabWidth] = useState(0);
   const x = useMotionValue(0);
@@ -134,7 +136,7 @@ export function TabBar({ active, onChange }) {
           whileTap={{ scaleY: 0.93 }}
         />
       )}
-      {TABS.map(({ key, label, Icon }) => {
+      {TABS.map(({ key, labelKey, Icon }) => {
         const isActive = active === key;
         return (
           <button
@@ -144,7 +146,7 @@ export function TabBar({ active, onChange }) {
             onClick={() => onChange(key)}
           >
             <Icon />
-            <span className="tab-label">{label}</span>
+            <span className="tab-label">{t(labelKey)}</span>
           </button>
         );
       })}

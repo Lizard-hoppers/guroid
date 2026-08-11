@@ -1,18 +1,20 @@
 import { EditableField } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
+import { useLang } from "../../i18n.jsx";
 
 export function CvSubscreen({ profile, privacy, onPrivacyChange, onFieldSaved, onBack }) {
+  const { t } = useLang();
   return (
     <div>
       <button type="button" className="subscreen-back" onClick={onBack}>
-        ‹ Профиль
+        {t("common.back")}
       </button>
       <div className="card">
-        <h3>Моё CV</h3>
+        <h3>{t("cv.title")}</h3>
         <EditableField
           field="cv_text"
-          label="Опыт и навыки"
-          placeholder="Например: 5 лет в iGaming, руководил командой из 10 человек…"
+          label={t("cv.label")}
+          placeholder={t("cv.placeholder")}
           value={profile.cv_text}
           multiline
           onSaved={(v) => onFieldSaved("cv_text", v)}
@@ -22,7 +24,7 @@ export function CvSubscreen({ profile, privacy, onPrivacyChange, onFieldSaved, o
         privacy={privacy}
         onChange={onPrivacyChange}
         fields={["show_cv"]}
-        hint="Пока выключено — CV не видно тем, кто ищет вас в GURO ID."
+        hint={t("cv.privacyHint")}
       />
     </div>
   );

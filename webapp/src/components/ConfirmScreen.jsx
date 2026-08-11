@@ -2,12 +2,12 @@ import { useState } from "react";
 import { createPartnership, ApiError } from "../api.js";
 import { Msg } from "./Shared.jsx";
 import { haptic } from "../telegram.js";
+import { useLang } from "../i18n.jsx";
 
-const ERROR_MESSAGES = {
-  SELF_PARTNERSHIP: "Нельзя подтвердить партнёрство с самим собой.",
-  RATE_LIMITED: "Заявка с этим человеком уже отправлялась за последние 24 часа.",
-  NO_CONFIRMER_PROFILE:
-    "Этот пользователь ещё не проходил анкету @GamblingCommunitybot — бот не может ему написать.",
+const ERROR_KEYS = {
+  SELF_PARTNERSHIP: "confirm.error.SELF_PARTNERSHIP",
+  RATE_LIMITED: "confirm.error.RATE_LIMITED",
+  NO_CONFIRMER_PROFILE: "confirm.error.NO_CONFIRMER_PROFILE",
 };
 
 const EMPTY_FORM = {
@@ -22,6 +22,7 @@ const EMPTY_FORM = {
 };
 
 export function ConfirmScreen() {
+  const { t } = useLang();
   const [form, setForm] = useState(EMPTY_FORM);
   const [state, setState] = useState({ loading: false, ok: false, error: null });
 
@@ -46,62 +47,55 @@ export function ConfirmScreen() {
   }
 
   const errorText = state.error
-    ? (state.error instanceof ApiError && ERROR_MESSAGES[state.error.code]) ||
-      "Не получилось отправить заявку."
+    ? t((state.error instanceof ApiError && ERROR_KEYS[state.error.code]) || "confirm.error.generic")
     : null;
 
   return (
     <div className="card">
-      <h3>Подтвердить партнёрство</h3>
-      <div className="privacy-hint">
-        Укажите юзернейм человека, с которым уже состоялось сотрудничество.
-        Ему придёт запрос на подтверждение от бота — запись появится в
-        профилях обоих только после его ответа. Офер и отзыв видны всем
-        чужим (в этом и смысл — проверить репутацию контакта), суммы —
-        только если включите показ ниже.
-      </div>
+      <h3>{t("confirm.title")}</h3>
+      <div className="privacy-hint">{t("confirm.hint")}</div>
       <form onSubmit={onSubmit}>
-        <label>Юзернейм контрагента</label>
+        <label>{t("confirm.usernameLabel")}</label>
         <input
           type="text"
-          placeholder="Юзернейм контрагента"
+          placeholder={t("confirm.usernameLabel")}
           value={form.confirmerUsername}
           onChange={(e) => set("confirmerUsername", e.target.value)}
         />
-        <label>Вертикаль (необязательно)</label>
+        <label>{t("confirm.verticalLabel")}</label>
         <input
           type="text"
-          placeholder="Вертикаль (необязательно)"
+          placeholder={t("confirm.verticalLabel")}
           value={form.vertical}
           onChange={(e) => set("vertical", e.target.value)}
         />
-        <label>Гео (необязательно)</label>
+        <label>{t("confirm.geoLabel")}</label>
         <input
           type="text"
-          placeholder="Одесса, Кипр…"
+          placeholder={t("confirm.geoPlaceholder")}
           value={form.geo}
           onChange={(e) => set("geo", e.target.value)}
         />
-        <label>Оффер — суть сделки (необязательно)</label>
+        <label>{t("confirm.offerLabel")}</label>
         <input
           type="text"
-          placeholder="Например: привёл байера на казино-трафик"
+          placeholder={t("confirm.offerPlaceholder")}
           value={form.offer}
           onChange={(e) => set("offer", e.target.value)}
         />
-        <label>Сумма (необязательно)</label>
+        <label>{t("confirm.amountLabel")}</label>
         <div className="amount-row">
           <input
             type="number"
             inputMode="decimal"
-            placeholder="Я получил, $"
+            placeholder={t("confirm.amountReceivedPlaceholder")}
             value={form.amountReceived}
             onChange={(e) => set("amountReceived", e.target.value)}
           />
           <input
             type="number"
             inputMode="decimal"
-            placeholder="Я заплатил, $"
+            placeholder={t("confirm.amountPaidPlaceholder")}
             value={form.amountPaid}
             onChange={(e) => set("amountPaid", e.target.value)}
           />
@@ -112,21 +106,21 @@ export function ConfirmScreen() {
             checked={form.amountVisible}
             onChange={(e) => set("amountVisible", e.target.checked)}
           />
-          Показывать сумму чужим (по умолчанию скрыта)
+          {t("confirm.amountVisible")}
         </label>
-        <label>Отзыв — ваше сообщение о партнёрстве (необязательно)</label>
+        <label>{t("confirm.reviewLabel")}</label>
         <textarea
           rows={3}
-          placeholder="Как прошло сотрудничество"
+          placeholder={t("confirm.reviewPlaceholder")}
           value={form.review}
           onChange={(e) => set("review", e.target.value)}
         />
         <button className="btn" type="submit" disabled={state.loading || !form.confirmerUsername.trim()}>
-          {state.loading ? "Отправляем…" : "Отправить на подтверждение"}
+          {state.loading ? t("confirm.submitting") : t("confirm.submit")}
         </button>
       </form>
       <Msg type="error">{errorText}</Msg>
-      <Msg type="ok">{state.ok ? "Заявка отправлена. Ждём подтверждения от контрагента." : null}</Msg>
+      <Msg type="ok">{state.ok ? t("confirm.sentOk") : null}</Msg>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getMessages } from "../../api.js";
 import { Spinner, Msg } from "../Shared.jsx";
 import { ThreadScreen } from "./ThreadScreen.jsx";
+import { useLang } from "../../i18n.jsx";
 
 // Список переписок + сама переписка (ThreadScreen) — оба под одним пунктом
 // меню профиля "Мои сообщения". initialThreadUserId — заход сразу в
@@ -9,6 +10,7 @@ import { ThreadScreen } from "./ThreadScreen.jsx";
 // уведомления бота ?thread=<id>, см. App.jsx), consumед сразу при монтировании,
 // чтобы повторный заход на вкладку "Профиль" не открывал её заново.
 export function MessagesScreen({ initialThreadUserId, onConsumeInitialThread, onBack }) {
+  const { t } = useLang();
   const [activeUserId, setActiveUserId] = useState(
     initialThreadUserId != null ? Number(initialThreadUserId) : null,
   );
@@ -34,32 +36,30 @@ export function MessagesScreen({ initialThreadUserId, onConsumeInitialThread, on
   return (
     <div>
       <button type="button" className="subscreen-back" onClick={onBack}>
-        ‹ Профиль
+        {t("common.back")}
       </button>
       <div className="card">
-        <h3>Мои сообщения</h3>
-        {state.loading && <Spinner>Загружаем…</Spinner>}
-        {state.error && <Msg type="error">Не удалось загрузить сообщения.</Msg>}
+        <h3>{t("messages.title")}</h3>
+        {state.loading && <Spinner>{t("messages.loading")}</Spinner>}
+        {state.error && <Msg type="error">{t("messages.loadError")}</Msg>}
         {state.threads && state.threads.length === 0 && (
-          <div className="partner-meta">
-            Пока нет переписок. Найдите человека во вкладке «Поиск» и напишите ему.
-          </div>
+          <div className="partner-meta">{t("messages.empty")}</div>
         )}
-        {state.threads?.map((t) => {
-          const heading = t.other_name || (t.other_username ? `@${t.other_username}` : "Без имени");
+        {state.threads?.map((th) => {
+          const heading = th.other_name || (th.other_username ? `@${th.other_username}` : t("common.noName"));
           return (
             <button
-              key={t.other_user_id}
+              key={th.other_user_id}
               type="button"
               className="thread-row"
-              onClick={() => setActiveUserId(t.other_user_id)}
+              onClick={() => setActiveUserId(th.other_user_id)}
             >
               <div className="thread-row-main">
                 <div className="thread-row-name">
                   {heading}
-                  {t.unread_count > 0 && <span className="thread-unread-dot" />}
+                  {th.unread_count > 0 && <span className="thread-unread-dot" />}
                 </div>
-                <div className="partner-meta thread-row-preview">{t.last_message}</div>
+                <div className="partner-meta thread-row-preview">{th.last_message}</div>
               </div>
               <span className="profile-menu-item-chevron">›</span>
             </button>

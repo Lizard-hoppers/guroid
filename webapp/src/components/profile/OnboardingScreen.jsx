@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { openTelegramLink } from "../../telegram.js";
-
-const VERTICALS = ["Гемблинг", "Бейтинг", "Крипто", "Нутра", "Дейтинг", "Е-коммерс", "Другое"];
+import { useLang, ONBOARDING_VERTICALS } from "../../i18n.jsx";
 
 // Экран первого запуска (нет анкеты -> нет профиля GURO ID) — по ручному
 // эскизу заказчика: макет ID-карты с плейсхолдерами, короткое объяснение,
 // раскрывающееся "Подробнее" с полным питчем + ценами, CTA на анкету бота.
 export function OnboardingScreen() {
+  const { t, lang } = useLang();
   const [expanded, setExpanded] = useState(false);
+  const verticals = ONBOARDING_VERTICALS[lang] || ONBOARDING_VERTICALS.ru;
 
   return (
     <div>
@@ -21,51 +22,34 @@ export function OnboardingScreen() {
           </div>
         </div>
 
-        <h3 style={{ marginTop: 16 }}>Это ваша ID-карта</h3>
+        <h3 style={{ marginTop: 16 }}>{t("onboarding.title")}</h3>
         <p className="partner-meta">
-          Для загрузки CV, поиска работы, кандидатов и партнёров. А также есть рейтинг
-          подтверждённых сделок и найма.{" "}
+          {t("onboarding.intro")}{" "}
           <button type="button" className="onboarding-more-link" onClick={() => setExpanded((v) => !v)}>
-            Подробнее
+            {t("onboarding.more")}
           </button>
         </p>
 
         {expanded && (
           <div className="onboarding-detail">
-            <p>Вы платите за то, чтобы быть всегда сразу в 7 вертикалях:</p>
+            <p>{t("onboarding.detail1")}</p>
             <ul className="onboarding-verticals">
-              {VERTICALS.map((v) => (
+              {verticals.map((v) => (
                 <li key={v}>{v}</li>
               ))}
             </ul>
-            <p>
-              У вас появится специальная ID-карта. Каждый раз, когда у вас будет успешная сделка
-              или найм, ваш партнёр подтверждает это — и на основании этого у вас будет рейтинг.
-              Вам достаточно отправить свой юзернейм любому участнику индустрии: он, перейдя в
-              ваш профиль, увидит, что с вами сотрудничали разные люди, были успешные сделки,
-              найм.
-            </p>
-            <p>Также вы сможете загрузить своё резюме и найти работу. Функционал будет увеличиваться.</p>
-            <p>
-              При отсутствии активной подписки ваш рейтинг в индустрии скрывается — сотни сделок
-              и успешных наймов пропадают из виду (сами данные не удаляются: как только подписка
-              возобновится, всё вернётся как было).
-            </p>
-            <p>
-              Подписка: <strong>$10/месяц</strong> или <strong>$99/год</strong> (в звёздах —
-              650⭐ / 6600⭐).
-            </p>
+            <p>{t("onboarding.detail2")}</p>
+            <p>{t("onboarding.detail3")}</p>
+            <p>{t("onboarding.detail4")}</p>
+            <p>{t("onboarding.priceLine", { monthly: "$10", yearly: "$99" })}</p>
           </div>
         )}
       </div>
 
       <div className="card">
-        <p className="partner-meta">
-          Чтобы начать строить репутацию и карьеру — заполните анкету. В конце у вас будет выбор,
-          какая информация будет общедоступна, а какая нет.
-        </p>
+        <p className="partner-meta">{t("onboarding.ctaHint")}</p>
         <button className="btn" onClick={() => openTelegramLink("https://t.me/GamblingCommunitybot")}>
-          Заполнить анкету в боте
+          {t("onboarding.ctaBtn")}
         </button>
       </div>
     </div>

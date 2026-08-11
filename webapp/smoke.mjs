@@ -765,6 +765,40 @@ await step("deep-link-thread", async () => {
   await page3.close();
 });
 
+await step("language-switch", async () => {
+  // Переключатель RU/EN в правом верхнем углу (12.08.2026). Проверяем на
+  // ГЛАВНОЙ странице (page), которая всё ещё жива после предыдущих шагов —
+  // переключаем на EN, смотрим на несколько экранов, возвращаем RU (иначе
+  // сломает финальные проверки CONSOLE_ERRORS ниже — впрочем, к этому
+  // моменту сценарий уже закончен, но оставляем по дисциплине).
+  // Уже на вкладке "Поиск" с предыдущего шага (browse-by-vertical-and-top-sort) —
+  // после переключения на EN она же станет активной "Search", повторный
+  // клик по уже активному табу ненадёжен (см. заметки выше про tab-blob).
+  await page.getByRole("button", { name: "EN", exact: true }).click();
+  await sleep(300);
+  await page.screenshot({ path: "smoke_10a_lang_en_profile.png" });
+  console.log("EN: tab label translated:",
+    await page.getByRole("button", { name: "Search" }).isVisible().catch(() => false));
+  // Сейчас мы на вкладке "Подписка"/Subscribe (утащена туда drag-tab-blob
+  // выше) — проверяем перевод именно этого экрана, не Поиска.
+  console.log("EN: subscribe screen translated:",
+    await page.getByText("GURO ID subscription").isVisible().catch(() => false));
+
+  // Предыдущий шаг (drag-tab-blob) утащил каплю на последний таб
+  // ("Подписка"/Subscribe) — кликаем "Profile" (гарантированно ДРУГОЙ таб,
+  // не активный сейчас), а не "Subscribe" (был бы клик по уже активному).
+  await page.getByRole("button", { name: "Profile", exact: true }).click();
+  await sleep(300);
+  await page.screenshot({ path: "smoke_10c_lang_en_profile_hub.png" });
+  console.log("EN: profile hub translated:",
+    await page.getByText("My rating").isVisible().catch(() => false));
+
+  await page.getByRole("button", { name: "RU", exact: true }).click();
+  await sleep(300);
+  console.log("RU: switched back, hub label restored:",
+    await page.getByText("Мой рейтинг").isVisible().catch(() => false));
+});
+
 console.log("CONSOLE_ERRORS:", JSON.stringify(consoleErrors, null, 2));
 
 await browser.close();

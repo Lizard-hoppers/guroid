@@ -2938,6 +2938,25 @@ async def _run_guro_id_api_sim():
                 check(body["company"] == "GURO Co",
                       "гейт подписки НЕ трогает privacy-поля (company всё ещё видна через show_company)")
 
+                # Привилегированные наблюдатели (12.08.2026, расширено по явной
+                # просьбе "обойди и это тоже") — обходят и «рейтинг сгорает без
+                # подписки» цели, не только тумблеры приватности. Собственная
+                # подписка привилегированного аккаунта была активирована выше
+                # (в блоке CV-расширения), поэтому locked=False.
+                auth_admin_gate = {
+                    "Authorization": "tma " + _guro_make_init_data(
+                        token, {"id": GC.PRIVILEGED_VIEWER_IDS[0], "username": "priv_admin"},
+                    )
+                }
+                resp = await client.get("/api/search?username=initiator", headers=auth_admin_gate)
+                body = await resp.json()
+                check(body["reputation_score"] == score_before_lapse,
+                      "привилегированный видит рейтинг ЦЕЛИ, ХОТЯ у initiator подписка сейчас истекла")
+                check(body["confirmed_partnerships"] is not None,
+                      "привилегированный видит confirmed_partnerships ЦЕЛИ, ХОТЯ у initiator подписка сейчас истекла")
+                check(isinstance(body["partners"], list),
+                      "привилегированный видит список partners ЦЕЛИ, ХОТЯ у initiator подписка сейчас истекла")
+
                 app["storage"].activate_subscription(100, 30)
                 resp = await client.get("/api/me", headers=auth_100)
                 body = await resp.json()

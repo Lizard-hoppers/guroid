@@ -169,8 +169,14 @@ def _apply_privacy(summary: dict, privacy: dict, *, bypass: bool = False) -> dic
 _SUBSCRIPTION_GATED_FIELDS = ("reputation_score", "confirmed_partnerships", "partners")
 
 
-def _apply_subscription_gate(summary: dict, is_subscribed: bool) -> dict:
-    if is_subscribed:
+def _apply_subscription_gate(summary: dict, is_subscribed: bool, *, bypass: bool = False) -> dict:
+    """bypass=True (GC.PRIVILEGED_VIEWER_IDS, 12.08.2026) — тот же админ-
+    обход, что у _apply_privacy, но для ДРУГОЙ оси: показывает рейтинг/
+    сделки ЦЕЛИ, даже если у неё самой сейчас нет активной подписки.
+    Применяется ТОЛЬКО когда requester смотрит НА ЧУЖОЙ профиль
+    (_profile_response/_scan_directory_candidates) — не в handle_me, там
+    is_subscribed относится к САМОМУ запрашивающему, это другой смысл."""
+    if is_subscribed or bypass:
         return summary
     result = dict(summary)
     for field in _SUBSCRIPTION_GATED_FIELDS:
@@ -229,12 +235,13 @@ def _profile_response(storage: GuroStorage, requester_id: int, target_profile) -
     подписан, иначе урезанный бесплатный тизер (ТЗ экран 2). Общая логика
     для всех трёх режимов handle_search (user_id=/username=/точный матч
     внутри q=)."""
+    privileged = requester_id in GC.PRIVILEGED_VIEWER_IDS
     summary = _profile_summary(storage, target_profile["user_id"])
     privacy = storage.get_privacy(target_profile["user_id"])
-    summary = _apply_privacy(summary, privacy, bypass=requester_id in GC.PRIVILEGED_VIEWER_IDS)
+    summary = _apply_privacy(summary, privacy, bypass=privileged)
     # target'а (не смотрящего!) подписка гейтит рейтинг/сделки — «рейтинг
     # сгорает без подписки», см. _apply_subscription_gate.
-    summary = _apply_subscription_gate(summary, summary["is_subscribed"])
+    summary = _apply_subscription_gate(summary, summary["is_subscribed"], bypass=privileged)
 
     if storage.is_subscribed(requester_id):
         summary["locked"] = False
@@ -350,7 +357,7 @@ def _scan_directory_candidates(
         if summary is None:
             continue
         summary = _apply_privacy(summary, privacy, bypass=bypass)
-        summary = _apply_subscription_gate(summary, summary["is_subscribed"])
+        summary = _apply_subscription_gate(summary, summary["is_subscribed"], bypass=bypass)
         score = match_fn(summary)
         if score > 0:
             matches.append((score, summary))

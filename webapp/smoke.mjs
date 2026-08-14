@@ -687,8 +687,8 @@ await step("profile-hub-rating-preview", async () => {
   // До подписки: ME_PAYLOAD.reputation_score/confirmed_partnerships = null
   // (гейт), кружок должен показывать замок и подсказку "как исправить".
   const circleLocked = await page.locator(".rating-preview-circle").textContent();
-  const dealsLocked = await page.locator(".rating-preview-deals").textContent();
-  const hintLockedVisible = await page.locator(".rating-preview-hint").isVisible().catch(() => false);
+  const dealsLocked = await page.locator(".rating-summary-deals").textContent();
+  const hintLockedVisible = await page.locator(".rating-summary-hint").isVisible().catch(() => false);
   console.log("rating preview (unsubscribed) circle:", circleLocked, "| deals:", dealsLocked, "| hint visible:", hintLockedVisible);
   await page.screenshot({ path: "smoke_1b_hub_rating_preview_locked.png" });
 
@@ -717,8 +717,8 @@ await step("profile-subscription-gate", async () => {
   // до 88, 2 сделки) и СПРЯТАТЬ подсказку "низкий рейтинг" (есть подписка
   // И есть подтверждённые сделки).
   const circleUnlocked = await page.locator(".rating-preview-circle").textContent();
-  const dealsUnlocked = await page.locator(".rating-preview-deals").textContent();
-  const hintUnlockedVisible = await page.locator(".rating-preview-hint").isVisible().catch(() => false);
+  const dealsUnlocked = await page.locator(".rating-summary-deals").textContent();
+  const hintUnlockedVisible = await page.locator(".rating-summary-hint").isVisible().catch(() => false);
   console.log("rating preview (subscribed, 87.5 rep / 2 deals) circle:", circleUnlocked, "| deals:", dealsUnlocked, "| hint visible:", hintUnlockedVisible);
   await page.screenshot({ path: "smoke_1c_hub_rating_preview_unlocked.png" });
 

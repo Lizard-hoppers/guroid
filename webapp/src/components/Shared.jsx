@@ -107,23 +107,37 @@ export function MetricsRow({ reputation, partnerships, daysInCommunity }) {
 // "Мой рейтинг", теперь возвращаем сводку на хаб, полная версия остаётся в
 // подэкране как была). Клик открывает "Мой рейтинг" — там же и подробный
 // разбор "Как поднять рейтинг?".
-export function RatingPreview({ reputation, partnerships, isSubscribed, onOpen }) {
+// Просто кружок с числом — стоит рядом с аватаром в шапке визитки, узкий
+// и не толкает имя/должность/компанию. Текстовая часть (счётчик сделок +
+// подсказка) вынесена в RatingSummaryLine — отдельной строкой НА ВСЮ
+// ширину карточки (14.08.2026: узкая колонка рядом с кружком ломала
+// перенос текста на узких экранах — "0 подтверждённых сделок" наезжало на
+// имя, выглядело неряшливо). Обе половины ведут в один и тот же onOpen.
+export function RatingPreview({ reputation, onOpen }) {
+  const { t } = useLang();
+  const locked = reputation === null || reputation === undefined;
+  return (
+    <button type="button" className="rating-preview" onClick={onOpen}>
+      <div className="rating-preview-circle">{locked ? t("hub.ratingLocked") : Math.round(reputation)}</div>
+    </button>
+  );
+}
+
+export function RatingSummaryLine({ reputation, partnerships, isSubscribed, onOpen }) {
   const { t } = useLang();
   const locked = reputation === null || reputation === undefined;
   const showHint = locked || !isSubscribed || (partnerships ?? 0) === 0;
   return (
-    <button type="button" className="rating-preview" onClick={onOpen}>
-      <div className="rating-preview-circle">{locked ? t("hub.ratingLocked") : Math.round(reputation)}</div>
-      <div className="rating-preview-info">
-        <div className="rating-preview-deals">
-          {locked ? t("hub.dealsLocked") : t("hub.dealsConfirmed", { count: partnerships ?? 0 })}
-        </div>
-        {showHint && (
-          <div className="rating-preview-hint">
-            {t("hub.lowRatingHint")} · {t("hub.lowRatingCta")}
-          </div>
-        )}
-      </div>
+    <button type="button" className="rating-summary-line" onClick={onOpen}>
+      <span className="rating-summary-deals">
+        {locked ? t("hub.dealsLocked") : t("hub.dealsConfirmed", { count: partnerships ?? 0 })}
+      </span>
+      {showHint && (
+        <span className="rating-summary-hint">
+          {" "}
+          · {t("hub.lowRatingHint")} · {t("hub.lowRatingCta")}
+        </span>
+      )}
     </button>
   );
 }

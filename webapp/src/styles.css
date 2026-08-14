@@ -1053,33 +1053,45 @@ label {
   margin-bottom: 8px;
 }
 
+/* Статус трудоустройства — переделано 15.08.2026: раньше цвет нёс только
+   эмодзи (🟢/❕/🔴), кнопка/бейдж всегда были одинаково золотыми. Владелец
+   попросил наоборот — без цветного эмодзи, цвет несёт сама кнопка/бейдж.
+   Один ряд из 3 сегментов (вместо сетки 2×2 с отдельной кнопкой "Выкл"). */
 .work-status-picker {
   display: flex;
-  flex-wrap: wrap;
   gap: 6px;
 }
 
 .work-status-option {
-  padding: 7px 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 6px;
   border-radius: 10px;
   border: 1px solid var(--glass-border);
   background: #ffffff0d;
   color: var(--text-dim);
   font-family: inherit;
   font-size: 12px;
+  text-align: center;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.work-status-option.active {
-  border-color: var(--gold-soft);
-  background: rgba(212, 175, 55, 0.12);
-  color: var(--text);
+.work-status-option.work-status-looking.active {
+  border-color: rgba(107, 191, 138, 0.55);
+  background: rgba(107, 191, 138, 0.16);
+  color: var(--ok);
 }
 
-.work-status-option.work-status-off.active {
+.work-status-option.work-status-working.active {
+  border-color: rgba(224, 101, 90, 0.55);
+  background: rgba(224, 101, 90, 0.16);
+  color: var(--danger);
+}
+
+.work-status-option.work-status-neutral.active {
   border-color: var(--glass-border);
-  background: #ffffff14;
+  background: #ffffff1c;
   color: var(--text);
 }
 
@@ -1091,6 +1103,25 @@ label {
   background: #ffffff0d;
   font-size: 12px;
   font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.work-status-badge.work-status-looking {
+  border-color: rgba(107, 191, 138, 0.5);
+  background: rgba(107, 191, 138, 0.16);
+  color: var(--ok);
+}
+
+.work-status-badge.work-status-working {
+  border-color: rgba(224, 101, 90, 0.5);
+  background: rgba(224, 101, 90, 0.16);
+  color: var(--danger);
+}
+
+.work-status-badge.work-status-neutral {
+  border-color: var(--glass-border);
+  background: #ffffff1c;
+  color: var(--text);
 }
 
 .qr-card {

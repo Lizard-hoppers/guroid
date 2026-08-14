@@ -78,7 +78,7 @@ const STRINGS = {
   "workStatus.looking": { ru: "Ищу работу", en: "Open to work" },
   "workStatus.neutral": { ru: "Нейтральный", en: "Neutral" },
   "workStatus.working": { ru: "Уже работаю", en: "Employed" },
-  "workStatus.off": { ru: "Выкл", en: "Off" },
+  "workStatus.off": { ru: "Выключить", en: "Turn off" },
 
   // --- Мой рейтинг ---
   "rating.title": { ru: "Мой рейтинг", en: "My rating" },

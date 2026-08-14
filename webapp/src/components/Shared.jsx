@@ -7,11 +7,17 @@ import { useLang } from "../i18n.jsx";
 
 // Статус трудоустройства (10.08.2026) — публичный маркер вроде "Open to
 // Work" в LinkedIn, виден ВСЕМ бесплатно (даже без подписки), не тумблер
-// приватности. 4-е состояние "выкл" = null, бейдж просто не рисуется.
+// приватности. "выкл" = null, бейдж просто не рисуется.
+// Переделано 15.08.2026 (фидбек владельца): раньше цвет статуса нёс только
+// цветной эмодзи (🟢/❕/🔴), а сама кнопка/бейдж всегда были одинаково
+// золотыми — владелец попросил ровно наоборот: без цветного эмодзи, цвет
+// несёт сама кнопка/бейдж. Плюс отдельная кнопка "Выкл" (4-й равноправный
+// вариант в сетке 2×2) убрана — теперь это один ряд из 3 сегментов, повтор
+// тапа по уже активному снимает статус (см. WorkStatusPicker).
 export const WORK_STATUS_META = {
-  looking: { emoji: "🟢", labelKey: "workStatus.looking" },
-  neutral: { emoji: "❕", labelKey: "workStatus.neutral" },
-  working: { emoji: "🔴", labelKey: "workStatus.working" },
+  looking: { labelKey: "workStatus.looking" },
+  neutral: { labelKey: "workStatus.neutral" },
+  working: { labelKey: "workStatus.working" },
 };
 
 export function WorkStatusBadge({ status }) {
@@ -20,24 +26,27 @@ export function WorkStatusBadge({ status }) {
   if (!meta) return null;
   return (
     <span className={`work-status-badge work-status-${status}`}>
-      {meta.emoji} {t(meta.labelKey)}
+      {t(meta.labelKey)}
     </span>
   );
 }
 
-// Сегментированный переключатель из 4 состояний (3 статуса + "Выкл") — для
-// собственного профиля владельца. Каждый клик сразу шлёт POST на сервер
-// (не требует отдельного "Сохранить", как EditableField — тут не текст,
-// а закрытый выбор одного из вариантов).
+// Сегментированный переключатель — один ряд из 3 статусов (для собственного
+// профиля владельца). Каждый клик сразу шлёт POST на сервер (не требует
+// отдельного "Сохранить", как EditableField — тут не текст, а закрытый
+// выбор одного из вариантов). Повторный тап по уже активному сегменту
+// снимает статус — отдельной кнопки "Выкл" в сетке больше нет, вместо неё
+// маленькая текстовая ссылка "Выключить" под рядом, видна только когда
+// статус реально выбран.
 export function WorkStatusPicker({ value, onChange }) {
   const { t } = useLang();
   const [saving, setSaving] = useState(false);
 
-  async function pick(next) {
-    if (saving || next === value) return;
+  async function setStatus(target) {
+    if (saving) return;
     setSaving(true);
     try {
-      const result = await setWorkStatus(next);
+      const result = await setWorkStatus(target);
       onChange(result.work_status);
       haptic("select");
     } catch {
@@ -48,26 +57,31 @@ export function WorkStatusPicker({ value, onChange }) {
   }
 
   return (
-    <div className="work-status-picker">
-      {Object.entries(WORK_STATUS_META).map(([key, meta]) => (
+    <div>
+      <div className="work-status-picker">
+        {Object.entries(WORK_STATUS_META).map(([key, meta]) => (
+          <button
+            key={key}
+            type="button"
+            className={`work-status-option work-status-${key}${value === key ? " active" : ""}`}
+            onClick={() => setStatus(value === key ? null : key)}
+            disabled={saving}
+          >
+            {t(meta.labelKey)}
+          </button>
+        ))}
+      </div>
+      {value && (
         <button
-          key={key}
           type="button"
-          className={`work-status-option${value === key ? " active" : ""}`}
-          onClick={() => pick(key)}
+          className="onboarding-more-link"
+          style={{ marginTop: 8 }}
+          onClick={() => setStatus(null)}
           disabled={saving}
         >
-          {meta.emoji} {t(meta.labelKey)}
+          <span className="link-underline">{t("workStatus.off")}</span>
         </button>
-      ))}
-      <button
-        type="button"
-        className={`work-status-option work-status-off${!value ? " active" : ""}`}
-        onClick={() => pick(null)}
-        disabled={saving}
-      >
-        {t("workStatus.off")}
-      </button>
+      )}
     </div>
   );
 }

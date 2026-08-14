@@ -589,10 +589,31 @@ for (const [key, label] of [
 }
 
 await step("profile-work-status", async () => {
-  await page.getByRole("button", { name: "🟢 Ищу работу" }).click();
+  // Переделано 15.08.2026 (фидбек владельца): один ряд из 3 сегментов
+  // без цветного эмодзи, цвет несёт сама кнопка через класс work-status-*;
+  // повторный тап по активному сегменту снимает статус, отдельная кнопка
+  // "Выкл" убрана — вместо неё текстовая ссылка "Выключить" (видна только
+  // когда статус выбран).
+  const lookingBtn = page.getByRole("button", { name: "Ищу работу", exact: true });
+  await lookingBtn.click();
   await sleep(300);
-  await page.screenshot({ path: "smoke_5e_work_status.png" });
   console.log("work_status after click:", ME_PAYLOAD.work_status);
+  console.log("looking segment has color class:",
+    await lookingBtn.evaluate((el) => el.classList.contains("work-status-looking") && el.classList.contains("active")));
+  const offLink = page.getByRole("button", { name: "Выключить" });
+  console.log("turn-off link visible after picking a status:", await offLink.isVisible().catch(() => false));
+  await page.screenshot({ path: "smoke_5e_work_status.png" });
+
+  await lookingBtn.click(); // тап по уже активному сегменту -> снимает статус
+  await sleep(300);
+  console.log("work_status after re-click (expect null):", ME_PAYLOAD.work_status);
+  console.log("turn-off link hidden after clearing:", await offLink.isVisible().catch(() => false));
+
+  await lookingBtn.click();
+  await sleep(300);
+  await offLink.click(); // тот же результат через ссылку "Выключить"
+  await sleep(300);
+  console.log("work_status after off-link click (expect null):", ME_PAYLOAD.work_status);
 });
 
 await step("profile-my-qr", async () => {

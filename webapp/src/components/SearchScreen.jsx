@@ -250,7 +250,7 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
         </label>
         {resumesOnly && (
           <button type="button" className="onboarding-more-link" onClick={onShowAllResumes}>
-            {t("search.resumesShowAll")}
+            <span className="link-underline">{t("search.resumesShowAll")}</span>
           </button>
         )}
       </div>

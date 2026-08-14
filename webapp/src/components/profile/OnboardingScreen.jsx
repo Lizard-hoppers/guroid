@@ -26,7 +26,7 @@ export function OnboardingScreen() {
         <p className="partner-meta">
           {t("onboarding.intro")}{" "}
           <button type="button" className="onboarding-more-link" onClick={() => setExpanded((v) => !v)}>
-            {t("onboarding.more")}
+            <span className="link-underline">{t("onboarding.more")}</span>
           </button>
         </p>
 

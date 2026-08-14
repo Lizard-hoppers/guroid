@@ -14,7 +14,7 @@ function RatingHelp() {
   return (
     <div className="card">
       <button type="button" className="onboarding-more-link" onClick={() => setExpanded((v) => !v)}>
-        {expanded ? t("rating.helpHide") : t("rating.helpToggle")}
+        <span className="link-underline">{expanded ? t("rating.helpHide") : t("rating.helpToggle")}</span>
       </button>
       {expanded && (
         <div className="onboarding-detail">

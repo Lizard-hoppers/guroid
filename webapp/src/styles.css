@@ -1131,15 +1131,19 @@ label {
   color: var(--gold);
   font-family: inherit;
   font-size: inherit;
-  text-decoration: underline;
   cursor: pointer;
 }
 
-/* Отменяет подчёркивание у эмодзи внутри подчёркнутой ссылки (например
-   "📲 Добавить на экран телефона") — по фидбеку владельца подчёркнутым
-   должен быть только текст, не сама картинка эмодзи. */
-.no-underline {
-  text-decoration: none;
+/* Подчёркивание навешивается ИМЕННО на текстовый span, а не на всю кнопку
+   (14.08.2026, второй заход по фидбеку владельца) — первая попытка была
+   text-decoration:underline на .onboarding-more-link целиком + отдельный
+   .no-underline на span с эмодзи, но на движке из Telegram Desktop
+   (Qt WebEngine) дочерний text-decoration:none НЕ отменяет подчёркивание,
+   заданное родителем, — линия рисуется предком "сквозь" потомка (старое
+   поведение CSS2.1, разные движки трактуют по-разному). Понадёжнее не
+   полагаться на отмену — подчёркивать только то, что реально нужно. */
+.link-underline {
+  text-decoration: underline;
 }
 
 .onboarding-detail {

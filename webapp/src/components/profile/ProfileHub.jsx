@@ -60,7 +60,7 @@ export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, o
               addToHomeScreen();
             }}
           >
-            <span className="no-underline">📲</span> {t("hub.addToHome")}
+            📲 <span className="link-underline">{t("hub.addToHome")}</span>
           </button>
         )}
       </div>

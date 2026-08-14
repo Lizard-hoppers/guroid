@@ -2387,15 +2387,14 @@ def test_guro_id_reputation_formula():
     from datetime import datetime, timedelta, timezone
 
     now = datetime.now(timezone.utc)
-    check(GLm.initial_reputation(None, now) == 50.0, "база без анкеты/бонусов = 50")
-    check(GLm.initial_reputation(now, now) == 50.0, "заполненная анкета сама по себе бонуса не даёт (дефолтное условие входа)")
+    check(GLm.initial_reputation(None, now) == 0.0, "база без анкеты/бонусов = 0 (15.08.2026: рейтинг стартует с нуля)")
+    check(GLm.initial_reputation(now, now) == 0.0, "заполненная анкета сама по себе бонуса не даёт (дефолтное условие входа)")
     old_join = now - timedelta(days=95)
-    check(GLm.initial_reputation(old_join, now) == 51.0, "бонус за 3 мес в комьюнити = +1")
+    check(GLm.initial_reputation(old_join, now) == 1.0, "бонус за 3 мес в комьюнити = +1 (база 0 + бонус 1)")
     very_old = now - timedelta(days=3650)
-    check(GLm.initial_reputation(very_old, now) == 60.0, "бонус за возраст капается в +10")
+    check(GLm.initial_reputation(very_old, now) == 10.0, "бонус за возраст капается в +10 (база 0 + макс. бонус 10)")
 
-    check(GLm.confirmation_gain(100) == 10.0, "вклад партнёрства от репутации 100 = вес(10)")
-    check(GLm.confirmation_gain(50) == 5.0, "вклад партнёрства от репутации 50 = половина веса")
+    check(GLm.confirmation_gain() == 1.0, "вклад ОДНОГО подтверждённого партнёрства = фиксированный шаг 1 (15.08.2026, было пропорционально репутации подтверждающего)")
 
     check(GLm.counts_toward_rating(old_join, old_join, now), "оба старше 14 дней -> учитывается")
     fresh = now - timedelta(days=2)
@@ -2427,7 +2426,7 @@ def test_guro_id_storage():
         check(gst.find_profile_by_username("nobody") is None, "поиск несуществующего юзернейма -> None")
 
         u1 = gst.get_or_create_guro_user(1)
-        check(u1["reputation_score"] == 50.0, f"первичная репутация = база 50 (анкета не даёт бонуса), а не {u1['reputation_score']}")
+        check(u1["reputation_score"] == 0.0, f"первичная репутация = база 0 (анкета не даёт бонуса), а не {u1['reputation_score']}")
 
         privacy = gst.get_privacy(1)
         check(all(v is False for v in privacy.values()), "приватность по умолчанию -> всё выключено (opt-in, ничего не видно чужим)")
@@ -2635,8 +2634,8 @@ async def _run_guro_id_api_sim():
                 # активной подписки, реputation_score скрыт ДАЖЕ в его же /api/me.
                 check(body["reputation_score"] is None,
                       "свежий профиль БЕЗ подписки -> reputation_score скрыт даже себе")
-                check(app["storage"].get_or_create_guro_user(100)["reputation_score"] == 50.0,
-                      "гейт РЕВЕРСИВНЫЙ: в БД значение реально есть (база 50), просто скрыто в выдаче API")
+                check(app["storage"].get_or_create_guro_user(100)["reputation_score"] == 0.0,
+                      "гейт РЕВЕРСИВНЫЙ: в БД значение реально есть (база 0), просто скрыто в выдаче API")
                 check(not any(c[1] == 100 for c in _FakeTGBot.set_tag_calls),
                       "GET /api/me без подписки -> тег НЕ выставляется (одного захода в Mini App недостаточно)")
 
@@ -2961,7 +2960,7 @@ async def _run_guro_id_api_sim():
                 resp = await client.get("/api/me", headers=auth_100)
                 body = await resp.json()
                 check(body["reputation_score"] == score_before_lapse,
-                      "реактивация подписки -> СТАРОЕ значение репутации мгновенно вернулось, не 50 заново "
+                      "реактивация подписки -> СТАРОЕ значение репутации мгновенно вернулось, не с нуля заново "
                       "(гейт ничего не удалял из БД)")
 
                 resp = await client.get("/api/me", headers=auth_200)
@@ -3192,7 +3191,7 @@ async def _run_guro_id_api_sim():
                 body = await resp.json()
                 top_ids = [r["user_id"] for r in body["results"]]
                 check(top_ids.index(482) < top_ids.index(480),
-                      "top=1 -> сортировка по репутации (gambler2=90 выше gambler1=50), а не по порядку совпадения")
+                      "top=1 -> сортировка по репутации (gambler2=90 выше gambler1=0), а не по порядку совпадения")
 
                 # --- Фаза 2: «Пригласить коллегу» — персональная реф-ссылка -----
                 resp = await client.get("/api/invite_link", headers=auth_100)

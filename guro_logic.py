@@ -78,11 +78,12 @@ def initial_reputation(profile_created_at: datetime | None, now: datetime) -> fl
     return GC.BASE_REPUTATION + tenure_bonus(profile_created_at, now)
 
 
-def confirmation_gain(other_current_score: float) -> float:
-    """Вклад ОДНОГО подтверждённого партнёрства в рейтинг: вес * репутация
-    подтверждающего / 100 — свежий аккаунт (низкая репутация) не может
-    легко подкрутить рейтинг напарнику (принцип похож на PageRank, ТЗ п.4)."""
-    return GC.CONFIRMATION_WEIGHT * other_current_score / 100.0
+def confirmation_gain() -> float:
+    """Вклад ОДНОГО подтверждённого партнёрства в рейтинг — фиксированный шаг
+    (15.08.2026). Раньше зависел от репутации подтверждающего (вес × его_
+    репутация / 100), но при старте рейтинга с нуля это ломало саму
+    возможность стартовать — см. guro_constants.CONFIRMATION_GAIN."""
+    return GC.CONFIRMATION_GAIN
 
 
 def counts_toward_rating(a_created_at: datetime | None, b_created_at: datetime | None, now: datetime) -> bool:

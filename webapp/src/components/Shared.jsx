@@ -185,12 +185,23 @@ export function MetricsRow({ reputation, partnerships, daysInCommunity }) {
 // ширину карточки (14.08.2026: узкая колонка рядом с кружком ломала
 // перенос текста на узких экранах — "0 подтверждённых сделок" наезжало на
 // имя, выглядело неряшливо). Обе половины ведут в один и тот же onOpen.
+// Цветовые пороги кружка (15.08.2026, по прямому запросу владельца —
+// рейтинг теперь стартует с 0, а не с базовых 50, см. guro_constants.py):
+// 0 = красный, 1-4 = жёлтый, 5+ = зелёный. Замок (нет подписки) — отдельный
+// нейтральный золотой стиль, под цветовые пороги не попадает.
+function ratingTier(value) {
+  if (value <= 0) return "rep-red";
+  if (value < 5) return "rep-yellow";
+  return "rep-green";
+}
+
 export function RatingPreview({ reputation, onOpen }) {
   const { t } = useLang();
   const locked = reputation === null || reputation === undefined;
+  const tierClass = locked ? "" : ` ${ratingTier(reputation)}`;
   return (
     <button type="button" className="rating-preview" onClick={onOpen}>
-      <div className="rating-preview-circle">{locked ? t("hub.ratingLocked") : Math.round(reputation)}</div>
+      <div className={`rating-preview-circle${tierClass}`}>{locked ? t("hub.ratingLocked") : Math.round(reputation)}</div>
     </button>
   );
 }
@@ -199,13 +210,18 @@ export function RatingSummaryLine({ reputation, partnerships, isSubscribed, onOp
   const { t } = useLang();
   const locked = reputation === null || reputation === undefined;
   const showHint = locked || !isSubscribed || (partnerships ?? 0) === 0;
+  // Подсказка "низкий рейтинг" красным при 0, как и кружок (15.08.2026,
+  // владелец: "кружок должен орать что всё плохо, текст тоже должен быть
+  // красный") — при locked оставляем нейтральный золотой, там это не
+  // "у вас плохо", а "оформите подписку, чтобы увидеть".
+  const hintTierClass = !locked ? ` ${ratingTier(reputation)}` : "";
   return (
     <button type="button" className="rating-summary-line" onClick={onOpen}>
       <span className="rating-summary-deals">
         {locked ? t("hub.dealsLocked") : t("hub.dealsConfirmed", { count: partnerships ?? 0 })}
       </span>
       {showHint && (
-        <span className="rating-summary-hint">
+        <span className={`rating-summary-hint${hintTierClass}`}>
           {" "}
           · {t("hub.lowRatingHint")} · {t("hub.lowRatingCta")}
         </span>

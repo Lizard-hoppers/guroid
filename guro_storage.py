@@ -14,7 +14,7 @@ import guro_logic as GL
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS guro_users (
     user_id INTEGER PRIMARY KEY,
-    reputation_score REAL DEFAULT 50,
+    reputation_score REAL DEFAULT 0,
     subscription_status TEXT DEFAULT 'inactive',
     subscription_expires_at TEXT,
     updated_at TEXT
@@ -441,13 +441,11 @@ class GuroStorage:
             return self.get_partnership(partnership_id)
 
         now = self._now()
-        # Снимок ОБЕИХ репутаций до апдейта — симметричный взаимный прирост не
-        # должен зависеть от порядка обновления строк.
         a = self.get_or_create_guro_user(row["initiator_id"])
         b = self.get_or_create_guro_user(row["confirmer_id"])
         if row["counts_toward_rating"]:
-            new_a = a["reputation_score"] + GL.confirmation_gain(b["reputation_score"])
-            new_b = b["reputation_score"] + GL.confirmation_gain(a["reputation_score"])
+            new_a = a["reputation_score"] + GL.confirmation_gain()
+            new_b = b["reputation_score"] + GL.confirmation_gain()
             self._conn.execute(
                 "UPDATE guro_users SET reputation_score=?, updated_at=? WHERE user_id=?",
                 (new_a, self._now_str(), row["initiator_id"]),

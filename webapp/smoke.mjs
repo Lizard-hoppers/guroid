@@ -744,6 +744,26 @@ await step("profile-subscription-gate", async () => {
   await sleep(300);
 });
 
+await step("rating-circle-color-tiers", async () => {
+  // Цветовые пороги кружка рейтинга (15.08.2026, по прямому запросу
+  // владельца — рейтинг стартует с 0, а не с базовых 50): 0=красный,
+  // 1-4=жёлтый, 5+=зелёный.
+  async function tierAt(score) {
+    ME_PAYLOAD.reputation_score = score;
+    await page.reload({ waitUntil: "networkidle" });
+    await sleep(2200); // интро
+    const cls = await page.locator(".rating-preview-circle").getAttribute("class");
+    return cls;
+  }
+  const red = await tierAt(0);
+  console.log("reputation=0 -> circle class:", red, "| has rep-red:", red.includes("rep-red"));
+  const yellow = await tierAt(3);
+  console.log("reputation=3 -> circle class:", yellow, "| has rep-yellow:", yellow.includes("rep-yellow"));
+  const green = await tierAt(5);
+  console.log("reputation=5 -> circle class:", green, "| has rep-green:", green.includes("rep-green"));
+  await page.screenshot({ path: "smoke_1d_rating_tier_green.png", clip: await page.locator(".rating-preview").boundingBox() });
+});
+
 await step("directory-search-subscribed", async () => {
   await page.getByRole("button", { name: "Поиск" }).click();
   await sleep(400);

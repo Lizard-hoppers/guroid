@@ -924,6 +924,25 @@ label {
   font-size: 17px;
 }
 
+/* Цветовые пороги (15.08.2026): 0 = красный, 1-4 = жёлтый, 5+ = зелёный —
+   рейтинг стартует с нуля, число прямо отражает прогресс. Замок (нет
+   подписки) — по-прежнему нейтральный золотой градиент выше, сюда не
+   попадает. */
+.rating-preview-circle.rep-red {
+  background: linear-gradient(135deg, var(--danger), #a3372e);
+  color: #2a0a06;
+}
+
+.rating-preview-circle.rep-yellow {
+  background: linear-gradient(135deg, #e8b93f, #b3821c);
+  color: #2a1d05;
+}
+
+.rating-preview-circle.rep-green {
+  background: linear-gradient(135deg, var(--ok), #3f8c60);
+  color: #06210f;
+}
+
 .rating-summary-line {
   display: block;
   width: 100%;
@@ -944,6 +963,20 @@ label {
 
 .rating-summary-hint {
   color: var(--gold);
+}
+
+/* Та же цветовая логика, что у кружка (rep-red/rep-yellow/rep-green) —
+   при locked класс не добавляется, остаётся нейтральный золотой выше. */
+.rating-summary-hint.rep-red {
+  color: var(--danger);
+}
+
+.rating-summary-hint.rep-yellow {
+  color: #e8b93f;
+}
+
+.rating-summary-hint.rep-green {
+  color: var(--ok);
 }
 
 .profile-vertical-badge {

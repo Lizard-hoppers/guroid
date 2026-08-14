@@ -1,5 +1,5 @@
 import { addToHomeScreen, canAddToHomeScreen, getAvatarUrl, haptic } from "../../telegram.js";
-import { initialOf } from "../../utils.js";
+import { initialOf, pluralRu } from "../../utils.js";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import { RatingPreview, RatingSummaryLine, WorkStatusPicker } from "../Shared.jsx";
 import { useLang } from "../../i18n.jsx";
@@ -18,7 +18,7 @@ const MENU = [
 // раньше были на одном экране, теперь разнесены по своим под-экранам
 // (см. profile/*.jsx), сюда попадает только сама визитка.
 export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, onWorkStatusChange }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const avatarUrl = getAvatarUrl();
   return (
     <div>
@@ -50,7 +50,12 @@ export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, o
             {profile.vertical && <span className="profile-vertical-badge">{profile.vertical}</span>}
             {profile.days_in_community != null && (
               <span className="profile-tenure-badge">
-                🗓 {t("hub.daysInCommunity", { count: profile.days_in_community })}
+                🗓 {t("hub.daysInCommunity", {
+                  count: profile.days_in_community,
+                  unit: lang === "ru"
+                    ? pluralRu(profile.days_in_community, ["день", "дня", "дней"])
+                    : profile.days_in_community === 1 ? "day" : "days",
+                })}
               </span>
             )}
           </div>

@@ -70,7 +70,7 @@ const STRINGS = {
   "hub.dealsLocked": { ru: "Сделки скрыты", en: "Deals hidden" },
   "hub.lowRatingHint": { ru: "У вас низкий рейтинг в индустрии", en: "Your industry rating is low" },
   "hub.lowRatingCta": { ru: "Как исправить?", en: "How to fix?" },
-  "hub.daysInCommunity": { ru: "В сообществе {count} дней", en: "{count} days in the community" },
+  "hub.daysInCommunity": { ru: "В сообществе {count} {unit}", en: "{count} {unit} in the community" },
   "hub.privacyHint": {
     ru: "Эти поля видны в вашей визитке тем, кто ищет вас в GURO ID. По умолчанию скрыты — включите то, что хотите показать.",
     en: "These fields are visible on your card to people searching for you in GURO ID. Hidden by default — turn on what you want to show.",

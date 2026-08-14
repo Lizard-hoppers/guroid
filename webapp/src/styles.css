@@ -445,6 +445,11 @@ label {
   bottom: calc(6px + env(safe-area-inset-bottom));
   z-index: 2;
   border-radius: 999px;
+  /* Базовый вид — фон+блюр БЕЗ преломления. Служит (1) видимой каплей, пока
+     карта преломления ещё не сгенерирована на первом рендере, и (2)
+     единственным видом там, где .tab-blob-warp не поддерживается (Firefox,
+     см. liquidGlass.js) — деградация безопасная, просто без "жидкого"
+     эффекта, форма/цвет капли не меняются. */
   background: linear-gradient(180deg, #ffffff0f, #ffffff03);
   backdrop-filter: saturate(150%);
   -webkit-backdrop-filter: saturate(150%);
@@ -452,10 +457,27 @@ label {
   box-shadow: 0 6px 16px #00000047, inset 0 1px 1px #ffffff52, inset 0 -6px 10px #d4af371a;
   cursor: grab;
   touch-action: none;
+  /* Слой преломления (.tab-blob-warp) может выступать за границы своего
+     box при блюре/смещении — обрезаем в форму пилюли. */
+  overflow: hidden;
 }
 
 .tab-blob:active {
   cursor: grabbing;
+}
+
+/* "Liquid Glass" (iOS 26) — 15.08.2026, по прямому запросу владельца.
+   Отдельный слой ПОВЕРХ базового фона .tab-blob: тот же blur+saturate, что
+   раньше был прямо на капле, плюс filter:url(#id) — SVG-цепочка
+   feDisplacementMap/feColorMatrix из liquidGlass.js/LiquidGlassFilter
+   (TabBar.jsx), которая реально преломляет то, что под каплей (сама
+   background-подложка ниже), а не просто размывает. id генерируется
+   динамически (useId) и подставляется инлайн-стилем в TabBar.jsx. */
+.tab-blob-warp {
+  position: absolute;
+  inset: 0;
+  backdrop-filter: blur(10px) saturate(190%);
+  -webkit-backdrop-filter: blur(10px) saturate(190%);
 }
 
 .locked-overlay {

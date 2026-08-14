@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { motion, useAnimation, useMotionValue, useSpring, useTransform, useVelocity } from "framer-motion";
 import { useLang } from "../i18n.jsx";
+import { generateLiquidGlassDisplacementMap, supportsGlassRefraction } from "../liquidGlass.js";
 
 function IconUser(props) {
   return (
@@ -62,14 +63,69 @@ const TABS = [
 // нервно, а не плавно).
 const WOBBLE = { type: "spring", stiffness: 280, damping: 28, mass: 1 };
 
+// SVG-цепочка фильтров для преломления + лёгкой хроматической аберрации
+// (см. src/liquidGlass.js — там сама displacement-карта и объяснение
+// авторства). displacementScale/aberrationIntensity занижены относительно
+// дефолтов апстрима (25/2 -> 16/1) — по просьбе владельца "не сильно",
+// эффект должен быть заметен, но не кричащим.
+const DISPLACEMENT_SCALE = 16;
+const ABERRATION_INTENSITY = 1;
+
+function LiquidGlassFilter({ id, width, height, mapUrl }) {
+  if (!mapUrl) return null;
+  return (
+    <svg style={{ position: "absolute", width, height, overflow: "visible" }} aria-hidden="true">
+      <defs>
+        <radialGradient id={`${id}-edge-mask`} cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="black" stopOpacity="0" />
+          <stop offset={`${Math.max(30, 80 - ABERRATION_INTENSITY * 2)}%`} stopColor="black" stopOpacity="0" />
+          <stop offset="100%" stopColor="white" stopOpacity="1" />
+        </radialGradient>
+        <filter id={id} x="-35%" y="-35%" width="170%" height="170%" colorInterpolationFilters="sRGB">
+          <feImage x="0" y="0" width="100%" height="100%" result="DISPLACEMENT_MAP" href={mapUrl} preserveAspectRatio="xMidYMid slice" />
+          <feColorMatrix
+            in="DISPLACEMENT_MAP"
+            type="matrix"
+            values="0.3 0.3 0.3 0 0  0.3 0.3 0.3 0 0  0.3 0.3 0.3 0 0  0 0 0 1 0"
+            result="EDGE_INTENSITY"
+          />
+          <feComponentTransfer in="EDGE_INTENSITY" result="EDGE_MASK">
+            <feFuncA type="discrete" tableValues={`0 ${ABERRATION_INTENSITY * 0.05} 1`} />
+          </feComponentTransfer>
+          <feOffset in="SourceGraphic" dx="0" dy="0" result="CENTER_ORIGINAL" />
+          <feDisplacementMap in="SourceGraphic" in2="DISPLACEMENT_MAP" scale={DISPLACEMENT_SCALE} xChannelSelector="R" yChannelSelector="B" result="RED_DISPLACED" />
+          <feColorMatrix in="RED_DISPLACED" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="RED_CHANNEL" />
+          <feDisplacementMap in="SourceGraphic" in2="DISPLACEMENT_MAP" scale={DISPLACEMENT_SCALE - ABERRATION_INTENSITY * 0.05} xChannelSelector="R" yChannelSelector="B" result="GREEN_DISPLACED" />
+          <feColorMatrix in="GREEN_DISPLACED" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="GREEN_CHANNEL" />
+          <feDisplacementMap in="SourceGraphic" in2="DISPLACEMENT_MAP" scale={DISPLACEMENT_SCALE - ABERRATION_INTENSITY * 0.1} xChannelSelector="R" yChannelSelector="B" result="BLUE_DISPLACED" />
+          <feColorMatrix in="BLUE_DISPLACED" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="BLUE_CHANNEL" />
+          <feBlend in="GREEN_CHANNEL" in2="BLUE_CHANNEL" mode="screen" result="GB_COMBINED" />
+          <feBlend in="RED_CHANNEL" in2="GB_COMBINED" mode="screen" result="RGB_COMBINED" />
+          <feGaussianBlur in="RGB_COMBINED" stdDeviation={Math.max(0.1, 0.5 - ABERRATION_INTENSITY * 0.1)} result="ABERRATED_BLURRED" />
+          <feComposite in="ABERRATED_BLURRED" in2="EDGE_MASK" operator="in" result="EDGE_ABERRATION" />
+          <feComponentTransfer in="EDGE_MASK" result="INVERTED_MASK">
+            <feFuncA type="table" tableValues="1 0" />
+          </feComponentTransfer>
+          <feComposite in="CENTER_ORIGINAL" in2="INVERTED_MASK" operator="in" result="CENTER_CLEAN" />
+          <feComposite in="EDGE_ABERRATION" in2="CENTER_CLEAN" operator="over" />
+        </filter>
+      </defs>
+    </svg>
+  );
+}
+
 export function TabBar({ active, onChange }) {
   const { t } = useLang();
   const barRef = useRef(null);
+  const blobRef = useRef(null);
+  const filterId = useId();
   const [tabWidth, setTabWidth] = useState(0);
+  const [displacementUrl, setDisplacementUrl] = useState("");
   const x = useMotionValue(0);
   const controls = useAnimation();
   const isDragging = useRef(false);
   const activeIndex = Math.max(0, TABS.findIndex((t) => t.key === active));
+  const glassSupported = supportsGlassRefraction();
 
   // Живая, "желейная" деформация — капля растягивается/скашивается по
   // скорости своего движения (и во время реального drag, и во время
@@ -102,6 +158,18 @@ export function TabBar({ active, onChange }) {
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, []);
+
+  useEffect(() => {
+    // Карта преломления строится ОДИН раз на размер капли (не на кадр/драг —
+    // см. liquidGlass.js) и только пересчитывается при реальном ресайзе
+    // экрана (тот же tabWidth). blobRef уже примонтирован к этому моменту —
+    // капля рендерится в той же ветке JSX, что зависит от tabWidth>0, а
+    // этот эффект срабатывает ПОСЛЕ коммита DOM.
+    if (!tabWidth || !glassSupported) return;
+    const height = blobRef.current?.offsetHeight || 44;
+    const url = generateLiquidGlassDisplacementMap(tabWidth, height);
+    if (url) setDisplacementUrl(url);
+  }, [tabWidth, glassSupported]);
 
   useEffect(() => {
     // Пока капля реально в руках (isDragging) — её позицией управляет
@@ -139,8 +207,12 @@ export function TabBar({ active, onChange }) {
 
   return (
     <nav className="tabbar" ref={barRef}>
+      {tabWidth > 0 && glassSupported && displacementUrl && (
+        <LiquidGlassFilter id={filterId} width={tabWidth} height={blobRef.current?.offsetHeight || 44} mapUrl={displacementUrl} />
+      )}
       {tabWidth > 0 && (
         <motion.div
+          ref={blobRef}
           className="tab-blob"
           style={{ width: tabWidth, x, scaleX, skewX }}
           animate={controls}
@@ -152,7 +224,11 @@ export function TabBar({ active, onChange }) {
           onDrag={handleDrag}
           onDragEnd={snapToNearest}
           whileTap={{ scaleY: 0.93 }}
-        />
+        >
+          {glassSupported && displacementUrl && (
+            <span className="tab-blob-warp" style={{ filter: `url(#${filterId})` }} />
+          )}
+        </motion.div>
       )}
       {TABS.map(({ key, labelKey, Icon }) => {
         const isActive = active === key;

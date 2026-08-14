@@ -28,7 +28,7 @@ function writeStoredLang(lang) {
 // key -> { ru, en }. Плоский namespace "экран.элемент" вместо вложенных
 // объектов — проще искать/добавлять по ходу разработки.
 const STRINGS = {
-  "app.subtitle": { ru: "Партнёрства и репутация комьюнити GURO", en: "Partnerships and reputation of the GURO community" },
+  "app.subtitle": { ru: "Ваш рейтинг в индустрии", en: "Your rating in the industry" },
 
   "tab.profile": { ru: "Профиль", en: "Profile" },
   "tab.search": { ru: "Поиск", en: "Search" },

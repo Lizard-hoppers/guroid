@@ -32,7 +32,7 @@ const STRINGS = {
 
   "tab.profile": { ru: "Профиль", en: "Profile" },
   "tab.search": { ru: "Поиск", en: "Search" },
-  "tab.confirm": { ru: "Подтвердить", en: "Confirm" },
+  "tab.confirm": { ru: "Сделки", en: "Deals" },
   "tab.subscribe": { ru: "Подписка", en: "Subscribe" },
 
   "common.back": { ru: "‹ Профиль", en: "‹ Profile" },
@@ -96,13 +96,13 @@ const STRINGS = {
   },
   "rating.help2": { ru: "Рейтинг формируется от сделок и найма.", en: "Rating is built from deals and hires." },
   "rating.help3": {
-    ru: "Вы и ваш партнёр, с которым уже была успешная сделка, добавляете друг друга по кнопке «Подтвердить партнёрство» во вкладке «Подтвердить». Чем больше успешных сделок или наймов подтверждено — тем выше рейтинг и тем охотнее люди из индустрии пойдут с вами на контакт. Можно добавить всех, с кем вы работали ещё до появления GURO ID.",
-    en: "You and your partner, once you've had a successful deal, confirm each other via the \"Confirm partnership\" button on the Confirm tab. The more confirmed deals or hires — the higher your rating, and the more willing people in the industry are to reach out. You can add everyone you worked with before GURO ID existed.",
+    ru: "Вы и ваш партнёр, с которым уже была успешная сделка, добавляете друг друга по кнопке «Подтвердить партнёрство» во вкладке «Сделки». Чем больше успешных сделок или наймов подтверждено — тем выше рейтинг и тем охотнее люди из индустрии пойдут с вами на контакт. Можно добавить всех, с кем вы работали ещё до появления GURO ID.",
+    en: "You and your partner, once you've had a successful deal, confirm each other via the \"Confirm partnership\" button on the Deals tab. The more confirmed deals or hires — the higher your rating, and the more willing people in the industry are to reach out. You can add everyone you worked with before GURO ID existed.",
   },
   "rating.partnershipsTitle": { ru: "Партнёрства", en: "Partnerships" },
   "rating.emptyOwn": {
-    ru: "Пока нет подтверждённых партнёрств. Отметьте сотрудничество во вкладке «Подтвердить».",
-    en: "No confirmed partnerships yet. Mark a collaboration on the Confirm tab.",
+    ru: "Пока нет подтверждённых партнёрств. Отметьте сотрудничество во вкладке «Сделки».",
+    en: "No confirmed partnerships yet. Mark a collaboration on the Deals tab.",
   },
   "rating.emptyOther": { ru: "Пока нет подтверждённых партнёрств.", en: "No confirmed partnerships yet." },
   "rating.privacyHint": {

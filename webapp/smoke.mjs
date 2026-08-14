@@ -535,7 +535,7 @@ await step("search-unlocked-write-message", async () => {
 });
 
 await step("goto-confirm", async () => {
-  await page.getByRole("button", { name: "Подтвердить" }).click();
+  await page.getByRole("button", { name: "Сделки", exact: true }).click();
   await sleep(400);
   await page.screenshot({ path: "smoke_3_confirm.png" });
 });

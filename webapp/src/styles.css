@@ -35,6 +35,35 @@ html {
      ВСЕХ движках, а не только в свежих. */
   scrollbar-gutter: stable;
   overflow-y: scroll;
+  /* Побочный эффект того же фикса (тем же вечером, 15.08.2026): полоса
+     скролла теперь ВСЕГДА видна, но не была стилизована — рисовалась
+     светлым дефолтным цветом браузера/ОС поверх тёмной темы, при активном
+     скролле выглядело как резкая светло-зелёная полоса-шов. Плюс свой фон
+     на html (не только на body) — подстраховка на случай overscroll/
+     rubber-band области у краёв, чтобы там не мелькал сырой фон движка.
+     scrollbar-width/-color — тёмный скроллбар в Firefox-семействе движков,
+     ::-webkit-scrollbar-* ниже — в Chromium/WebKit (включая Qt WebEngine
+     у Telegram Desktop). Оба варианта сразу, вреда нет. */
+  background: var(--bg-deep);
+  scrollbar-width: thin;
+  scrollbar-color: var(--gold-soft) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gold-soft);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 175, 55, 0.5);
 }
 
 body {

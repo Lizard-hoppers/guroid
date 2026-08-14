@@ -88,8 +88,15 @@ export function TabBar({ active, onChange }) {
   const skewX = useTransform(smoothVelocity, [-3000, 0, 3000], [-3, 0, 3], { clamp: true });
 
   useEffect(() => {
+    // ВАЖНО: не offsetWidth(bar)/5 — .tabbar имеет собственный горизонтальный
+    // padding (см. styles.css), который offsetWidth включает, а реальные
+    // кнопки-табы внутри него — нет. Такое расхождение накапливалось от
+    // таба к табу и на последнем табе капля уезжала на ~10px в сторону от
+    // центра (баг с "капля съезжает к краю экрана", 14.08.2026). Меряем
+    // ширину РЕАЛЬНОЙ кнопки напрямую — не зависит от паддингов/гэпов.
     function measure() {
-      if (barRef.current) setTabWidth(barRef.current.offsetWidth / TABS.length);
+      const tabEl = barRef.current?.querySelector(".tab");
+      if (tabEl) setTabWidth(tabEl.offsetWidth);
     }
     measure();
     window.addEventListener("resize", measure);

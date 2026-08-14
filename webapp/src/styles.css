@@ -314,6 +314,7 @@ label {
 }
 
 .tabbar {
+  --tabbar-pad-x: 6px;
   position: fixed;
   bottom: 0;
   left: 0;
@@ -322,7 +323,7 @@ label {
   background: #071510eb;
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
-  padding: 8px 6px calc(8px + env(safe-area-inset-bottom));
+  padding: 8px var(--tabbar-pad-x) calc(8px + env(safe-area-inset-bottom));
   z-index: 10;
 }
 
@@ -330,6 +331,11 @@ label {
   position: relative;
   z-index: 1;
   flex: 1;
+  /* min-width:0 переопределяет флексбоксовый дефолт min-width:auto — без
+     него самый длинный лейбл ("Подтвердить") не давал своей кнопке сжаться
+     до общей ровной доли и вылезал за пределы капли, которая рассчитана на
+     РАВНУЮ ширину для всех 5 табов. */
+  min-width: 0;
   /* Капля (.tab-blob, z-index:2) физически лежит ПОВЕРХ кнопки активного
      таба, чтобы можно было ухватить её пальцем и перетащить (drag="x" в
      TabBar.jsx) — иначе кнопка перехватывала бы pointerdown первой, и
@@ -369,6 +375,13 @@ label {
   z-index: 3;
   line-height: 1.1;
   transition: color 0.2s ease;
+  /* Ровно та же ширина, что у самого таба (min-width:0 выше), плюс защита
+     на случай совсем узких экранов — длинное слово аккуратно ужимается по
+     буквам, а не вылезает за пределы своей ячейки/капли. */
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .tab.is-active {
@@ -377,7 +390,12 @@ label {
 
 .tab-blob {
   position: absolute;
-  left: 0;
+  /* Контейнер позиционирования капли (padding box .tabbar) НЕ включает
+     собственный padding — реальные кнопки-табы, наоборот, начинаются уже
+     ПОСЛЕ него. Без этого сдвига капля системно уезжала влево на величину
+     паддинга (~6px) от каждой вкладки, сильнее всего заметно на крайних
+     табах (баг "капля съезжает к краю", 14.08.2026). */
+  left: var(--tabbar-pad-x);
   top: 6px;
   bottom: calc(6px + env(safe-area-inset-bottom));
   z-index: 2;

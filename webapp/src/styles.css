@@ -1008,14 +1008,32 @@ label {
   color: var(--ok);
 }
 
+.profile-meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
 .profile-vertical-badge {
   display: inline-block;
-  margin-top: 10px;
   font-size: 12px;
   font-weight: 600;
   color: var(--gold);
   border-bottom: 2px solid var(--gold);
   padding-bottom: 2px;
+}
+
+/* Стаж в комьюнити (15.08.2026) — считается от даты заполнения анкеты
+   бота (profiles.created_at), не от точной даты входа в Telegram-группу:
+   Bot API не отдаёт исторические даты вступления, только события в
+   реальном времени с момента подписки на них — для уже существующих
+   участников это единственный практичный источник, владелец подтвердил
+   такое приближение достаточным. */
+.profile-tenure-badge {
+  font-size: 12px;
+  color: var(--text-dim);
 }
 
 .profile-menu-item {

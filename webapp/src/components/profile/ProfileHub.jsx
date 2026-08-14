@@ -45,7 +45,16 @@ export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, o
           isSubscribed={profile.is_subscribed}
           onOpen={() => onNavigateSub("rating")}
         />
-        {profile.vertical && <span className="profile-vertical-badge">{profile.vertical}</span>}
+        {(profile.vertical || profile.days_in_community != null) && (
+          <div className="profile-meta-row">
+            {profile.vertical && <span className="profile-vertical-badge">{profile.vertical}</span>}
+            {profile.days_in_community != null && (
+              <span className="profile-tenure-badge">
+                🗓 {t("hub.daysInCommunity", { count: profile.days_in_community })}
+              </span>
+            )}
+          </div>
+        )}
         <div className="work-status-section">
           <label>{t("hub.status")}</label>
           <WorkStatusPicker value={profile.work_status} onChange={onWorkStatusChange} />

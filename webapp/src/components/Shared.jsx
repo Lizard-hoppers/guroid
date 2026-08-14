@@ -35,9 +35,9 @@ export function WorkStatusBadge({ status }) {
 // профиля владельца). Каждый клик сразу шлёт POST на сервер (не требует
 // отдельного "Сохранить", как EditableField — тут не текст, а закрытый
 // выбор одного из вариантов). Повторный тап по уже активному сегменту
-// снимает статус — отдельной кнопки "Выкл" в сетке больше нет, вместо неё
-// маленькая текстовая ссылка "Выключить" под рядом, видна только когда
-// статус реально выбран.
+// снимает статус — отдельная кнопка "Выкл" не нужна (15.08.2026: убрана и
+// текстовая ссылка "Выключить", которая была под рядом — владелец счёл её
+// лишней, раз то же самое делает повторный тап).
 export function WorkStatusPicker({ value, onChange }) {
   const { t } = useLang();
   const [saving, setSaving] = useState(false);
@@ -71,17 +71,6 @@ export function WorkStatusPicker({ value, onChange }) {
           </button>
         ))}
       </div>
-      {value && (
-        <button
-          type="button"
-          className="onboarding-more-link"
-          style={{ marginTop: 8 }}
-          onClick={() => setStatus(null)}
-          disabled={saving}
-        >
-          <span className="link-underline">{t("workStatus.off")}</span>
-        </button>
-      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
+import { motion, useAnimation } from "framer-motion";
 import { formatDate, initialOf } from "../utils.js";
 import { setProfileField, setWorkStatus } from "../api.js";
 import { haptic } from "../telegram.js";
@@ -31,6 +31,23 @@ export function WorkStatusBadge({ status }) {
   );
 }
 
+const WORK_STATUS_BLOB_FILL = {
+  looking: "rgba(107, 191, 138, 0.22)",
+  neutral: "rgba(255, 255, 255, 0.14)",
+  working: "rgba(224, 101, 90, 0.22)",
+};
+const WORK_STATUS_BLOB_BORDER = {
+  looking: "rgba(107, 191, 138, 0.55)",
+  neutral: "rgba(212, 175, 55, 0.28)",
+  working: "rgba(224, 101, 90, 0.55)",
+};
+
+// Та же мягкая пружина, что у капли в таббаре (TabBar.jsx, WOBBLE) — один
+// едва заметный лёгкий проскок при переключении, без дребезга. Переиспользую
+// готовое значение, а не подбираю заново — оно уже несколько раз докручено
+// по фидбеку владельца именно до "чуть покачивается, не сильно".
+const WOBBLE = { type: "spring", stiffness: 280, damping: 28, mass: 1 };
+
 // Сегментированный переключатель — один ряд из 3 статусов (для собственного
 // профиля владельца). Каждый клик сразу шлёт POST на сервер (не требует
 // отдельного "Сохранить", как EditableField — тут не текст, а закрытый
@@ -38,9 +55,49 @@ export function WorkStatusBadge({ status }) {
 // снимает статус — отдельная кнопка "Выкл" не нужна (15.08.2026: убрана и
 // текстовая ссылка "Выключить", которая была под рядом — владелец счёл её
 // лишней, раз то же самое делает повторный тап).
+//
+// 15.08.2026 (второй заход): вместо мгновенной смены фона кнопки — capля-
+// подложка, которая переезжает между сегментами с лёгким покачиванием (тот
+// же приём, что и в TabBar.jsx, но БЕЗ drag — тут выбор всегда кликом, не
+// перетаскиванием). pointer-events:none на капле — клики идут сквозь неё
+// прямо на кнопки, она чисто визуальная. ПРЕДЫДУЩАЯ версия (мгновенная
+// смена фона кнопки, без анимации) — commit be745bd, откат одной командой
+// `git revert`, если новый вариант не понравится.
 export function WorkStatusPicker({ value, onChange }) {
   const { t } = useLang();
   const [saving, setSaving] = useState(false);
+  const barRef = useRef(null);
+  const [segWidth, setSegWidth] = useState(0);
+  // step (расстояние МЕЖДУ сегментами) ≠ segWidth (ширина ОДНОГО сегмента) —
+  // между кнопками есть gap (styles.css), меряем реальное смещение по
+  // offsetLeft соседних кнопок, а не просто ширину/3, иначе капля так же
+  // накапливала бы ошибку от сегмента к сегменту, как раньше было с
+  // .tab-blob в TabBar.jsx (тот же баг, тот же фикс).
+  const [step, setStep] = useState(0);
+  const controls = useAnimation();
+  const keys = Object.keys(WORK_STATUS_META);
+  const activeIndex = keys.indexOf(value);
+
+  useEffect(() => {
+    function measure() {
+      const els = barRef.current?.querySelectorAll(".work-status-option");
+      if (!els || els.length === 0) return;
+      setSegWidth(els[0].offsetWidth);
+      setStep(els.length > 1 ? els[1].offsetLeft - els[0].offsetLeft : els[0].offsetWidth);
+    }
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
+  useEffect(() => {
+    if (!segWidth) return;
+    if (activeIndex === -1) {
+      controls.start({ opacity: 0, scale: 0.85, transition: { duration: 0.15 } });
+    } else {
+      controls.start({ x: activeIndex * step, opacity: 1, scale: 1, transition: WOBBLE });
+    }
+  }, [activeIndex, segWidth, step, controls]);
 
   async function setStatus(target) {
     if (saving) return;
@@ -58,7 +115,19 @@ export function WorkStatusPicker({ value, onChange }) {
 
   return (
     <div>
-      <div className="work-status-picker">
+      <div className="work-status-picker" ref={barRef}>
+        {segWidth > 0 && (
+          <motion.div
+            className="work-status-blob"
+            style={{
+              width: segWidth,
+              background: activeIndex >= 0 ? WORK_STATUS_BLOB_FILL[value] : "transparent",
+              borderColor: activeIndex >= 0 ? WORK_STATUS_BLOB_BORDER[value] : "transparent",
+            }}
+            initial={false}
+            animate={controls}
+          />
+        )}
         {Object.entries(WORK_STATUS_META).map(([key, meta]) => (
           <button
             key={key}

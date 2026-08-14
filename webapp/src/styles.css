@@ -1056,42 +1056,54 @@ label {
 /* Статус трудоустройства — переделано 15.08.2026: раньше цвет нёс только
    эмодзи (🟢/❕/🔴), кнопка/бейдж всегда были одинаково золотыми. Владелец
    попросил наоборот — без цветного эмодзи, цвет несёт сама кнопка/бейдж.
-   Один ряд из 3 сегментов (вместо сетки 2×2 с отдельной кнопкой "Выкл"). */
+   Один ряд из 3 сегментов (вместо сетки 2×2 с отдельной кнопкой "Выкл").
+   Второй заход того же дня: цвет активного сегмента теперь несёт не сам
+   button (фон убран, background:transparent всегда), а капля-подложка
+   .work-status-blob позади кнопок (Shared.jsx, WorkStatusPicker) — она
+   переезжает между сегментами с лёгким покачиванием при переключении. */
 .work-status-picker {
+  position: relative;
   display: flex;
   gap: 6px;
 }
 
+.work-status-blob {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  pointer-events: none;
+}
+
 .work-status-option {
+  position: relative;
+  z-index: 2;
   flex: 1;
   min-width: 0;
   padding: 8px 6px;
   border-radius: 10px;
   border: 1px solid var(--glass-border);
-  background: #ffffff0d;
+  background: transparent;
   color: var(--text-dim);
   font-family: inherit;
   font-size: 12px;
   text-align: center;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: color 0.15s;
 }
 
 .work-status-option.work-status-looking.active {
-  border-color: rgba(107, 191, 138, 0.55);
-  background: rgba(107, 191, 138, 0.16);
   color: var(--ok);
 }
 
 .work-status-option.work-status-working.active {
-  border-color: rgba(224, 101, 90, 0.55);
-  background: rgba(224, 101, 90, 0.16);
   color: var(--danger);
 }
 
 .work-status-option.work-status-neutral.active {
-  border-color: var(--glass-border);
-  background: #ffffff1c;
   color: var(--text);
 }
 

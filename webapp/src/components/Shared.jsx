@@ -101,6 +101,33 @@ export function MetricsRow({ reputation, partnerships, daysInCommunity }) {
   );
 }
 
+// Сводка рейтинга прямо на визитке (14.08.2026, по фидбеку владельца с
+// разбором PDF от 11.08 — кружок с рейтингом и счётчик сделок были в
+// исходном макете НА ГЛАВНОМ экране, редизайн 10.08 унёс их только внутрь
+// "Мой рейтинг", теперь возвращаем сводку на хаб, полная версия остаётся в
+// подэкране как была). Клик открывает "Мой рейтинг" — там же и подробный
+// разбор "Как поднять рейтинг?".
+export function RatingPreview({ reputation, partnerships, isSubscribed, onOpen }) {
+  const { t } = useLang();
+  const locked = reputation === null || reputation === undefined;
+  const showHint = locked || !isSubscribed || (partnerships ?? 0) === 0;
+  return (
+    <button type="button" className="rating-preview" onClick={onOpen}>
+      <div className="rating-preview-circle">{locked ? t("hub.ratingLocked") : Math.round(reputation)}</div>
+      <div className="rating-preview-info">
+        <div className="rating-preview-deals">
+          {locked ? t("hub.dealsLocked") : t("hub.dealsConfirmed", { count: partnerships ?? 0 })}
+        </div>
+        {showHint && (
+          <div className="rating-preview-hint">
+            {t("hub.lowRatingHint")} · {t("hub.lowRatingCta")}
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
 // Офер/отзыв — публичны всегда (Фаза 2, 11.08.2026): в этом и смысл
 // счётчика сделок — проверить репутацию контакта. Суммы показывает
 // бэкенд только если инициатор включил show при создании заявки

@@ -680,6 +680,26 @@ await step("view-recruiter-card-of-other-user", async () => {
   await sleep(300);
 });
 
+await step("profile-hub-rating-preview", async () => {
+  // Кружок рейтинга + счётчик сделок на самой визитке (14.08.2026, фидбек
+  // владельца по PDF от 11.08 — эти элементы были в исходном макете на
+  // ГЛАВНОМ экране, редизайн 10.08 унёс их только внутрь "Мой рейтинг").
+  // До подписки: ME_PAYLOAD.reputation_score/confirmed_partnerships = null
+  // (гейт), кружок должен показывать замок и подсказку "как исправить".
+  const circleLocked = await page.locator(".rating-preview-circle").textContent();
+  const dealsLocked = await page.locator(".rating-preview-deals").textContent();
+  const hintLockedVisible = await page.locator(".rating-preview-hint").isVisible().catch(() => false);
+  console.log("rating preview (unsubscribed) circle:", circleLocked, "| deals:", dealsLocked, "| hint visible:", hintLockedVisible);
+  await page.screenshot({ path: "smoke_1b_hub_rating_preview_locked.png" });
+
+  await page.getByRole("button", { name: "Мой рейтинг" }).click();
+  await sleep(300);
+  console.log("rating preview click -> opened rating subscreen:",
+    await page.locator("h3", { hasText: "Мой рейтинг" }).isVisible().catch(() => false));
+  await page.getByRole("button", { name: "‹ Профиль" }).click();
+  await sleep(300);
+});
+
 await step("profile-subscription-gate", async () => {
   await page.getByRole("button", { name: "Мой рейтинг" }).click();
   await sleep(300);
@@ -692,6 +712,16 @@ await step("profile-subscription-gate", async () => {
   Object.assign(ME_PAYLOAD, SUBSCRIBED_EXTRAS, { is_subscribed: true, subscription_status: "active" });
   await page.reload({ waitUntil: "networkidle" });
   await sleep(2200); // интро снова
+
+  // тот же кружок теперь должен показать реальные числа (87.5 округляется
+  // до 88, 2 сделки) и СПРЯТАТЬ подсказку "низкий рейтинг" (есть подписка
+  // И есть подтверждённые сделки).
+  const circleUnlocked = await page.locator(".rating-preview-circle").textContent();
+  const dealsUnlocked = await page.locator(".rating-preview-deals").textContent();
+  const hintUnlockedVisible = await page.locator(".rating-preview-hint").isVisible().catch(() => false);
+  console.log("rating preview (subscribed, 87.5 rep / 2 deals) circle:", circleUnlocked, "| deals:", dealsUnlocked, "| hint visible:", hintUnlockedVisible);
+  await page.screenshot({ path: "smoke_1c_hub_rating_preview_unlocked.png" });
+
   await page.getByRole("button", { name: "Мой рейтинг" }).click();
   await sleep(300);
   const gateNoteAfter = await page.$(".subscription-gate-note");

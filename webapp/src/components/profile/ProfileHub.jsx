@@ -1,7 +1,7 @@
 import { addToHomeScreen, canAddToHomeScreen, getAvatarUrl, haptic } from "../../telegram.js";
 import { initialOf } from "../../utils.js";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
-import { WorkStatusPicker } from "../Shared.jsx";
+import { RatingPreview, WorkStatusPicker } from "../Shared.jsx";
 import { useLang } from "../../i18n.jsx";
 
 const MENU = [
@@ -34,6 +34,12 @@ export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, o
             {profile.profession && <div className="profile-header-sub">{profile.profession}</div>}
             {profile.company && <div className="profile-header-sub">{profile.company}</div>}
           </div>
+          <RatingPreview
+            reputation={profile.reputation_score}
+            partnerships={profile.confirmed_partnerships}
+            isSubscribed={profile.is_subscribed}
+            onOpen={() => onNavigateSub("rating")}
+          />
         </div>
         {profile.vertical && <span className="profile-vertical-badge">{profile.vertical}</span>}
         <div className="work-status-section">

@@ -58,7 +58,7 @@ const STRINGS = {
 
   // --- Профиль / хаб ---
   "hub.status": { ru: "Статус", en: "Status" },
-  "hub.addToHome": { ru: "📲 Добавить на экран телефона", en: "📲 Add to home screen" },
+  "hub.addToHome": { ru: "Добавить на экран телефона", en: "Add to home screen" },
   "hub.menu.rating": { ru: "Мой рейтинг", en: "My rating" },
   "hub.menu.cv": { ru: "Моё CV", en: "My CV" },
   "hub.menu.contacts": { ru: "Мои контакты", en: "My contacts" },

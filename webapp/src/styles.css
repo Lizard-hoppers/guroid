@@ -445,16 +445,32 @@ label {
   bottom: calc(6px + env(safe-area-inset-bottom));
   z-index: 2;
   border-radius: 999px;
-  /* Базовый вид — фон+блюр БЕЗ преломления. Служит (1) видимой каплей, пока
-     карта преломления ещё не сгенерирована на первом рендере, и (2)
-     единственным видом там, где .tab-blob-warp не поддерживается (Firefox,
-     см. liquidGlass.js) — деградация безопасная, просто без "жидкого"
-     эффекта, форма/цвет капли не меняются. */
-  background: linear-gradient(180deg, #ffffff0f, #ffffff03);
-  backdrop-filter: saturate(150%);
-  -webkit-backdrop-filter: saturate(150%);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: 0 6px 16px #00000047, inset 0 1px 1px #ffffff52, inset 0 -6px 10px #d4af371a;
+  /* Базовый вид — стекло на чистом CSS (градиент+тени+блюр), БЕЗ SVG-
+     преломления. Раньше это был просто placeholder ("пока карта не
+     сгенерировалась"/Firefox-фолбэк), но проверка на живом Telegram
+     Desktop (15.08.2026, Qt WebEngine) показала: filter:url(#svg) там
+     молча не срабатывает вообще — .tab-blob-warp ниже эффективно не
+     виден на десктопе. Раз это ОСНОВНОЙ вид для целого класса клиентов
+     (не редкий фолбэк), докрутил его отдельно — один мягкий блик сверху
+     (имитация света на выпуклом стекле) + чуть более выразительные inset-
+     тени по краю. Первая попытка (два радиальных блика + сильное
+     затемнение книзу) получилась мутной и перебивала читаемость иконки/
+     текста — убрано, оставлен один сдержанный акцент. Работает одинаково
+     везде, ничего экзотического. .tab-blob-warp (SVG-преломление)
+     остаётся ПОВЕРХ этого как прогрессивное улучшение там, где реально
+     поддерживается (современный WebKit/Chromium — мобильные клиенты
+     Telegram), просто больше не единственный источник "стеклянности". */
+  background:
+    radial-gradient(100% 130% at 30% -15%, rgba(255, 255, 255, 0.22), transparent 55%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.02) 50%, rgba(0, 0, 0, 0.04) 100%);
+  backdrop-filter: blur(10px) saturate(180%);
+  -webkit-backdrop-filter: blur(10px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 6px 16px rgba(0, 0, 0, 0.3),
+    inset 0 1px 1px rgba(255, 255, 255, 0.55),
+    inset 0 -6px 10px rgba(212, 175, 55, 0.14),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   cursor: grab;
   touch-action: none;
   /* Слой преломления (.tab-blob-warp) может выступать за границы своего
@@ -467,17 +483,23 @@ label {
 }
 
 /* "Liquid Glass" (iOS 26) — 15.08.2026, по прямому запросу владельца.
-   Отдельный слой ПОВЕРХ базового фона .tab-blob: тот же blur+saturate, что
-   раньше был прямо на капле, плюс filter:url(#id) — SVG-цепочка
-   feDisplacementMap/feColorMatrix из liquidGlass.js/LiquidGlassFilter
-   (TabBar.jsx), которая реально преломляет то, что под каплей (сама
-   background-подложка ниже), а не просто размывает. id генерируется
-   динамически (useId) и подставляется инлайн-стилем в TabBar.jsx. */
+   Прогрессивное улучшение ПОВЕРХ базового CSS-стекла .tab-blob:
+   filter:url(#id) (SVG-цепочка feDisplacementMap/feColorMatrix из
+   liquidGlass.js/LiquidGlassFilter в TabBar.jsx), которая реально
+   преломляет то, что под каплей. backdrop-filter здесь ОБЯЗАТЕЛЕН, даже
+   минимальный — именно комбинация filter:url()+backdrop-filter на одном
+   прозрачном элементе даёт браузеру "подложку" (то, что позади), которую
+   и displacement-карта сдвигает; без backdrop-filter тут фильтру
+   буквально нечего преломлять. Blur занижен до минимума (не 10px, как на
+   базовом слое) — реальную "частоту" размытия уже даёт .tab-blob ниже,
+   иначе оба слоя складывались бы в заметно более мутную каплю там, где
+   SVG-фильтр реально работает. id — динамический (useId), подставляется
+   инлайн-стилем в TabBar.jsx. */
 .tab-blob-warp {
   position: absolute;
   inset: 0;
-  backdrop-filter: blur(10px) saturate(190%);
-  -webkit-backdrop-filter: blur(10px) saturate(190%);
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
 }
 
 .locked-overlay {

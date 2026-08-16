@@ -187,10 +187,10 @@ function TriStateField({ title, field, value, onSaved }) {
   return (
     <div className="card">
       <h3>{title}</h3>
-      <div className="work-status-picker">
+      <div className="tristate-picker">
         <button
           type="button"
-          className={`work-status-option${value === true ? " active" : ""}`}
+          className={`tristate-option${value === true ? " active" : ""}`}
           disabled={saving}
           onClick={() => pick(true)}
         >
@@ -198,7 +198,7 @@ function TriStateField({ title, field, value, onSaved }) {
         </button>
         <button
           type="button"
-          className={`work-status-option${value === false ? " active" : ""}`}
+          className={`tristate-option${value === false ? " active" : ""}`}
           disabled={saving}
           onClick={() => pick(false)}
         >
@@ -206,7 +206,7 @@ function TriStateField({ title, field, value, onSaved }) {
         </button>
         <button
           type="button"
-          className={`work-status-option work-status-off${value == null ? " active" : ""}`}
+          className={`tristate-option${value == null ? " active" : ""}`}
           disabled={saving}
           onClick={() => pick(null)}
         >

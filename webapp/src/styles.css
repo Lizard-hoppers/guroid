@@ -1197,6 +1197,42 @@ label {
   color: var(--text);
 }
 
+/* Сегментированный Да/Нет/Не указано (CvSubscreen.jsx TriStateField —
+   "Готовность к релокации"/"Согласие на полиграф") — 16.08.2026, СВОИ
+   отдельные классы, НЕ .work-status-*. Раньше переиспользовал те же
+   классы, что и статус трудоустройства — редизайн статуса трудоустройства
+   этим же днём убрал общий .active-стиль (цвет теперь только через
+   work-status-looking/working/neutral модификаторы), из-за чего клики по
+   Да/Нет/Не указано технически срабатывали и сохранялись, но визуально
+   НИЧЕГО не менялось — владелец воспринял это как "кнопки не кликабельны".
+   Простой самостоятельный стиль без блика-подложки, ничего общего с
+   WorkStatusPicker — изменения в одном больше не затронут другое. */
+.tristate-picker {
+  display: flex;
+  gap: 6px;
+}
+
+.tristate-option {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: #ffffff0d;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.tristate-option.active {
+  border-color: var(--gold-soft);
+  background: rgba(212, 175, 55, 0.16);
+  color: var(--text);
+}
+
 .work-status-badge {
   display: inline-block;
   margin-top: 8px;

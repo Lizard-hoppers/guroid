@@ -4,13 +4,15 @@ import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import { RatingPreview, RatingSummaryLine, WorkStatusPicker } from "../Shared.jsx";
 import { useLang } from "../../i18n.jsx";
 
+// Порядок пунктов — по макету владельца ("рейтинг порядок.pdf", 16.08.2026):
+// Офферы, Сообщения, Рейтинг, QR, CV, Контакты.
 const MENU = [
-  { key: "rating", labelKey: "hub.menu.rating" },
-  { key: "cv", labelKey: "hub.menu.cv" },
-  { key: "contacts", labelKey: "hub.menu.contacts" },
   { key: "offers", labelKey: "hub.menu.offers" },
   { key: "messages", labelKey: "hub.menu.messages" },
+  { key: "rating", labelKey: "hub.menu.rating" },
   { key: "qr", labelKey: "hub.menu.qr" },
+  { key: "cv", labelKey: "hub.menu.cv" },
+  { key: "contacts", labelKey: "hub.menu.contacts" },
 ];
 
 // Главная страница профиля — визитка (аватар/имя/должность/компания/

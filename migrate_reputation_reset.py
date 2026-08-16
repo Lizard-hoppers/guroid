@@ -30,12 +30,18 @@ def main(dry_run: bool) -> None:
     users = conn.execute("SELECT user_id FROM guro_users").fetchall()
     print(f"guro_users: {len(users)} строк")
 
-    # Шаг 1: база для каждого — GL.initial_reputation(). Обновлено 15.08.2026
-    # (тем же вечером, ПОСЛЕ первого запуска этой миграции): бонус за стаж в
-    # комьюнити убран из формулы совсем (владелец — "рейтинг растёт только
-    # от сделок"), initial_reputation() теперь просто BASE_REPUTATION для
-    # всех одинаково, без разбора профиля/даты регистрации.
-    base_by_user: dict[int, float] = {u["user_id"]: GL.initial_reputation() for u in users}
+    # Шаг 1: база для каждого — GL.initial_reputation(created_at, now).
+    # 16.08.2026: бонус за стаж в комьюнити возвращён в формулу (был убран
+    # 15.08 вечером, затем восстановлен по официальному макету владельца —
+    # рейтинг = стаж + сделки), initial_reputation() снова принимает дату
+    # регистрации.
+    base_by_user: dict[int, float] = {}
+    for u in users:
+        profile = conn.execute(
+            "SELECT created_at FROM profiles WHERE user_id=?", (u["user_id"],)
+        ).fetchone()
+        created_at = GL.parse_db_datetime(profile["created_at"]) if profile else None
+        base_by_user[u["user_id"]] = GL.initial_reputation(created_at, now)
 
     # Шаг 2: +CONFIRMATION_GAIN за КАЖДОЕ подтверждённое учитываемое
     # партнёрство, каждой стороне — та же симметричная логика, что в

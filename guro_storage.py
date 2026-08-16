@@ -200,7 +200,9 @@ class GuroStorage:
         row = self._conn.execute("SELECT * FROM guro_users WHERE user_id=?", (user_id,)).fetchone()
         if row is not None:
             return row
-        score = GL.initial_reputation()
+        profile = self.get_profile(user_id)
+        created_at = GL.parse_db_datetime(profile["created_at"]) if profile else None
+        score = GL.initial_reputation(created_at, self._now())
         self._conn.execute(
             "INSERT INTO guro_users (user_id, reputation_score, updated_at) VALUES (?,?,?)",
             (user_id, score, self._now_str()),

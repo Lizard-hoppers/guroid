@@ -64,12 +64,22 @@ def verify_init_data(init_data: str, bot_token: str, max_age_seconds: int = 8640
     return user
 
 
-def initial_reputation() -> float:
-    """Стартовая репутация нового пользователя — рейтинг растёт ТОЛЬКО от
-    подтверждённых сделок (15.08.2026, по прямому запросу владельца — убран
-    бонус за стаж в комьюнити, который раньше давал до +10 баллов за 2.5
-    года чисто по возрасту аккаунта, без единой сделки)."""
-    return GC.BASE_REPUTATION
+def tenure_bonus(created_at: datetime | None, now: datetime) -> float:
+    if created_at is None:
+        return 0.0
+    days = max(0, (now - created_at).days)
+    periods = days // GC.TENURE_PERIOD_DAYS
+    return min(GC.TENURE_BONUS_MAX, periods * GC.TENURE_BONUS_PER_PERIOD)
+
+
+def initial_reputation(profile_created_at: datetime | None, now: datetime) -> float:
+    """Стартовая репутация — дни в комьюнити (стаж) + подтверждённые сделки
+    (16.08.2026, по официальному макету владельца, "рейтинг порядок.pdf":
+    рейтинг состоит из этих двух составляющих — заменил устное решение
+    днём раньше "рейтинг только от сделок"). Заполненная анкета сама по
+    себе бонуса не даёт (дефолтное условие входа), стаж считается с даты
+    регистрации."""
+    return GC.BASE_REPUTATION + tenure_bonus(profile_created_at, now)
 
 
 def confirmation_gain() -> float:

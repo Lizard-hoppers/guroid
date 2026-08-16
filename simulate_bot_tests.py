@@ -2387,15 +2387,19 @@ def test_guro_id_reputation_formula():
     from datetime import datetime, timedelta, timezone
 
     now = datetime.now(timezone.utc)
-    check(GLm.initial_reputation() == 0.0, "стартовая репутация = 0 (15.08.2026: рейтинг стартует с нуля)")
+    check(GLm.initial_reputation(None, now) == 0.0, "база без анкеты/стажа = 0 (16.08.2026: рейтинг = стаж + сделки)")
+    check(GLm.initial_reputation(now, now) == 0.0, "заполненная анкета сама по себе бонуса не даёт (дефолтное условие входа)")
+    old_join = now - timedelta(days=95)
+    check(GLm.initial_reputation(old_join, now) == 1.0, "бонус за 3 мес в комьюнити = +1")
+    very_old = now - timedelta(days=3650)
+    check(GLm.initial_reputation(very_old, now) == 10.0, "бонус за возраст капается в +10")
     check(GLm.confirmation_gain() == 1.0, "вклад ОДНОГО подтверждённого партнёрства = фиксированный шаг 1 (15.08.2026, было пропорционально репутации подтверждающего)")
 
-    # Бонус за стаж в комьюнити (tenure_bonus) убран из формулы совсем
-    # (15.08.2026, тем же вечером ПОСЛЕ старта с нуля — владелец: "рейтинг
-    # растёт только от сделок", раньше очень старый аккаунт без единой
-    # сделки мог набрать до +10 чисто по возрасту). initial_reputation()
-    # больше не принимает дату регистрации — одинакова для всех.
-    old_join = now - timedelta(days=95)
+    # 16.08.2026: бонус за стаж в комьюнити (tenure_bonus) ВОЗВРАЩЁН в
+    # формулу по официальному макету владельца ("рейтинг порядок.pdf" —
+    # рейтинг = дни в комьюнити + успешные сделки), после того как накануне
+    # был убран совсем ("рейтинг растёт только от сделок") — документ
+    # оказался приоритетнее устного решения днём раньше.
     check(GLm.counts_toward_rating(old_join, old_join, now), "оба старше 14 дней -> учитывается")
     fresh = now - timedelta(days=2)
     check(not GLm.counts_toward_rating(old_join, fresh, now), "один младше 14 дней -> НЕ учитывается")

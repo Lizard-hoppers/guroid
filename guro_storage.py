@@ -145,6 +145,10 @@ class GuroStorage:
         self._ensure_column("partnerships", "amount_paid", "REAL")
         self._ensure_column("partnerships", "review", "TEXT")
         self._ensure_column("partnerships", "amount_visible", "INTEGER DEFAULT 0")
+        # Хэш крипто-транзакции (16.08.2026, владелец: "подкрепить реальный
+        # перевод в крипте") — та же видимость, что у суммы (amount_visible),
+        # отдельного тумблера не заводили, это доказательство именно суммы.
+        self._ensure_column("partnerships", "tx_hash", "TEXT")
         # Фаза 3 (12.08.2026) — витрина кабинета рекрутера, тот же набор
         # тумблеров приватности, что у личного профиля (PRIVACY_FIELDS),
         # применённый к ДРУГОЙ таблице — коллизий нет.
@@ -385,6 +389,7 @@ class GuroStorage:
         self, initiator_id: int, confirmer_id: int, vertical: str | None, geo: str | None,
         *, offer: str | None = None, amount_received: float | None = None,
         amount_paid: float | None = None, review: str | None = None, amount_visible: bool = False,
+        tx_hash: str | None = None,
     ) -> sqlite3.Row:
         """Поднимает ValueError с понятным кодом-строкой при нарушении правил
         (see ТЗ п.4/п.8): NO_CONFIRMER_PROFILE / SELF_PARTNERSHIP / RATE_LIMITED.
@@ -411,10 +416,10 @@ class GuroStorage:
         cur = self._conn.execute(
             "INSERT INTO partnerships (initiator_id, confirmer_id, status, vertical, geo, "
             "counts_toward_rating, created_at, offer, amount_received, amount_paid, review, "
-            "amount_visible) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "amount_visible, tx_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (initiator_id, confirmer_id, GC.PARTNERSHIP_STATUS_PENDING, vertical, geo,
              1 if counts else 0, GL.format_db_datetime(now), offer, amount_received, amount_paid,
-             review, 1 if amount_visible else 0),
+             review, 1 if amount_visible else 0, tx_hash),
         )
         self._conn.commit()
         return self._conn.execute("SELECT * FROM partnerships WHERE id=?", (cur.lastrowid,)).fetchone()

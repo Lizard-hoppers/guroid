@@ -55,7 +55,7 @@ export function searchByUserId(userId, { workspace } = {}) {
 }
 
 export function createPartnership({
-  confirmerUsername, vertical, geo, offer, amountReceived, amountPaid, review, amountVisible,
+  confirmerUsername, vertical, geo, offer, amountReceived, amountPaid, review, amountVisible, txHash,
 }) {
   return request("/api/partnerships", {
     method: "POST",
@@ -68,6 +68,7 @@ export function createPartnership({
       amount_paid: amountPaid || null,
       review: review || null,
       amount_visible: !!amountVisible,
+      tx_hash: txHash || null,
     }),
   });
 }

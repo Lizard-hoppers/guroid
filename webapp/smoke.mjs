@@ -82,6 +82,7 @@ const SUBSCRIBED_EXTRAS = {
       review: "Быстро и по делу",
       amount_received: 800,
       amount_paid: null,
+      tx_hash: "0xfeedface777",
       initiator_id: 100,
     },
     {
@@ -344,9 +345,11 @@ await page.route("**/api/qr", (route) =>
 await page.route("**/api/invite_link", (route) =>
   route.fulfill({ json: { link: "https://t.me/GamblingCommunitybot?start=ref_100_1" } }),
 );
-await page.route("**/api/partnerships", (route) =>
-  route.fulfill({ json: { id: 999, status: "pending" } }),
-);
+let lastPartnershipBody = null;
+await page.route("**/api/partnerships", (route) => {
+  lastPartnershipBody = route.request().postDataJSON();
+  route.fulfill({ json: { id: 999, status: "pending" } });
+});
 await page.route("**/api/messages/with/**", (route) => {
   const url = new URL(route.request().url());
   const otherId = Number(url.pathname.split("/").pop());
@@ -554,12 +557,15 @@ await step("confirm-partnership-form-fields", async () => {
   await page.fill('input[placeholder="Я получил, $"]', "500");
   await page.fill('input[placeholder="Я заплатил, $"]', "50");
   await page.getByRole("checkbox").click();
+  // Хэш транзакции (16.08.2026) — привязан к той же галочке видимости, что суммы.
+  await page.fill('input[placeholder="Если платили в крипте — вставьте хэш перевода"]', "0xdeadbeef123");
   await page.fill('textarea[placeholder="Как прошло сотрудничество"]', "Отличная сделка");
   await page.screenshot({ path: "smoke_3b_confirm_filled.png" });
   await page.getByRole("button", { name: "Отправить на подтверждение" }).click();
   await sleep(400);
   console.log("partnership form submitted ok:",
     await page.getByText("Заявка отправлена").isVisible().catch(() => false));
+  console.log("tx_hash sent in request body:", lastPartnershipBody?.tx_hash === "0xdeadbeef123");
   await page.screenshot({ path: "smoke_3c_confirm_sent.png" });
 });
 await step("goto-subscribe", async () => {
@@ -747,6 +753,11 @@ await step("profile-subscription-gate", async () => {
   await sleep(300);
   const gateNoteAfter = await page.$(".subscription-gate-note");
   console.log("subscription-gate note visible (subscribed):", !!gateNoteAfter);
+  // Хэш транзакции (16.08.2026) — виден в партнёрстве Боба (amount_visible
+  // подразумевается тем, что amount_received задан в фикстуре и отдаётся).
+  const txHashVisible = await page.locator(".partner-tx-hash-value").isVisible().catch(() => false);
+  const txHashText = await page.locator(".partner-tx-hash-value").textContent().catch(() => "");
+  console.log("tx hash shown in partner row:", txHashVisible, "| value:", txHashText);
   await page.screenshot({ path: "smoke_5h_rating_visible.png" });
   await page.getByRole("button", { name: "‹ Профиль" }).click();
   await sleep(300);

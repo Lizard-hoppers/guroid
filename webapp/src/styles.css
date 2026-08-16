@@ -1612,3 +1612,14 @@ select {
   font-weight: 500;
   color: var(--text);
 }
+
+/* Хэш транзакции у сделки (16.08.2026) — моноширинный, с переносом
+   (хэши бывают 64+ символов, не должны вылезать за карточку). */
+.partner-tx-hash {
+  word-break: break-all;
+}
+
+.partner-tx-hash-value {
+  font-family: "SF Mono", "Roboto Mono", monospace;
+  font-size: 11px;
+}

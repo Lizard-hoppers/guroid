@@ -19,6 +19,7 @@ const EMPTY_FORM = {
   amountPaid: "",
   review: "",
   amountVisible: false,
+  txHash: "",
 };
 
 export function ConfirmScreen() {
@@ -108,6 +109,16 @@ export function ConfirmScreen() {
           />
           {t("confirm.amountVisible")}
         </label>
+        <label>{t("confirm.txHashLabel")}</label>
+        <input
+          type="text"
+          placeholder={t("confirm.txHashPlaceholder")}
+          value={form.txHash}
+          onChange={(e) => set("txHash", e.target.value)}
+        />
+        <div className="privacy-hint" style={{ marginTop: -6, marginBottom: 10 }}>
+          {t("confirm.txHashHint")}
+        </div>
         <label>{t("confirm.reviewLabel")}</label>
         <textarea
           rows={3}

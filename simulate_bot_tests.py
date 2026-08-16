@@ -3119,6 +3119,7 @@ async def _run_guro_id_api_sim():
                     "amount_received": "1500", "amount_paid": "200.5",
                     "review": "Отличная сделка, всё чётко и в срок",
                     "amount_visible": True,
+                    "tx_hash": "0xabc123def456",
                 })
                 check(resp.status == 200, "POST /api/partnerships с офером/суммами/отзывом -> 200")
                 body = await resp.json()
@@ -3133,6 +3134,7 @@ async def _run_guro_id_api_sim():
                       "отзыв виден в чужом поиске (публичен всегда)")
                 check(partner["amount_received"] == 1500.0, "сумма видна, т.к. amount_visible=True при создании")
                 check(partner["amount_paid"] == 200.5, "вторая сумма тоже видна")
+                check(partner["tx_hash"] == "0xabc123def456", "хэш транзакции виден вместе с суммой (16.08.2026)")
                 check(partner["vertical"] == "iGaming" and partner["geo"] == "Malta",
                       "вертикаль/гео конкретного партнёрства видны")
                 check(partner["initiator_id"] == 450, "видно, кто был инициатором (со слов кого офер/суммы)")
@@ -3145,6 +3147,7 @@ async def _run_guro_id_api_sim():
                     "offer": "Консультация по комплаенсу",
                     "amount_received": "500",
                     "review": "Норм",
+                    "tx_hash": "should_stay_hidden",
                 })
                 body = await resp.json()
                 app["storage"].respond_partnership(body["id"], responder_id=460, accept=True)
@@ -3155,6 +3158,8 @@ async def _run_guro_id_api_sim():
                 check(partner2["offer"] == "Консультация по комплаенсу", "офер публичен и БЕЗ amount_visible")
                 check(partner2["amount_received"] is None,
                       "amount_visible по умолчанию False -> сумма скрыта, несмотря на то что была указана")
+                check(partner2["tx_hash"] is None,
+                      "хэш транзакции тоже скрыт без amount_visible, несмотря на то что был указан")
 
                 # --- Фаза 2: browse по вертикали (альтернатива тексту поиска) ---
                 st.save_profile({"user_id": 480, "username": "gambler1", "name": "Gambler One", "vertical": "Gambling"})

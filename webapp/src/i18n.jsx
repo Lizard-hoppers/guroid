@@ -117,6 +117,7 @@ const STRINGS = {
   "partner.amountPaid": { ru: "Оплачено", en: "Paid" },
   "partner.amountNote": { ru: "(со слов инициатора)", en: "(as stated by the initiator)" },
   "partner.notRated": { ru: "не влияет на рейтинг", en: "doesn't affect rating" },
+  "partner.txHash": { ru: "Хэш транзакции", en: "Transaction hash" },
 
   // --- Моё CV ---
   "cv.title": { ru: "Моё CV", en: "My CV" },
@@ -340,6 +341,12 @@ const STRINGS = {
   "confirm.amountReceivedPlaceholder": { ru: "Я получил, $", en: "I received, $" },
   "confirm.amountPaidPlaceholder": { ru: "Я заплатил, $", en: "I paid, $" },
   "confirm.amountVisible": { ru: "Показывать сумму чужим (по умолчанию скрыта)", en: "Show amount to others (hidden by default)" },
+  "confirm.txHashLabel": { ru: "Хэш транзакции (необязательно)", en: "Transaction hash (optional)" },
+  "confirm.txHashPlaceholder": { ru: "Если платили в крипте — вставьте хэш перевода", en: "If paid in crypto — paste the transfer hash" },
+  "confirm.txHashHint": {
+    ru: "Подтверждает реальность перевода. Виден вместе с суммой — по той же галочке выше.",
+    en: "Backs up the transfer as real. Shown together with the amount — same checkbox above.",
+  },
   "confirm.reviewLabel": { ru: "Отзыв — ваше сообщение о партнёрстве (необязательно)", en: "Review — your note about the partnership (optional)" },
   "confirm.reviewPlaceholder": { ru: "Как прошло сотрудничество", en: "How the collaboration went" },
   "confirm.submit": { ru: "Отправить на подтверждение", en: "Send for confirmation" },

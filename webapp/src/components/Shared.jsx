@@ -260,6 +260,14 @@ export function PartnerRow({ partner }) {
             {t("partner.amountNote")}
           </div>
         )}
+        {/* Хэш транзакции (16.08.2026) — привязан к той же видимости, что
+            сумма (amount_visible на бэкенде, guro_id_api._profile_summary) —
+            это подтверждение именно суммы, отдельного тумблера не заводили. */}
+        {partner.tx_hash && (
+          <div className="partner-meta partner-tx-hash">
+            {t("partner.txHash")}: <span className="partner-tx-hash-value">{partner.tx_hash}</span>
+          </div>
+        )}
         {partner.review && <div className="partner-review">«{partner.review}»</div>}
       </div>
       {!partner.counts_toward_rating && <span className="badge-unrated">{t("partner.notRated")}</span>}

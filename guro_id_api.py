@@ -75,6 +75,9 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
             "review": p["review"],
             "amount_received": p["amount_received"] if amount_visible else None,
             "amount_paid": p["amount_paid"] if amount_visible else None,
+            # Хэш транзакции (16.08.2026) — та же видимость, что у суммы,
+            # это подтверждение именно её, отдельного тумблера нет.
+            "tx_hash": p["tx_hash"] if amount_visible else None,
             # Кто именно указал офер/суммы (со слов инициатора, не факт,
             # подтверждённый confirmer'ом) — фронту нужно, чтобы подписать
             # "получил/заплатил" с правильной стороны.
@@ -579,6 +582,9 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
     amount_received = _parse_amount(body.get("amount_received"))
     amount_paid = _parse_amount(body.get("amount_paid"))
     amount_visible = bool(body.get("amount_visible"))
+    # Хэш транзакции (16.08.2026) — 200 симв. с запасом покрывает любые
+    # реальные хэши (Bitcoin/Ethereum/TRON и т.д. — все короче 100).
+    tx_hash = (str(body.get("tx_hash", "")).strip()[:200]) or None
 
     target_profile = storage.find_profile_by_username(confirmer_username)
     if target_profile is None:
@@ -588,7 +594,7 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
         partnership = storage.create_partnership(
             user["id"], target_profile["user_id"], vertical, geo,
             offer=offer, amount_received=amount_received, amount_paid=amount_paid,
-            review=review, amount_visible=amount_visible,
+            review=review, amount_visible=amount_visible, tx_hash=tx_hash,
         )
     except ValueError as e:
         return web.json_response({"error": str(e)}, status=409)

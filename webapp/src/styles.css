@@ -1570,3 +1570,45 @@ select {
   margin-top: 0;
   padding: 12px 16px;
 }
+
+/* Read-only показ CV (Shared.jsx CvReadOnly) — 16.08.2026, используется и
+   для "Посмотреть моё CV" (CvSubscreen.jsx), и для чужого CV при поиске
+   (SearchScreen.jsx). */
+.cv-readonly-row {
+  margin-top: 12px;
+}
+
+.cv-readonly-row:first-of-type {
+  margin-top: 8px;
+}
+
+.cv-readonly-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
+}
+
+.cv-readonly-value {
+  font-size: 14px;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.cv-experience-entry-view {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cv-experience-entry-view:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.cv-experience-entry-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}

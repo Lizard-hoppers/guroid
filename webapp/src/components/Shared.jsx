@@ -388,6 +388,76 @@ export function EditableField({ field, label, placeholder, value, multiline, onS
   );
 }
 
+function CvRow({ label, value }) {
+  if (!value) return null;
+  return (
+    <div className="cv-readonly-row">
+      <div className="cv-readonly-label">{label}</div>
+      <div className="cv-readonly-value">{value}</div>
+    </div>
+  );
+}
+
+// Структурный read-only показ CV — 16.08.2026, по прямому запросу
+// владельца: заполненные поля CV нигде не отображались целиком ни самому
+// владельцу ("посмотреть, как видят другие"), ни чужому смотрящему при
+// поиске/по QR (SearchScreen.jsx рисовал только голое cv_text, остальные
+// 12+ полей расширения "Моё CV" от 12.08 были только в форме редактирования,
+// бэкенд их уже отдавал — не хватало именно фронтенд-показа). Один и тот
+// же компонент переиспользуется в CvViewScreen (свой CV) и в ResultCard
+// SearchScreen.jsx (чужой CV) — гейт видимости (show_cv/подписка) уже
+// решается на уровне того, ЧТО передаётся в profile, тут просто рендер.
+export function CvReadOnly({ profile }) {
+  const { t } = useLang();
+  const tri = (v) => (v === true ? t("common.yes") : v === false ? t("common.no") : null);
+  const salary = profile.cv_salary_negotiable
+    ? t("cv.salary.negotiableLabel")
+    : profile.cv_salary_from != null || profile.cv_salary_to != null
+      ? `${profile.cv_salary_from ?? "?"}–${profile.cv_salary_to ?? "?"} $`
+      : null;
+  const experience = profile.cv_experience || [];
+  const hasAny =
+    profile.cv_text || profile.cv_profession || profile.cv_location || profile.cv_verticals ||
+    profile.cv_grade || tri(profile.cv_relocation_ready) || tri(profile.cv_polygraph_consent) ||
+    salary || profile.cv_skills || profile.cv_languages || profile.cv_certifications || experience.length > 0;
+  if (!hasAny) return null;
+
+  return (
+    <div className="card cv-readonly">
+      <h3>{t("cv.title")}</h3>
+      <CvRow label={t("cv.profession.label")} value={profile.cv_profession} />
+      <CvRow label={t("cv.grade.title")} value={profile.cv_grade} />
+      <CvRow label={t("cv.location.label")} value={profile.cv_location} />
+      <CvRow label={t("cv.verticals.title")} value={profile.cv_verticals ? profile.cv_verticals.split(",").join(", ") : null} />
+      <CvRow label={t("cv.label")} value={profile.cv_text} />
+      <CvRow label={t("cv.salary.title")} value={salary} />
+      <CvRow label={t("cv.relocation.title")} value={tri(profile.cv_relocation_ready)} />
+      <CvRow label={t("cv.polygraph.title")} value={tri(profile.cv_polygraph_consent)} />
+      <CvRow label={t("cv.skills.label")} value={profile.cv_skills} />
+      <CvRow label={t("cv.languages.label")} value={profile.cv_languages} />
+      <CvRow label={t("cv.certifications.label")} value={profile.cv_certifications} />
+      {experience.length > 0 && (
+        <div className="cv-readonly-row">
+          <div className="cv-readonly-label">{t("cv.experience.title")}</div>
+          {experience.map((e) => (
+            <div key={e.id} className="cv-experience-entry-view">
+              <div className="cv-experience-entry-title">
+                {e.position}
+                {e.company ? ` · ${e.company}` : ""}
+              </div>
+              <div className="partner-meta">
+                {e.date_from || "?"} — {e.date_to || t("cv.experience.present")}
+                {e.location ? ` · ${e.location}` : ""}
+              </div>
+              {e.description && <div className="partner-meta">{e.description}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function LockedOverlay({ children, onUnlock }) {
   const { t } = useLang();
   return (

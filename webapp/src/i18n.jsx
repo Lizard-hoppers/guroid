@@ -120,6 +120,15 @@ const STRINGS = {
 
   // --- Моё CV ---
   "cv.title": { ru: "Моё CV", en: "My CV" },
+  "cv.viewBtn": { ru: "👁 Посмотреть моё CV", en: "👁 View my CV" },
+  "cv.backToEdit": { ru: "‹ К редактированию", en: "‹ Back to editing" },
+  "cv.shareBtn": { ru: "📤 Поделиться CV", en: "📤 Share CV" },
+  "cv.shareBusy": { ru: "Готовим ссылку…", en: "Preparing link…" },
+  "cv.shareError": { ru: "Не получилось создать ссылку, попробуйте ещё раз", en: "Couldn't create the link, try again" },
+  "cv.shareText": {
+    ru: "Посмотрите моё CV в GURO ID",
+    en: "Check out my CV on GURO ID",
+  },
   "cv.label": { ru: "Опыт и навыки", en: "Experience and skills" },
   "cv.placeholder": {
     ru: "Например: 5 лет в iGaming, руководил командой из 10 человек…",

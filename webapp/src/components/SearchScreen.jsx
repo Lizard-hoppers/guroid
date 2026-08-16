@@ -8,6 +8,7 @@ import {
   IdentityLine,
   WorkStatusBadge,
   Spinner,
+  CvReadOnly,
 } from "./Shared.jsx";
 import { haptic } from "../telegram.js";
 import { useLang } from "../i18n.jsx";
@@ -31,37 +32,45 @@ function ResultCard({ p, onWrite, onViewRecruiter }) {
   const { t } = useLang();
   const heading = p.name === null ? t("common.hidden") : p.name || (p.username ? `@${p.username}` : t("common.noName"));
   return (
-    <div className="card">
-      <h2 className={p.name === null ? "hidden-value" : ""}>{heading}</h2>
-      <WorkStatusBadge status={p.work_status} />
-      <IdentityLine label={t("identity.vertical")} value={p.vertical} />
-      <IdentityLine label={t("identity.company")} value={p.company} />
-      <MetricsRow
-        reputation={p.reputation_score}
-        partnerships={p.confirmed_partnerships}
-        daysInCommunity={p.days_in_community}
-      />
-      {onWrite && (
-        <button
-          type="button"
-          className="btn secondary"
-          style={{ marginTop: 12 }}
-          onClick={() => onWrite(p.user_id)}
-        >
-          {t("messageBtn")}
-        </button>
-      )}
-      {p.has_recruiter_profile && onViewRecruiter && (
-        <button
-          type="button"
-          className="btn secondary"
-          style={{ marginTop: 8 }}
-          onClick={onViewRecruiter}
-        >
-          {t("recruiterViewBtn")}
-        </button>
-      )}
-    </div>
+    <>
+      <div className="card">
+        <h2 className={p.name === null ? "hidden-value" : ""}>{heading}</h2>
+        <WorkStatusBadge status={p.work_status} />
+        <IdentityLine label={t("identity.vertical")} value={p.vertical} />
+        <IdentityLine label={t("identity.company")} value={p.company} />
+        <MetricsRow
+          reputation={p.reputation_score}
+          partnerships={p.confirmed_partnerships}
+          daysInCommunity={p.days_in_community}
+        />
+        {onWrite && (
+          <button
+            type="button"
+            className="btn secondary"
+            style={{ marginTop: 12 }}
+            onClick={() => onWrite(p.user_id)}
+          >
+            {t("messageBtn")}
+          </button>
+        )}
+        {p.has_recruiter_profile && onViewRecruiter && (
+          <button
+            type="button"
+            className="btn secondary"
+            style={{ marginTop: 8 }}
+            onClick={onViewRecruiter}
+          >
+            {t("recruiterViewBtn")}
+          </button>
+        )}
+      </div>
+      {/* CV чужого профиля (16.08.2026) — раньше нигде не отображался при
+          просмотре (бэкенд уже отдавал все поля, фронт их просто не рисовал).
+          Отдельная карточка, не вложенная в основную — CvReadOnly сама
+          решает, рисовать ли себя (пусто, если ни одного поля CV не
+          заполнено/не открыто владельцем через show_cv). */}
+      <CvReadOnly profile={p} />
+    </>
   );
 }
 

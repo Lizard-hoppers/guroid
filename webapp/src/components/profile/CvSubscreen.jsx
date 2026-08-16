@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { EditableField, Msg } from "../Shared.jsx";
+import { CvReadOnly, EditableField, Msg } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import { useLang } from "../../i18n.jsx";
-import { haptic } from "../../telegram.js";
+import { haptic, openTelegramLink } from "../../telegram.js";
 import {
   ApiError, setCvField, setCvProfession, setCvGrade, setCvFlag, setCvSalary,
-  addCvExperience, deleteCvExperience,
+  addCvExperience, deleteCvExperience, getQr,
 } from "../../api.js";
 
 // Расширение "Моё CV" (12.08.2026, по макету владельца "2Правки СV.pdf").
@@ -456,12 +456,75 @@ function ExperienceList({ entries, onChange }) {
   );
 }
 
+// «Поделиться» (16.08.2026, по прямому запросу владельца) — та же личная
+// deep-ссылка, что и у "Мой QR" (t.me/<bot>?start=guro_<id>), просто
+// отправляется через нативный шаринг Telegram вместо сканирования QR.
+// Получатель увидит тизер профиля (или полный, если у НЕГО есть подписка)
+// с уже готовым CV-блоком (CvReadOnly в SearchScreen.jsx ResultCard) —
+// вся остальная логика (пейволл/написать) уже была готова, тут просто
+// ещё один вход в неё.
+function ShareCvButton() {
+  const { t } = useLang();
+  const [state, setState] = useState({ loading: false, error: false });
+
+  async function onClick() {
+    setState({ loading: true, error: false });
+    try {
+      const { deeplink } = await getQr();
+      haptic("light");
+      openTelegramLink(
+        `https://t.me/share/url?url=${encodeURIComponent(deeplink)}&text=${encodeURIComponent(t("cv.shareText"))}`,
+      );
+      setState({ loading: false, error: false });
+    } catch {
+      setState({ loading: false, error: true });
+      haptic("error");
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 14 }}>
+      <button type="button" className="btn" onClick={onClick} disabled={state.loading}>
+        {state.loading ? t("cv.shareBusy") : t("cv.shareBtn")}
+      </button>
+      <Msg type="error">{state.error ? t("cv.shareError") : null}</Msg>
+    </div>
+  );
+}
+
 export function CvSubscreen({ profile, privacy, onPrivacyChange, onFieldSaved, onBack }) {
   const { t } = useLang();
+  // "Посмотреть моё CV" (16.08.2026, владелец: заполненные поля CV нигде
+  // структурно не показывались — ни владельцу как предпросмотр, ни при
+  // шаринге). Локальный переключатель ВНУТРИ подэкрана (не отдельный
+  // sub-route ProfileScreen.jsx) — минимальное изменение, не трогает
+  // навигационную машину состояний.
+  const [viewMode, setViewMode] = useState(false);
+
+  if (viewMode) {
+    return (
+      <div>
+        <button type="button" className="subscreen-back" onClick={() => setViewMode(false)}>
+          {t("cv.backToEdit")}
+        </button>
+        <CvReadOnly profile={profile} />
+        <ShareCvButton />
+      </div>
+    );
+  }
+
   return (
     <div>
       <button type="button" className="subscreen-back" onClick={onBack}>
         {t("common.back")}
+      </button>
+      <button
+        type="button"
+        className="onboarding-more-link"
+        style={{ marginBottom: 12 }}
+        onClick={() => setViewMode(true)}
+      >
+        <span className="link-underline">{t("cv.viewBtn")}</span>
       </button>
 
       <div className="card">

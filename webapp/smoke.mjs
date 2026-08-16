@@ -121,6 +121,12 @@ const SEARCH_UNLOCKED = {
   locked: false,
   partners: [],
   has_recruiter_profile: true,
+  // CV чужого профиля (16.08.2026) — проверка, что CvReadOnly реально
+  // рендерится в ResultCard, не только в собственном "Посмотреть моё CV".
+  cv_profession: "Head of Partnerships",
+  cv_grade: "Lead (8+ years)",
+  cv_location: "Malta",
+  cv_skills: "Affiliate marketing, negotiations",
 };
 
 // Мок кабинета рекрутера (Фаза 3, 12.08.2026) — простое in-memory
@@ -510,6 +516,8 @@ await step("search-unlocked-write-message", async () => {
   await sleep(500);
   const writeBtn = page.getByRole("button", { name: "✉️ Написать" });
   console.log("write button visible on unlocked profile:", await writeBtn.isVisible().catch(() => false));
+  const otherCvText = await page.locator(".cv-readonly").innerText().catch(() => "");
+  console.log("other user's CV visible on unlocked profile:", otherCvText.includes("Head of Partnerships"));
   await page.screenshot({ path: "smoke_2f_unlocked_profile.png" });
 
   await writeBtn.click();
@@ -982,6 +990,36 @@ await step("cv-expansion-fields", async () => {
   const entryGone = !(await experienceCard.getByText("Marketing Lead — GURO Co").isVisible().catch(() => false));
   console.log("cv: experience entry deleted after removal:", entryGone);
 
+  await page.getByRole("button", { name: "‹ Профиль" }).click();
+  await sleep(300);
+});
+
+await step("cv-view-and-share", async () => {
+  // "Посмотреть моё CV" (16.08.2026) — read-only показ уже заполненных
+  // (предыдущим шагом) полей + кнопка "Поделиться". Профиль -> Моё CV уже
+  // содержит Head of Marketing/Odesa/Senior/релокация Да/зарплата 2000-3500
+  // из cv-expansion-fields.
+  await page.getByRole("button", { name: "Моё CV" }).click();
+  await sleep(300);
+  await page.getByRole("button", { name: "👁 Посмотреть моё CV" }).click();
+  await sleep(300);
+  const viewText = await page.locator(".cv-readonly").innerText().catch(() => "");
+  console.log("cv view shows profession:", viewText.includes("Head of Marketing"),
+    "| location:", viewText.includes("Odesa"),
+    "| grade:", viewText.includes("Senior"));
+  await page.screenshot({ path: "smoke_5m_cv_view.png" });
+
+  await page.getByRole("button", { name: "📤 Поделиться CV" }).click();
+  await sleep(300);
+  const openedLinks = await page.evaluate(() => window.__openedLinks || []);
+  const shareLink = openedLinks[openedLinks.length - 1] || "";
+  console.log("cv share opened t.me/share link:", shareLink.includes("t.me/share/url"),
+    "| contains deeplink to guro_:", shareLink.includes(encodeURIComponent("start=guro_")));
+
+  await page.getByRole("button", { name: "‹ К редактированию" }).click();
+  await sleep(300);
+  console.log("back to edit mode:",
+    await page.getByRole("button", { name: "👁 Посмотреть моё CV" }).isVisible().catch(() => false));
   await page.getByRole("button", { name: "‹ Профиль" }).click();
   await sleep(300);
 });

@@ -346,7 +346,7 @@ const STRINGS = {
   "confirm.amountPaidPlaceholder": { ru: "Я заплатил, $", en: "I paid, $" },
   "confirm.amountVisible": { ru: "Показывать сумму чужим (по умолчанию скрыта)", en: "Show amount to others (hidden by default)" },
   "confirm.txHashLabel": { ru: "Хэш транзакции (необязательно)", en: "Transaction hash (optional)" },
-  "confirm.txHashPlaceholder": { ru: "Если платили в крипте — вставьте хэш перевода", en: "If paid in crypto — paste the transfer hash" },
+  "confirm.txHashPlaceholder": { ru: "Например: 0x71c4…e9a3", en: "E.g.: 0x71c4…e9a3" },
   "confirm.txHashHint": {
     ru: "Подтверждает реальность перевода. Виден вместе с суммой — по той же галочке выше.",
     en: "Backs up the transfer as real. Shown together with the amount — same checkbox above.",

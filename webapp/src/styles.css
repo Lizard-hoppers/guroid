@@ -293,6 +293,15 @@ textarea {
   outline: none;
 }
 
+/* Длинный placeholder на узком инпуте иначе вылезает за рамку на Qt
+   WebEngine (Telegram Desktop) — нашли на поле "Хэш транзакции" 17.08.2026.
+   text-overflow работает и для placeholder-текста в input[type="text"]. */
+input[type="text"] {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 textarea {
   resize: vertical;
 }

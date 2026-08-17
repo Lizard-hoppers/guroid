@@ -605,7 +605,7 @@ await step("confirm-partnership-form-fields", async () => {
   await page.fill('input[placeholder="Я заплатил, $"]', "50");
   await page.getByRole("checkbox").click();
   // Хэш транзакции (16.08.2026) — привязан к той же галочке видимости, что суммы.
-  await page.fill('input[placeholder="Если платили в крипте — вставьте хэш перевода"]', "0xdeadbeef123");
+  await page.fill('input[placeholder="Например: 0x71c4…e9a3"]', "0xdeadbeef123");
   await page.fill('textarea[placeholder="Как прошло сотрудничество"]', "Отличная сделка");
   await page.screenshot({ path: "smoke_3b_confirm_filled.png" });
   await page.getByRole("button", { name: "Отправить на подтверждение" }).click();

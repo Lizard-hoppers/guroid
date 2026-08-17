@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 _PRODUCTS = {
     "guro_id": ("guro_id_subscription", GC.SUBSCRIPTION_PLANS),
     "recruiter": ("guro_id_recruiter_subscription", GC.RECRUITER_SUBSCRIPTION_PLANS),
+    "company": ("guro_id_company_subscription", GC.COMPANY_SUBSCRIPTION_PLANS),
 }
 
 
@@ -61,6 +62,14 @@ async def on_guro_successful_payment(update: Update, context: ContextTypes.DEFAU
         await update.message.reply_text(
             f"✅ Кабинет рекрутера GURO ID активирован до {expires_at[:10]} — "
             "публикация вакансий и просмотр резюме открыты."
+        )
+        return
+
+    if product == "company":
+        expires_at = storage.activate_company_subscription(update.effective_user.id, cfg["duration_days"])
+        await update.message.reply_text(
+            f"✅ Кабинет компании GURO ID активирован до {expires_at[:10]} — "
+            "бренд-страница работодателя открыта."
         )
         return
 

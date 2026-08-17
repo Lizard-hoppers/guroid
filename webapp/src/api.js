@@ -159,6 +159,21 @@ export function setRecruiterPrivacyField(field, value) {
   });
 }
 
+// Кабинет "Компания" (16.08.2026) — третий воркспейс, зеркало рекрутера.
+export function setCompanyProfileField(field, value) {
+  return request("/api/company/profile", {
+    method: "POST",
+    body: JSON.stringify({ field, value }),
+  });
+}
+
+export function setCompanyPrivacyField(field, value) {
+  return request("/api/company/privacy", {
+    method: "POST",
+    body: JSON.stringify({ field, value }),
+  });
+}
+
 export function setWorkStatus(status) {
   return request("/api/work_status", {
     method: "POST",

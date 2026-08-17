@@ -77,6 +77,29 @@ RECRUITER_SUBSCRIPTION_PLANS = {
 # рабочем режиме, например "HR отдел GURO Labs"), не читаются из profiles.
 RECRUITER_EXTRA_FIELDS = ("name", "company", "vertical", "profession", "cv_text", "website", "offering", "logo_url")
 
+# Кабинет "Компания" (16.08.2026, по прямому запросу владельца) — ТРЕТИЙ
+# воркспейс, параллельный Рекрутеру, той же архитектурой (сателлит-
+# таблица, своя подписка). Разница по итогу обсуждения с владельцем:
+# Компания — бренд-страница работодателя (лого/описание/сайт), Рекрутер —
+# конкретный человек внутри неё (как LinkedIn Company Page vs Recruiter
+# Profile). "name" здесь = название компании (не имя человека, как у
+# рекрутера) — то же имя поля намеренно, для единообразия остальной
+# generic-инфраструктуры (get_company_extra/set_company_profile_field).
+COMPANY_SUBSCRIPTION_PLANS = {
+    "monthly": {
+        "label": "Месяц",
+        "duration_days": 30,
+        "stars_price": 800,
+    },
+    "yearly": {
+        "label": "Год",
+        "duration_days": 365,
+        "stars_price": 7000,
+        "stars_price_full": 9600,
+    },
+}
+COMPANY_EXTRA_FIELDS = ("name", "vertical", "website", "description", "logo_url")
+
 # Курс Stars -> USD НЕ публикуется Telegram официально как единая ставка —
 # только цена IAP-пакетов (Apple/Google), а она сама плавает по размеру
 # пакета (~$0.013-0.02/⭐ в разных бандлах). Это осознанно приближённая,

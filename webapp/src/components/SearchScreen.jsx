@@ -26,10 +26,11 @@ const VERTICALS = ["Gambling", "Betting", "Crypto", "Dating", "E-Commerce", "Fin
 // onWrite передаётся только для РАЗБЛОКИРОВАННОГО профиля (см. рендер ниже) —
 // то же условие подписки смотрящего, что уже пускает писать первым в
 // handle_send_message (storage.send_message), кнопка просто следует
-// готовому серверному правилу, не дублирует его. onViewRecruiter — только
-// если у человека есть активный кабинет рекрутера (has_recruiter_profile,
-// Фаза 3), не запрашиваем recruiter-карточку вслепую на каждый профиль.
-function ResultCard({ p, onWrite, onViewRecruiter }) {
+// готовому серверному правилу, не дублирует его. onViewRecruiter/
+// onViewCompany — только если у человека есть активный кабинет
+// (has_recruiter_profile/has_company_profile), не запрашиваем карточку
+// вслепую на каждый профиль.
+function ResultCard({ p, onWrite, onViewRecruiter, onViewCompany }) {
   const { t } = useLang();
   const heading = p.name === null ? t("common.hidden") : p.name || (p.username ? `@${p.username}` : t("common.noName"));
   return (
@@ -62,6 +63,16 @@ function ResultCard({ p, onWrite, onViewRecruiter }) {
             onClick={onViewRecruiter}
           >
             {t("recruiterViewBtn")}
+          </button>
+        )}
+        {p.has_company_profile && onViewCompany && (
+          <button
+            type="button"
+            className="btn secondary"
+            style={{ marginTop: 8 }}
+            onClick={onViewCompany}
+          >
+            {t("companyViewBtn")}
           </button>
         )}
       </div>
@@ -107,6 +118,38 @@ function RecruiterResultCard({ p, onBackToPersonal }) {
         </div>
       )}
       {p.offering && <div className="partner-meta" style={{ marginTop: 4 }}>{t("recruiterCard.offering")}{p.offering}</div>}
+    </div>
+  );
+}
+
+// Карточка кабинета "Компания" контрагента (Фаза 5, 17.08.2026) — зеркало
+// RecruiterResultCard: бренд-страница работодателя, без рейтинга/партнёрств.
+function CompanyResultCard({ p, onBackToPersonal }) {
+  const { t } = useLang();
+  const heading = p.name || (p.username ? `@${p.username}` : t("common.noName"));
+  return (
+    <div className="card">
+      <button type="button" className="subscreen-back" onClick={onBackToPersonal} style={{ marginBottom: 10 }}>
+        {t("common.backToPersonal")}
+      </button>
+      <div className="profile-header-card">
+        {p.logo_url ? (
+          <img className="profile-avatar" src={p.logo_url} alt="" />
+        ) : (
+          <div className="profile-avatar-fallback">{initialOf(p.name)}</div>
+        )}
+        <div className="profile-header-info">
+          <h2 className={p.name === null ? "hidden-value" : ""}>{heading}</h2>
+        </div>
+      </div>
+      <IdentityLine label={t("companyCard.vertical")} value={p.vertical} />
+      {p.description && <div className="partner-meta" style={{ marginTop: 8 }}>{p.description}</div>}
+      {p.website && (
+        <div className="partner-meta" style={{ marginTop: 4 }}>
+          {t("companyCard.website")}
+          <a href={ensureHttpUrl(p.website)} target="_blank" rel="noopener noreferrer">{p.website}</a>
+        </div>
+      )}
     </div>
   );
 }
@@ -225,6 +268,19 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
     }
   }
 
+  // Переключение личный/компания для УЖЕ ОТКРЫТОГО чужого профиля (Фаза 5).
+  async function viewCompanyCard() {
+    const userId = state.data?.user_id;
+    if (!userId) return;
+    setState({ loading: true, data: null, error: null });
+    try {
+      const data = await searchByUserId(userId, { workspace: "company" });
+      setState({ loading: false, data, error: null });
+    } catch (error) {
+      setState({ loading: false, data: null, error });
+    }
+  }
+
   async function backToPersonalCard() {
     const userId = state.data?.user_id;
     if (!userId) return;
@@ -327,17 +383,26 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
         <RecruiterResultCard p={state.data} onBackToPersonal={backToPersonalCard} />
       )}
 
+      {state.data && state.data.mode === "profile" && state.data.workspace === "company" && !state.data.locked && (
+        <CompanyResultCard p={state.data} onBackToPersonal={backToPersonalCard} />
+      )}
+
       {state.data && state.data.mode === "profile" &&
-        state.data.workspace !== "recruiter" && state.data.locked && (
+        !state.data.workspace && state.data.locked && (
         <LockedOverlay onUnlock={() => onNavigate("subscribe")}>
           <ResultCard p={state.data} />
         </LockedOverlay>
       )}
 
       {state.data && state.data.mode === "profile" &&
-        state.data.workspace !== "recruiter" && !state.data.locked && (
+        !state.data.workspace && !state.data.locked && (
         <div>
-          <ResultCard p={state.data} onWrite={onOpenMessages} onViewRecruiter={viewRecruiterCard} />
+          <ResultCard
+            p={state.data}
+            onWrite={onOpenMessages}
+            onViewRecruiter={viewRecruiterCard}
+            onViewCompany={viewCompanyCard}
+          />
           <div className="card">
             <h3>{t("rating.otherHistoryTitle")}</h3>
             <PartnersList partners={state.data.partners} emptyHint={t("rating.emptyOther")} />

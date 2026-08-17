@@ -20,15 +20,52 @@ const RECRUITER_COMPARE_ROWS = [
   "subscribe.compareRecruiter.visibility",
 ];
 
+// Кабинет "Компания" (Фаза 5, 16-17.08.2026) — та же цепочка, третий product.
+const COMPANY_COMPARE_ROWS = [
+  "subscribe.compareCompany.brand",
+  "subscribe.compareCompany.showcase",
+  "subscribe.compareCompany.visibility",
+];
+
 // Тир строки в COMPARE_ROWS вычисляется по позиции — первая всегда
 // бесплатная (статус трудоустройства / общий рейтинг), остальные платные.
 // Не идеально общее решение, но проще, чем городить отдельный объект ради
-// одного булева флага на 3-4 строки.
+// одного булева флага на 3-4 строки. У кабинета компании бесплатной строки
+// нет вообще (freeIndex остаётся -1 через ?? ниже).
 const FREE_ROW_INDEX = { guro_id: 0, recruiter: 0 };
+
+// Конфиг по product — вместо растущего дерева isRecruiter/isCompany
+// тернарников (см. фидбек-урок сессии: параметризация вместо копий экрана).
+const PRODUCT_CONFIG = {
+  guro_id: {
+    workspace: undefined,
+    subscribedKey: "is_subscribed",
+    expiresKey: "subscription_expires_at",
+    titleKey: "subscribe.titleGuro",
+    hintKey: "subscribe.hintGuro",
+    compareRows: COMPARE_ROWS,
+  },
+  recruiter: {
+    workspace: "recruiter",
+    subscribedKey: "is_recruiter_subscribed",
+    expiresKey: "recruiter_subscription_expires_at",
+    titleKey: "subscribe.titleRecruiter",
+    hintKey: "subscribe.hintRecruiter",
+    compareRows: RECRUITER_COMPARE_ROWS,
+  },
+  company: {
+    workspace: "company",
+    subscribedKey: "is_company_subscribed",
+    expiresKey: "company_subscription_expires_at",
+    titleKey: "subscribe.titleCompany",
+    hintKey: "subscribe.hintCompany",
+    compareRows: COMPANY_COMPARE_ROWS,
+  },
+};
 
 export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
   const { t } = useLang();
-  const isRecruiter = product === "recruiter";
+  const cfg = PRODUCT_CONFIG[product] ?? PRODUCT_CONFIG.guro_id;
   const [me, setMe] = useState(null);
   const [plansData, setPlansData] = useState(null);
   const [selected, setSelected] = useState("monthly");
@@ -37,7 +74,7 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
   const [justPaid, setJustPaid] = useState(false);
 
   useEffect(() => {
-    getMe({ workspace: isRecruiter ? "recruiter" : undefined })
+    getMe({ workspace: cfg.workspace })
       .then(setMe)
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -90,15 +127,15 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
     }
   }
 
-  const isSubscribed = justPaid || (isRecruiter ? me?.is_recruiter_subscribed : me?.is_subscribed);
-  const expiresAt = isRecruiter ? me?.recruiter_subscription_expires_at : me?.subscription_expires_at;
+  const isSubscribed = justPaid || me?.[cfg.subscribedKey];
+  const expiresAt = me?.[cfg.expiresKey];
   const plan = plansData?.plans?.[selected];
-  const compareRows = isRecruiter ? RECRUITER_COMPARE_ROWS : COMPARE_ROWS;
+  const compareRows = cfg.compareRows;
   const freeIndex = FREE_ROW_INDEX[product] ?? -1;
 
   return (
     <div className="card">
-      <h3>{isRecruiter ? t("subscribe.titleRecruiter") : t("subscribe.titleGuro")}</h3>
+      <h3>{t(cfg.titleKey)}</h3>
       {isSubscribed ? (
         <Msg type="ok">
           {t("subscribe.active")}
@@ -106,7 +143,7 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
         </Msg>
       ) : (
         <>
-          <div className="privacy-hint">{isRecruiter ? t("subscribe.hintRecruiter") : t("subscribe.hintGuro")}</div>
+          <div className="privacy-hint">{t(cfg.hintKey)}</div>
           {compareRows.map((key, i) => (
             <div className="compare-row" key={key}>
               <span>{t(key)}</span>

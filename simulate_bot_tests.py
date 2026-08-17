@@ -3374,6 +3374,108 @@ async def _run_guro_id_api_sim():
                 check(not app["storage"].is_subscribed(355),
                       "crypto webhook recruiter НЕ активирует базовую GURO ID подписку (разные продукты)")
 
+                # --- Фаза 5 (17.08.2026): кабинет "Компания" ---------------------
+                # Зеркало кабинета рекрутера выше — третий воркспейс поверх
+                # личного профиля, бренд-страница работодателя отдельно от
+                # конкретного рекрутера внутри неё (см. AskUserQuestion от
+                # 16.08.2026: "Компания — бренд-страница, Рекрутер — человек
+                # внутри неё"). Своя подписка, тот же price/механизм, что и
+                # у рекрутера (800⭐/мес, 7000⭐/год).
+                resp = await client.get("/api/me?workspace=company", headers=auth_100)
+                check(resp.status == 200, "GET /api/me?workspace=company -> 200 (не требует своей анкеты)")
+                body = await resp.json()
+                check(body["is_company_subscribed"] is False, "свежий кабинет компании -> подписки ещё нет")
+                check(body["name"] is None, "поля кабинета компании пока не заполнены")
+                check(body["privacy"] == {f: False for f in GC.PRIVACY_FIELDS},
+                      "приватность компании тоже default-False (opt-in, тот же принцип)")
+
+                resp = await client.post("/api/company/profile", headers=auth_100,
+                                          json={"field": "unknown_field", "value": "x"})
+                check(resp.status == 400, "POST /api/company/profile с неизвестным полем -> 400")
+
+                resp = await client.post("/api/company/profile", headers=auth_100,
+                                          json={"field": "name", "value": "GURO Casino Ltd"})
+                check(resp.status == 200, "POST /api/company/profile name -> 200")
+                body = await resp.json()
+                check(body["name"] == "GURO Casino Ltd", "/api/company/profile возвращает обновлённое значение")
+                await client.post("/api/company/profile", headers=auth_100,
+                                   json={"field": "vertical", "value": "iGaming"})
+
+                resp = await client.post("/api/company/privacy", headers=auth_100,
+                                          json={"field": "unknown_field", "value": True})
+                check(resp.status == 400, "POST /api/company/privacy с неизвестным полем -> 400")
+
+                resp = await client.post("/api/company/privacy", headers=auth_100,
+                                          json={"field": "show_name", "value": True})
+                check(resp.status == 200, "POST /api/company/privacy show_name -> 200")
+
+                resp = await client.get("/api/search?workspace=company&username=nobody", headers=auth_200)
+                check(resp.status == 404, "company-просмотр несуществующего юзернейма -> 404 NOT_FOUND")
+
+                resp = await client.get("/api/search?workspace=company&username=initiator", headers=auth_200)
+                check(resp.status == 404, "чужой просмотр company-кабинета без подписки компании у цели -> 404")
+                body = await resp.json()
+                check(body["error"] == "NO_COMPANY_PROFILE", "тело содержит понятный код ошибки")
+
+                app["storage"].activate_company_subscription(100, 30)
+
+                resp = await client.get("/api/search?workspace=company&username=initiator", headers=auth_200)
+                check(resp.status == 200, "чужой просмотр company-кабинета С активной подпиской компании -> 200")
+                body = await resp.json()
+                check(body["locked"] is False, "auth_200 подписан на базовый GURO ID -> карточка разблокирована")
+                check(body["name"] == "GURO Casino Ltd", "show_name включён -> имя компании видно")
+                check(body["vertical"] is None,
+                      "show_vertical НЕ включали -> vertical скрыт (opt-in по каждому полю независимо)")
+
+                resp = await client.get("/api/search?workspace=company&username=initiator", headers=auth_495)
+                check(resp.status == 200, "company-кабинет виден даже без подписки СМОТРЯЩЕГО, но как тизер")
+                body = await resp.json()
+                check(body["locked"] is True, "495 без базовой подписки -> locked=True и для company-карточки")
+
+                # тарифы/подписка/крипто-вебхук кабинета компании — та же
+                # цепочка, что у кабинета рекрутера, через product=company,
+                # та же цена (согласовано с владельцем 16.08.2026)
+                resp = await client.get("/api/plans?product=company")
+                check(resp.status == 200, "GET /api/plans?product=company -> 200")
+                body = await resp.json()
+                check(body["plans"]["monthly"]["stars_price"] == 800,
+                      "кабинет компании: месяц = 800⭐ (та же цена, что у рекрутера)")
+                check(body["plans"]["yearly"]["stars_price"] == 7000, "кабинет компании: год = 7000⭐")
+                check(body["plans"]["yearly"]["stars_price_full"] == 9600,
+                      "кабинет компании: 'полная' цена года = 800*12, для скидочной плашки")
+
+                resp = await client.post("/api/subscribe", headers=auth_100,
+                                          json={"product": "company", "plan": "monthly"})
+                check(resp.status == 200, "POST /api/subscribe product=company -> 200")
+                body = await resp.json()
+                check(body["invoice_link"] == "https://t.me/fake_invoice_link",
+                      "company subscribe тоже отдаёт invoice_link (общая платёжная цепочка)")
+
+                webhook_body_c = _json.dumps({
+                    "update_type": "invoice_paid",
+                    "payload": {"payload": "guro_id_company_subscription:yearly:356"},
+                }).encode()
+                good_sig_c = hmac.new(secret, webhook_body_c, hashlib.sha256).hexdigest()
+                resp = await client.post("/api/crypto/webhook", data=webhook_body_c,
+                                          headers={"crypto-pay-api-signature": good_sig_c})
+                check(resp.status == 200, "crypto webhook company с верной подписью -> 200")
+                check(app["storage"].is_company_subscribed(356),
+                      "crypto webhook company -> подписка компании активирована")
+                check(not app["storage"].is_subscribed(356),
+                      "crypto webhook company НЕ активирует базовую GURO ID подписку (разные продукты)")
+
+                # has_recruiter_profile/has_company_profile на личном профиле
+                # (флаги для кнопок "Посмотреть как рекрутера/компанию" в
+                # поиске — has_recruiter_profile был найден НЕ РЕАЛИЗОВАННЫМ
+                # при работе над этой фичей, починен заодно)
+                resp = await client.get("/api/search?username=initiator", headers=auth_200)
+                check(resp.status == 200, "личный просмотр initiator после активации обоих доп.кабинетов -> 200")
+                body = await resp.json()
+                check(body["has_recruiter_profile"] is True,
+                      "has_recruiter_profile=True после activate_recruiter_subscription (был не реализован, починен)")
+                check(body["has_company_profile"] is True,
+                      "has_company_profile=True после activate_company_subscription")
+
                 # --- Фаза 4 (12.08.2026): вакансии + резюме ---------------------
                 resp = await client.post("/api/vacancies", headers=auth_200, json={"title": "PM"})
                 check(resp.status == 402,
@@ -3730,6 +3832,27 @@ async def _run_guro_partnerships_sim():
         check(any("рекрутера" in t for t in replies2), "successful_payment recruiter -> подтверждение про кабинет")
         check(not any(c[1] == 2 for c in context.bot.set_tag_calls),
               "recruiter-подписка не трогает статус-тег в чате (тот привязан только к базовой подписке)")
+
+        # Кабинет "Компания" (Фаза 5, 17.08.2026) — та же bot-side цепочка,
+        # ещё один product-префикс payload, своя таблица.
+        msg3 = FakeMessage("", chat_id=3)
+        msg3.successful_payment = _FakeSuccessfulPayment("guro_id_company_subscription:yearly:3")
+        replies3 = []
+
+        async def _capture_reply3(text, **kw):
+            replies3.append(text)
+
+        msg3.reply_text = _capture_reply3
+        u_payment3 = _Ns()
+        u_payment3.message = msg3
+        u_payment3.effective_user = FakeUser(3, "carol")
+        await on_guro_successful_payment(u_payment3, context)
+        check(gstorage.is_company_subscribed(3), "successful_payment company -> подписка компании активирована")
+        check(not gstorage.is_subscribed(3),
+              "company-подписка НЕ активирует базовую GURO ID подписку (разные продукты/таблицы)")
+        check(any("компании" in t for t in replies3), "successful_payment company -> подтверждение про кабинет")
+        check(not any(c[1] == 3 for c in context.bot.set_tag_calls),
+              "company-подписка не трогает статус-тег в чате (тот привязан только к базовой подписке)")
 
 
 async def _run_guro_tags_sim():

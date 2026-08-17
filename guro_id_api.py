@@ -115,6 +115,14 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
         "subscription_status": guro_user["subscription_status"],
         "subscription_expires_at": guro_user["subscription_expires_at"],
         "is_subscribed": storage.is_subscribed(user_id),
+        # Флаги для кнопок "Посмотреть как рекрутера"/"...компанию" в поиске
+        # (SearchScreen.jsx). has_recruiter_profile обнаружен ОТСУТСТВУЮЩИМ
+        # при работе над кабинетом "Компания" 16.08.2026 (комментарии в
+        # коде описывали его как уже сделанный, по факту поля не было ни
+        # тут, ни где-либо ещё в бэкенде — кнопка молча никогда не
+        # показывалась) — заодно починил вместе с добавлением компании.
+        "has_recruiter_profile": storage.is_recruiter_subscribed(user_id),
+        "has_company_profile": storage.is_company_subscribed(user_id),
     }
 
 
@@ -206,6 +214,21 @@ def _recruiter_summary(storage: GuroStorage, user_id: int) -> dict:
     }
 
 
+def _company_summary(storage: GuroStorage, user_id: int) -> dict:
+    """Кабинет "Компания" (16.08.2026) — зеркало _recruiter_summary выше,
+    третий воркспейс поверх личного профиля."""
+    row = storage.get_or_create_company_profile(user_id)
+    extra = storage.get_company_extra(user_id)
+    return {
+        "workspace": "company",
+        "user_id": user_id,
+        **extra,
+        "company_subscription_status": row["subscription_status"],
+        "company_subscription_expires_at": row["subscription_expires_at"],
+        "is_company_subscribed": storage.is_company_subscribed(user_id),
+    }
+
+
 async def handle_me(request: web.Request) -> web.Response:
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
@@ -213,6 +236,11 @@ async def handle_me(request: web.Request) -> web.Response:
     if request.query.get("workspace") == "recruiter":
         summary = _recruiter_summary(storage, user["id"])
         summary["privacy"] = storage.get_recruiter_privacy(user["id"])
+        return web.json_response(summary)
+
+    if request.query.get("workspace") == "company":
+        summary = _company_summary(storage, user["id"])
+        summary["privacy"] = storage.get_company_privacy(user["id"])
         return web.json_response(summary)
 
     summary = _profile_summary(storage, user["id"])
@@ -319,6 +347,52 @@ def _recruiter_profile_response(storage: GuroStorage, requester_id: int, target_
         "user_id": target_user_id,
         "name": summary.get("name"),
         "company": summary.get("company"),
+        "locked": True,
+    }
+
+
+# Аналог _RECRUITER_PRIVACY_FIELD_MAP для кабинета "Компания" (16.08.2026) —
+# те же PRIVACY_FIELDS, что и у рекрутера/личного профиля, но реально
+# гейтят только 4 существующих поля (show_company/show_profession/
+# show_offers/show_tenure/show_reputation тут ни на что не влияют — нет
+# соответствующих полей у компании, тот же принцип "лишние тумблеры
+# существуют, но неактивны", что уже принят у рекрутера).
+_COMPANY_PRIVACY_FIELD_MAP = {
+    "show_name": ("name", "logo_url"),
+    "show_vertical": ("vertical",),
+    "show_cv": ("description",),
+    "show_contacts": ("website",),
+}
+
+
+def _apply_company_privacy(summary: dict, privacy: dict) -> dict:
+    result = dict(summary)
+    for flag, fields in _COMPANY_PRIVACY_FIELD_MAP.items():
+        if not privacy.get(flag):
+            for field in fields:
+                result[field] = None
+    return result
+
+
+def _company_profile_response(storage: GuroStorage, requester_id: int, target_user_id: int) -> dict | None:
+    """Карточка ЧУЖОГО кабинета "Компания" — зеркало _recruiter_profile_
+    response выше."""
+    if not storage.is_company_subscribed(target_user_id):
+        return None
+    extra = storage.get_company_extra(target_user_id)
+    privacy = storage.get_company_privacy(target_user_id)
+    summary = {"workspace": "company", "mode": "profile", "user_id": target_user_id, **extra}
+    summary = _apply_company_privacy(summary, privacy)
+
+    if storage.is_subscribed(requester_id):
+        summary["locked"] = False
+        return summary
+
+    return {
+        "workspace": "company",
+        "mode": "profile",
+        "user_id": target_user_id,
+        "name": summary.get("name"),
         "locked": True,
     }
 
@@ -507,6 +581,29 @@ async def handle_search(request: web.Request) -> web.Response:
         response = _recruiter_profile_response(storage, requester["id"], target_id)
         if response is None:
             return web.json_response({"error": "NO_RECRUITER_PROFILE"}, status=404)
+        return web.json_response(response)
+
+    if request.query.get("workspace") == "company":
+        # Просмотр ЧУЖОГО кабинета "Компания" (16.08.2026) — зеркало ветки
+        # workspace=recruiter выше.
+        target_id: int | None = None
+        if user_id_param:
+            try:
+                target_id = int(user_id_param)
+            except ValueError:
+                target_id = None
+        elif username:
+            target_profile = storage.find_profile_by_username(username)
+            target_id = target_profile["user_id"] if target_profile else None
+        else:
+            q = query.strip()
+            target_profile = storage.find_profile_by_username(q) if q else None
+            target_id = target_profile["user_id"] if target_profile else None
+        if target_id is None:
+            return web.json_response({"error": "NOT_FOUND"}, status=404)
+        response = _company_profile_response(storage, requester["id"], target_id)
+        if response is None:
+            return web.json_response({"error": "NO_COMPANY_PROFILE"}, status=404)
         return web.json_response(response)
 
     if user_id_param:
@@ -781,6 +878,34 @@ async def handle_set_recruiter_privacy(request: web.Request) -> web.Response:
     return web.json_response(privacy)
 
 
+async def handle_set_company_profile_field(request: web.Request) -> web.Response:
+    """Редактирование витрины кабинета "Компания" (16.08.2026) — зеркало
+    handle_set_recruiter_profile_field выше."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    field = str(body.get("field", ""))
+    value = str(body.get("value", "")).strip()[:2000] or None
+    try:
+        extra = storage.set_company_extra_field(user["id"], field, value)
+    except ValueError:
+        return web.json_response({"error": "UNKNOWN_FIELD"}, status=400)
+    return web.json_response(extra)
+
+
+async def handle_set_company_privacy(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    field = str(body.get("field", ""))
+    value = bool(body.get("value"))
+    try:
+        privacy = storage.set_company_privacy_field(user["id"], field, value)
+    except ValueError:
+        return web.json_response({"error": "UNKNOWN_FIELD"}, status=400)
+    return web.json_response(privacy)
+
+
 async def handle_set_work_status(request: web.Request) -> web.Response:
     """Публичный статус трудоустройства (looking/neutral/working/выкл) —
     НЕ через generic set_extra_profile_field, т.к. это не свободный текст,
@@ -1039,12 +1164,22 @@ async def handle_close_vacancy(request: web.Request) -> web.Response:
 # product -> тарифная сетка. Обобщено под ключ продукта (Фаза 3, 12.08.2026)
 # вместо копипасты Stars+крипто-эндпоинтов под кабинет рекрутера — одна
 # проверенная в проде платёжная цепочка на оба продукта.
-_PRODUCT_PLANS = {"guro_id": GC.SUBSCRIPTION_PLANS, "recruiter": GC.RECRUITER_SUBSCRIPTION_PLANS}
-_PRODUCT_PAYLOAD_PREFIX = {"guro_id": "guro_id_subscription", "recruiter": "guro_id_recruiter_subscription"}
-_PRODUCT_TITLE = {"guro_id": "GURO ID — подписка", "recruiter": "GURO ID — кабинет рекрутера"}
+_PRODUCT_PLANS = {
+    "guro_id": GC.SUBSCRIPTION_PLANS, "recruiter": GC.RECRUITER_SUBSCRIPTION_PLANS,
+    "company": GC.COMPANY_SUBSCRIPTION_PLANS,
+}
+_PRODUCT_PAYLOAD_PREFIX = {
+    "guro_id": "guro_id_subscription", "recruiter": "guro_id_recruiter_subscription",
+    "company": "guro_id_company_subscription",
+}
+_PRODUCT_TITLE = {
+    "guro_id": "GURO ID — подписка", "recruiter": "GURO ID — кабинет рекрутера",
+    "company": "GURO ID — кабинет компании",
+}
 _PRODUCT_DESCRIPTION = {
     "guro_id": "Полный поиск и просмотр профилей участников GURO ID: рейтинг, история партнёрств.",
     "recruiter": "Кабинет рекрутера GURO ID: отдельная витрина, публикация вакансий, просмотр резюме.",
+    "company": "Кабинет компании GURO ID: бренд-страница работодателя с логотипом и описанием.",
 }
 
 
@@ -1190,6 +1325,22 @@ async def handle_crypto_webhook(request: web.Request) -> web.Response:
             logger.exception("guro_id: не удалось уведомить о recruiter crypto-оплате user_id=%s", user_id)
         return web.Response(status=200)
 
+    if product == "company":
+        expires_at = storage.activate_company_subscription(user_id, cfg["duration_days"])
+        logger.info(
+            "guro_id: подписка компании активирована через крипту user_id=%s plan=%s до %s",
+            user_id, plan, expires_at,
+        )
+        try:
+            async with Bot(token=settings.bot_token) as bot:
+                await bot.send_message(
+                    user_id,
+                    f"✅ Кабинет компании GURO ID активирован до {expires_at[:10]} (оплата в крипте).",
+                )
+        except Exception:  # noqa: BLE001
+            logger.exception("guro_id: не удалось уведомить о company crypto-оплате user_id=%s", user_id)
+        return web.Response(status=200)
+
     expires_at = storage.activate_subscription(user_id, cfg["duration_days"])
     logger.info(
         "guro_id: подписка активирована через крипту user_id=%s plan=%s до %s",
@@ -1239,6 +1390,8 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/cv/experience/{entry_id}/delete", handle_delete_cv_experience)
     app.router.add_post("/api/recruiter/profile", handle_set_recruiter_profile_field)
     app.router.add_post("/api/recruiter/privacy", handle_set_recruiter_privacy)
+    app.router.add_post("/api/company/profile", handle_set_company_profile_field)
+    app.router.add_post("/api/company/privacy", handle_set_company_privacy)
     app.router.add_get("/api/qr", handle_get_qr)
     app.router.add_get("/api/invite_link", handle_invite_link)
     app.router.add_get("/api/vacancies", handle_list_vacancies)

@@ -69,6 +69,18 @@ CREATE TABLE IF NOT EXISTS guro_recruiter_profiles (
     updated_at TEXT
 );
 
+-- Кабинет "Компания" (16.08.2026) — ТРЕТИЙ воркспейс, тот же сателлит-
+-- принцип, что у кабинета рекрутера выше: не трогает guro_users/личный
+-- профиль, своя ОТДЕЛЬНАЯ подписка (COMPANY_EXTRA_FIELDS +
+-- PRIVACY_FIELDS-тумблеры добавляются мягкой миграцией ниже).
+CREATE TABLE IF NOT EXISTS guro_company_profiles (
+    user_id INTEGER PRIMARY KEY,
+    subscription_status TEXT DEFAULT 'inactive',
+    subscription_expires_at TEXT,
+    created_at TEXT,
+    updated_at TEXT
+);
+
 -- Вакансии (Фаза 4, 12.08.2026) — публикует только подписчик кабинета
 -- рекрутера (проверяется в guro_id_api.handle_create_vacancy, не тут).
 CREATE TABLE IF NOT EXISTS guro_vacancies (
@@ -156,6 +168,12 @@ class GuroStorage:
             self._ensure_column("guro_recruiter_profiles", field, "TEXT")
         for field in GC.PRIVACY_FIELDS:
             self._ensure_column("guro_recruiter_profiles", field, "INTEGER DEFAULT 0")
+        # Кабинет "Компания" (16.08.2026) — тот же приём, что у рекрутера
+        # выше, применённый к третьей таблице.
+        for field in GC.COMPANY_EXTRA_FIELDS:
+            self._ensure_column("guro_company_profiles", field, "TEXT")
+        for field in GC.PRIVACY_FIELDS:
+            self._ensure_column("guro_company_profiles", field, "INTEGER DEFAULT 0")
         # Расширение "Моё CV" (12.08.2026) — новые поля личного профиля,
         # гейтятся существующим show_cv (см. guro_constants.CV_SIMPLE_FIELDS).
         self._ensure_column("guro_users", "cv_profession", "TEXT")
@@ -360,6 +378,75 @@ class GuroStorage:
         )
         self._conn.commit()
         return self.get_recruiter_privacy(user_id)
+
+    # --- кабинет "Компания" (16.08.2026) — зеркало кабинета рекрутера ---
+
+    def get_or_create_company_profile(self, user_id: int) -> sqlite3.Row:
+        row = self._conn.execute(
+            "SELECT * FROM guro_company_profiles WHERE user_id=?", (user_id,)
+        ).fetchone()
+        if row is not None:
+            return row
+        self._conn.execute(
+            "INSERT INTO guro_company_profiles (user_id, created_at, updated_at) VALUES (?,?,?)",
+            (user_id, self._now_str(), self._now_str()),
+        )
+        self._conn.commit()
+        return self._conn.execute(
+            "SELECT * FROM guro_company_profiles WHERE user_id=?", (user_id,)
+        ).fetchone()
+
+    def is_company_subscribed(self, user_id: int) -> bool:
+        row = self._conn.execute(
+            "SELECT subscription_status, subscription_expires_at FROM guro_company_profiles WHERE user_id=?",
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        return GL.subscription_active(
+            row["subscription_status"], GL.parse_db_datetime(row["subscription_expires_at"]), self._now(),
+        )
+
+    def activate_company_subscription(self, user_id: int, duration_days: int) -> str:
+        self.get_or_create_company_profile(user_id)
+        expires_at = GL.subscription_expires_at(self._now(), duration_days)
+        self._conn.execute(
+            "UPDATE guro_company_profiles SET subscription_status=?, subscription_expires_at=?, "
+            "updated_at=? WHERE user_id=?",
+            (GC.SUBSCRIPTION_ACTIVE, GL.format_db_datetime(expires_at), self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return GL.format_db_datetime(expires_at)
+
+    def get_company_extra(self, user_id: int) -> dict:
+        row = self.get_or_create_company_profile(user_id)
+        return {field: row[field] for field in GC.COMPANY_EXTRA_FIELDS}
+
+    def set_company_extra_field(self, user_id: int, field: str, value: str | None) -> dict:
+        if field not in GC.COMPANY_EXTRA_FIELDS:
+            raise ValueError("UNKNOWN_FIELD")
+        self.get_or_create_company_profile(user_id)
+        self._conn.execute(
+            f"UPDATE guro_company_profiles SET {field}=?, updated_at=? WHERE user_id=?",
+            (value, self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return self.get_company_extra(user_id)
+
+    def get_company_privacy(self, user_id: int) -> dict:
+        row = self.get_or_create_company_profile(user_id)
+        return {field: bool(row[field]) for field in GC.PRIVACY_FIELDS}
+
+    def set_company_privacy_field(self, user_id: int, field: str, value: bool) -> dict:
+        if field not in GC.PRIVACY_FIELDS:
+            raise ValueError("UNKNOWN_FIELD")
+        self.get_or_create_company_profile(user_id)
+        self._conn.execute(
+            f"UPDATE guro_company_profiles SET {field}=?, updated_at=? WHERE user_id=?",
+            (1 if value else 0, self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return self.get_company_privacy(user_id)
 
     # --- partnerships -------------------------------------------------------
 

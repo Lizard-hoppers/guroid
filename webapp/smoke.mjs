@@ -122,6 +122,7 @@ const SEARCH_UNLOCKED = {
   locked: false,
   partners: [],
   has_recruiter_profile: true,
+  has_company_profile: true,
   // CV чужого профиля (16.08.2026) — проверка, что CvReadOnly реально
   // рендерится в ResultCard, не только в собственном "Посмотреть моё CV".
   cv_profession: "Head of Partnerships",
@@ -140,6 +141,20 @@ let recruiterState = {
   recruiter_subscription_status: "inactive",
   recruiter_subscription_expires_at: null,
   is_recruiter_subscribed: false,
+  privacy: {
+    show_name: false, show_company: false, show_vertical: false, show_profession: false,
+    show_tenure: false, show_reputation: false, show_cv: false, show_contacts: false, show_offers: false,
+  },
+};
+
+// Мок кабинета "Компания" (Фаза 5, 16-17.08.2026) — зеркало recruiterState.
+let companyState = {
+  workspace: "company",
+  user_id: 100,
+  name: null, vertical: null, website: null, description: null, logo_url: null,
+  company_subscription_status: "inactive",
+  company_subscription_expires_at: null,
+  is_company_subscribed: false,
   privacy: {
     show_name: false, show_company: false, show_vertical: false, show_profession: false,
     show_tenure: false, show_reputation: false, show_cv: false, show_contacts: false, show_offers: false,
@@ -197,6 +212,9 @@ await page.route("**/api/me**", (route) => {
   if (url.searchParams.get("workspace") === "recruiter") {
     return route.fulfill({ json: recruiterState });
   }
+  if (url.searchParams.get("workspace") === "company") {
+    return route.fulfill({ json: companyState });
+  }
   return route.fulfill({ json: { ...ME_PAYLOAD, privacy: privacyState } });
 });
 await page.route("**/api/recruiter/profile", async (route) => {
@@ -208,6 +226,16 @@ await page.route("**/api/recruiter/privacy", async (route) => {
   const body = route.request().postDataJSON();
   recruiterState.privacy = { ...recruiterState.privacy, [body.field]: body.value };
   route.fulfill({ json: recruiterState.privacy });
+});
+await page.route("**/api/company/profile", async (route) => {
+  const body = route.request().postDataJSON();
+  companyState[body.field] = body.value;
+  route.fulfill({ json: { [body.field]: body.value } });
+});
+await page.route("**/api/company/privacy", async (route) => {
+  const body = route.request().postDataJSON();
+  companyState.privacy = { ...companyState.privacy, [body.field]: body.value };
+  route.fulfill({ json: companyState.privacy });
 });
 await page.route("**/api/subscribe", (route) =>
   route.fulfill({ json: { invoice_link: "https://t.me/fake_invoice_link" } }),
@@ -228,7 +256,26 @@ await page.route("**/api/search**", (route) => {
       },
     });
   }
+  if (url.searchParams.get("workspace") === "company") {
+    return route.fulfill({
+      json: {
+        mode: "profile", workspace: "company", locked: false,
+        user_id: 888, username: "unlockeduser", name: "Acme Casino Ltd",
+        vertical: "iGaming", description: "Бренд-страница Acme Casino.",
+        website: "acme-casino.example",
+        logo_url: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBmaWxsPSIjZDRhZjM3Ii8+PC9zdmc+",
+      },
+    });
+  }
   if (url.searchParams.get("user_id")) {
+    // Раньше тут был безусловный возврат SEARCH_LOCKED (баг мока, вскрылся
+    // 17.08.2026 при добавлении шага view-company-card-of-other-user —
+    // backToPersonalCard() дергает именно этот путь, id=888 должен отдавать
+    // РАЗБЛОКИРОВАННЫЙ фикстур, не запертый "target").
+    const uid = url.searchParams.get("user_id");
+    if (uid === String(SEARCH_UNLOCKED.user_id)) {
+      return route.fulfill({ json: SEARCH_UNLOCKED });
+    }
     return route.fulfill({ json: SEARCH_LOCKED });
   }
   const q = url.searchParams.get("q") || "";
@@ -392,7 +439,7 @@ await page.route("**/api/messages", async (route) => {
 });
 await page.route("**/api/plans**", (route) => {
   const url = new URL(route.request().url());
-  if (url.searchParams.get("product") === "recruiter") {
+  if (url.searchParams.get("product") === "recruiter" || url.searchParams.get("product") === "company") {
     return route.fulfill({
       json: {
         plans: {
@@ -657,27 +704,59 @@ await step("contacts-qr-shortcut-and-invite", async () => {
 
 await step("recruiter-workspace-subscribe-and-edit", async () => {
   await page.getByRole("button", { name: "Рекрутер", exact: true }).click();
-  await sleep(400);
+  await page.getByText("800 ⭐").first().waitFor({ timeout: 5000 }).catch(() => {});
   await page.screenshot({ path: "smoke_6a_recruiter_upsell.png" });
   console.log("recruiter upsell shows correct price (800⭐):",
-    await page.getByText("800 ⭐").isVisible().catch(() => false));
+    await page.getByText("800 ⭐").first().isVisible().catch(() => false));
 
   await page.getByRole("button", { name: /Оформить/ }).click();
-  await sleep(400);
+  await page.getByText("Имя / подпись").first().waitFor({ timeout: 5000 }).catch(() => {});
   await page.screenshot({ path: "smoke_6b_recruiter_editor.png" });
   console.log("recruiter editor visible right after subscribe:",
-    await page.getByText("Имя / подпись").isVisible().catch(() => false));
+    // "Имя / подпись" встречается дважды на экране (лейбл поля + лейбл
+    // тумблера приватности) — .first() вместо ловли strict-mode ошибки.
+    await page.getByText("Имя / подпись").first().isVisible().catch(() => false));
 
   await page.getByRole("button", { name: "Заполнить" }).first().click();
   await sleep(200);
   await page.fill('input[placeholder="Например: Иван Петров, HR отдел"]', "Init HR");
   await page.getByRole("button", { name: "Сохранить" }).click();
-  await sleep(300);
-  console.log("recruiter name field saved:", await page.getByText("Init HR").isVisible().catch(() => false));
+  await page.getByText("Init HR").first().waitFor({ timeout: 5000 }).catch(() => {});
+  // "Init HR" тоже дублируется (визитка-хедер h2 + значение поля).
+  console.log("recruiter name field saved:", await page.getByText("Init HR").first().isVisible().catch(() => false));
 
   const toggles = await page.$$(".switch .slider");
   console.log("recruiter privacy toggles rendered (expect 7):", toggles.length);
   await page.screenshot({ path: "smoke_6c_recruiter_filled.png" });
+
+  await page.getByRole("button", { name: "Личный", exact: true }).click();
+  await sleep(300);
+});
+
+await step("company-workspace-subscribe-and-edit", async () => {
+  await page.getByRole("button", { name: "Компания", exact: true }).click();
+  await page.getByText("800 ⭐").first().waitFor({ timeout: 5000 }).catch(() => {});
+  await page.screenshot({ path: "smoke_7a_company_upsell.png" });
+  console.log("company upsell shows correct price (800⭐):",
+    await page.getByText("800 ⭐").first().isVisible().catch(() => false));
+
+  await page.getByRole("button", { name: /Оформить/ }).click();
+  await page.getByText("Название компании").first().waitFor({ timeout: 5000 }).catch(() => {});
+  await page.screenshot({ path: "smoke_7b_company_editor.png" });
+  console.log("company editor visible right after subscribe:",
+    // "Название компании" тоже дублируется (лейбл поля + лейбл тумблера).
+    await page.getByText("Название компании").first().isVisible().catch(() => false));
+
+  await page.getByRole("button", { name: "Заполнить" }).first().click();
+  await sleep(200);
+  await page.fill('input[placeholder="Например: GURO Casino Ltd"]', "GURO Casino Ltd");
+  await page.getByRole("button", { name: "Сохранить" }).click();
+  await page.getByText("GURO Casino Ltd").first().waitFor({ timeout: 5000 }).catch(() => {});
+  console.log("company name field saved:", await page.getByText("GURO Casino Ltd").first().isVisible().catch(() => false));
+
+  const companyToggles = await page.$$(".switch .slider");
+  console.log("company privacy toggles rendered (expect 4):", companyToggles.length);
+  await page.screenshot({ path: "smoke_7c_company_filled.png" });
 
   await page.getByRole("button", { name: "Личный", exact: true }).click();
   await sleep(300);
@@ -697,8 +776,20 @@ await step("view-recruiter-card-of-other-user", async () => {
     await page.getByText("Unlocked Recruiter").isVisible().catch(() => false));
   await page.screenshot({ path: "smoke_2m_other_recruiter_card.png" });
   await page.getByRole("button", { name: "‹ Личный профиль" }).click();
-  await sleep(400);
+  await page.getByText("Unlocked User").waitFor({ timeout: 5000 }).catch(() => {});
   console.log("back to personal card:",
+    await page.getByText("Unlocked User").isVisible().catch(() => false));
+
+  const viewCompanyBtn = page.getByRole("button", { name: "🏢 Посмотреть как компанию" });
+  console.log("view-as-company button visible:", await viewCompanyBtn.isVisible().catch(() => false));
+  await viewCompanyBtn.click();
+  await page.getByText("Acme Casino Ltd").waitFor({ timeout: 5000 }).catch(() => {});
+  console.log("company card of other user shown:",
+    await page.getByText("Acme Casino Ltd").isVisible().catch(() => false));
+  await page.screenshot({ path: "smoke_2n_other_company_card.png" });
+  await page.getByRole("button", { name: "‹ Личный профиль" }).click();
+  await page.getByText("Unlocked User").waitFor({ timeout: 5000 }).catch(() => {});
+  console.log("back to personal card (from company):",
     await page.getByText("Unlocked User").isVisible().catch(() => false));
 
   // Возвращаемся на вкладку "Профиль" — следующий по сценарию шаг

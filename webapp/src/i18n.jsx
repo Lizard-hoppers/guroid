@@ -55,6 +55,7 @@ const STRINGS = {
 
   "workspace.personal": { ru: "Личный", en: "Personal" },
   "workspace.recruiter": { ru: "Рекрутер", en: "Recruiter" },
+  "workspace.company": { ru: "Компания", en: "Company" },
 
   // --- Профиль / хаб ---
   "hub.status": { ru: "Статус", en: "Status" },
@@ -273,6 +274,7 @@ const STRINGS = {
   "thread.error.generic": { ru: "Не получилось отправить сообщение.", en: "Couldn't send the message." },
   "messageBtn": { ru: "✉️ Написать", en: "✉️ Message" },
   "recruiterViewBtn": { ru: "🧑‍💼 Посмотреть как рекрутера", en: "🧑‍💼 View as recruiter" },
+  "companyViewBtn": { ru: "🏢 Посмотреть как компанию", en: "🏢 View as company" },
 
   // --- Онбординг ---
   "onboarding.title": { ru: "Это ваша ID-карта", en: "This is your ID card" },
@@ -324,6 +326,8 @@ const STRINGS = {
   "recruiterCard.profession": { ru: "Должность: ", en: "Position: " },
   "recruiterCard.website": { ru: "Сайт: ", en: "Website: " },
   "recruiterCard.offering": { ru: "Чем полезен: ", en: "Can offer: " },
+  "companyCard.vertical": { ru: "Вертикаль: ", en: "Vertical: " },
+  "companyCard.website": { ru: "Сайт: ", en: "Website: " },
 
   // --- Подтвердить партнёрство ---
   "confirm.title": { ru: "Подтвердить партнёрство", en: "Confirm partnership" },
@@ -363,6 +367,7 @@ const STRINGS = {
   // --- Подписка ---
   "subscribe.titleGuro": { ru: "Подписка GURO ID", en: "GURO ID subscription" },
   "subscribe.titleRecruiter": { ru: "Подписка на кабинет рекрутера", en: "Recruiter cabinet subscription" },
+  "subscribe.titleCompany": { ru: "Подписка на кабинет компании", en: "Company cabinet subscription" },
   "subscribe.active": { ru: "Подписка активна", en: "Subscription active" },
   "subscribe.activeUntil": { ru: " до {date}", en: " until {date}" },
   "subscribe.hintGuro": {
@@ -380,6 +385,13 @@ const STRINGS = {
   "subscribe.compareRecruiter.rating": { ru: "Рейтинг и партнёрства (общие с личным профилем)", en: "Rating and partnerships (shared with personal profile)" },
   "subscribe.compareRecruiter.showcase": { ru: "Отдельная витрина: имя/компания/CV рекрутера", en: "Separate showcase: recruiter name/company/CV" },
   "subscribe.compareRecruiter.visibility": { ru: "Видимость витрины другим участникам GURO ID", en: "Showcase visibility to other GURO ID members" },
+  "subscribe.hintCompany": {
+    ru: "Кабинет компании — отдельная подписка поверх базовой GURO ID: бренд-страница работодателя (логотип/описание/сайт), не связана с кабинетом рекрутера. Публикация вакансий остаётся у кабинета рекрутера.",
+    en: "The company cabinet is a separate subscription on top of the base GURO ID: an employer brand page (logo/description/website), unrelated to the recruiter cabinet. Vacancy publishing stays with the recruiter cabinet.",
+  },
+  "subscribe.compareCompany.brand": { ru: "Бренд-страница компании", en: "Company brand page" },
+  "subscribe.compareCompany.showcase": { ru: "Логотип, описание, сайт, вертикаль", en: "Logo, description, website, vertical" },
+  "subscribe.compareCompany.visibility": { ru: "Видимость витрины другим участникам GURO ID", en: "Showcase visibility to other GURO ID members" },
   "subscribe.free": { ru: "бесплатно", en: "free" },
   "subscribe.paid": { ru: "по подписке", en: "subscription only" },
   "subscribe.economy": { ru: "экономия {amount} ⭐", en: "save {amount} ⭐" },
@@ -424,6 +436,33 @@ const STRINGS = {
   },
   "recruiter.loading": { ru: "Загружаем кабинет рекрутера…", en: "Loading recruiter cabinet…" },
   "recruiter.loadError": { ru: "Не удалось загрузить кабинет рекрутера.", en: "Couldn't load the recruiter cabinet." },
+
+  // --- Кабинет "Компания" (Фаза 5, 16-17.08.2026) ---
+  "company.title": { ru: "Кабинет компании", en: "Company cabinet" },
+  "company.upsellText": {
+    ru: "Бренд-страница работодателя — логотип, описание, сайт и вертикаль. Отдельно от кабинета рекрутера: компания — это бренд, рекрутер — конкретный человек внутри неё.",
+    en: "An employer brand page — logo, description, website and vertical. Separate from the recruiter cabinet: the company is the brand, the recruiter is a specific person inside it.",
+  },
+  "company.field.name": { ru: "Название компании", en: "Company name" },
+  "company.field.namePlaceholder": { ru: "Например: GURO Casino Ltd", en: "E.g.: GURO Casino Ltd" },
+  "company.field.vertical": { ru: "Вертикаль", en: "Vertical" },
+  "company.field.verticalPlaceholder": { ru: "Gambling, Crypto…", en: "Gambling, Crypto…" },
+  "company.field.website": { ru: "Сайт", en: "Website" },
+  "company.field.websitePlaceholder": { ru: "example.com", en: "example.com" },
+  "company.field.description": { ru: "Описание", en: "Description" },
+  "company.field.descriptionPlaceholder": { ru: "Чем занимается компания", en: "What the company does" },
+  "company.field.logoUrl": { ru: "Логотип (ссылка на картинку)", en: "Logo (image link)" },
+  "company.field.logoUrlPlaceholder": { ru: "https://…/logo.png", en: "https://…/logo.png" },
+  "company.privacy.name": { ru: "Название компании", en: "Company name" },
+  "company.privacy.vertical": { ru: "Вертикаль", en: "Vertical" },
+  "company.privacy.description": { ru: "Описание", en: "Description" },
+  "company.privacy.website": { ru: "Сайт", en: "Website" },
+  "company.privacyHint": {
+    ru: "Управляет тем, что видят чужие в кабинете компании (независимо от тумблеров личного профиля и кабинета рекрутера). По умолчанию скрыто — включите то, что хотите показать.",
+    en: "Controls what others see in your company cabinet (independent of your personal profile and recruiter cabinet toggles). Hidden by default — turn on what you want to show.",
+  },
+  "company.loading": { ru: "Загружаем кабинет компании…", en: "Loading company cabinet…" },
+  "company.loadError": { ru: "Не удалось загрузить кабинет компании.", en: "Couldn't load the company cabinet." },
 
   // --- Вакансии (Фаза 4, 12.08.2026) ---
   "tab.vacancies": { ru: "Вакансии", en: "Jobs" },

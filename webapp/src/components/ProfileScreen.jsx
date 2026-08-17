@@ -11,10 +11,12 @@ import { QrSubscreen } from "./profile/QrSubscreen.jsx";
 import { MessagesScreen } from "./profile/MessagesScreen.jsx";
 import { OnboardingScreen } from "./profile/OnboardingScreen.jsx";
 import { RecruiterHub } from "./profile/RecruiterHub.jsx";
+import { CompanyHub } from "./profile/CompanyHub.jsx";
 import { useLang } from "../i18n.jsx";
 
-// Переключатель Личный/Рекрутер (Фаза 3, 12.08.2026) — рендерится только
-// на "хабах" (ProfileHub / RecruiterHub), не внутри под-экранов, чтобы не
+// Переключатель Личный/Рекрутер/Компания (Фаза 3, 12.08.2026; Компания
+// добавлена 16-17.08.2026) — рендерится только на "хабах" (ProfileHub /
+// RecruiterHub / CompanyHub), не внутри под-экранов, чтобы не
 // загромождать сфокусированные single-purpose экраны.
 function WorkspaceSwitch({ workspace, onChange }) {
   const { t } = useLang();
@@ -34,6 +36,13 @@ function WorkspaceSwitch({ workspace, onChange }) {
       >
         {t("workspace.recruiter")}
       </button>
+      <button
+        type="button"
+        className={workspace === "company" ? "is-active" : ""}
+        onClick={() => onChange("company")}
+      >
+        {t("workspace.company")}
+      </button>
     </div>
   );
 }
@@ -43,6 +52,7 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
   const [workspace, setWorkspace] = useState("personal");
   const [state, setState] = useState({ loading: true, data: null, error: null });
   const [recruiterState, setRecruiterState] = useState({ loading: true, data: null, error: null });
+  const [companyState, setCompanyState] = useState({ loading: true, data: null, error: null });
   const [sub, setSub] = useState(null); // null | "rating" | "cv" | "contacts" | "offers" | "messages" | "qr"
 
   function switchWorkspace(next) {
@@ -80,6 +90,19 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace]);
 
+  // Кабинет "Компания" — та же ленивая загрузка по факту переключения.
+  useEffect(() => {
+    if (workspace !== "company" || companyState.data) return;
+    let cancelled = false;
+    getMe({ workspace: "company" })
+      .then((data) => !cancelled && setCompanyState({ loading: false, data, error: null }))
+      .catch((error) => !cancelled && setCompanyState({ loading: false, data: null, error }));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspace]);
+
   if (state.loading) return <Spinner>{t("profileScreen.loading")}</Spinner>;
 
   if (state.error) {
@@ -106,6 +129,12 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
   function updateRecruiterField(field, value) {
     setRecruiterState((s) => ({ ...s, data: { ...s.data, [field]: value } }));
   }
+  function updateCompanyPrivacy(privacy) {
+    setCompanyState((s) => ({ ...s, data: { ...s.data, privacy } }));
+  }
+  function updateCompanyField(field, value) {
+    setCompanyState((s) => ({ ...s, data: { ...s.data, [field]: value } }));
+  }
 
   if (workspace === "recruiter") {
     return (
@@ -120,6 +149,26 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
             onPrivacyChange={updateRecruiterPrivacy}
             onSubscribed={() =>
               setRecruiterState((s) => ({ ...s, data: { ...s.data, is_recruiter_subscribed: true } }))
+            }
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (workspace === "company") {
+    return (
+      <div>
+        <WorkspaceSwitch workspace={workspace} onChange={switchWorkspace} />
+        {companyState.loading && <Spinner>{t("company.loading")}</Spinner>}
+        {companyState.error && <Msg type="error">{t("company.loadError")}</Msg>}
+        {companyState.data && (
+          <CompanyHub
+            data={companyState.data}
+            onFieldSaved={updateCompanyField}
+            onPrivacyChange={updateCompanyPrivacy}
+            onSubscribed={() =>
+              setCompanyState((s) => ({ ...s, data: { ...s.data, is_company_subscribed: true } }))
             }
           />
         )}

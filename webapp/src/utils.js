@@ -25,3 +25,12 @@ export function pluralRu(n, forms) {
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return forms[1];
   return forms[2];
 }
+
+// Люди чаще всего пишут сайт без схемы ("example.com") — без неё <a href>
+// трактует ссылку как ОТНОСИТЕЛЬНУЮ (уводит внутри самого Mini App вместо
+// открытия внешнего сайта), 16.08.2026, фидбек владельца ("сайт должен
+// быть кликабельным в карточке").
+export function ensureHttpUrl(url) {
+  if (!url) return url;
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+}

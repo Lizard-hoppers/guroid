@@ -320,7 +320,7 @@ export function IdentityLine({ label, value }) {
 // saveField (Фаза 3, 12.08.2026) — по умолчанию личный профиль
 // (setProfileField), RecruiterHub передаёт setRecruiterProfileField, чтобы
 // переиспользовать этот же компонент для витрины рекрутера без дублирования.
-export function EditableField({ field, label, placeholder, value, multiline, onSaved, saveField = setProfileField }) {
+export function EditableField({ field, label, placeholder, value, multiline, onSaved, saveField = setProfileField, renderValue }) {
   const { t } = useLang();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value || "");
@@ -385,7 +385,7 @@ export function EditableField({ field, label, placeholder, value, multiline, onS
     <div className="editable-field">
       <label>{label}</label>
       {value ? (
-        <div className="editable-field-value">{value}</div>
+        <div className="editable-field-value">{renderValue ? renderValue(value) : value}</div>
       ) : (
         <div className="editable-field-empty">{t("common.notFilled")}</div>
       )}

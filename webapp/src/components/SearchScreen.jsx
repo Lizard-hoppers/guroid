@@ -12,6 +12,7 @@ import {
 } from "./Shared.jsx";
 import { haptic } from "../telegram.js";
 import { useLang } from "../i18n.jsx";
+import { ensureHttpUrl, initialOf } from "../utils.js";
 
 // Канонический список вертикалей — ровно constants.VERTICALS в боте (то,
 // что реально пишется в profiles.vertical при регистрации, см.
@@ -85,12 +86,26 @@ function RecruiterResultCard({ p, onBackToPersonal }) {
       <button type="button" className="subscreen-back" onClick={onBackToPersonal} style={{ marginBottom: 10 }}>
         {t("common.backToPersonal")}
       </button>
-      <h2>{heading}</h2>
+      <div className="profile-header-card">
+        {p.logo_url ? (
+          <img className="profile-avatar" src={p.logo_url} alt="" />
+        ) : (
+          <div className="profile-avatar-fallback">{initialOf(p.name, p.company)}</div>
+        )}
+        <div className="profile-header-info">
+          <h2 className={p.name === null ? "hidden-value" : ""}>{heading}</h2>
+        </div>
+      </div>
       <IdentityLine label={t("recruiterCard.company")} value={p.company} />
       <IdentityLine label={t("recruiterCard.vertical")} value={p.vertical} />
       <IdentityLine label={t("recruiterCard.profession")} value={p.profession} />
       {p.cv_text && <div className="partner-meta" style={{ marginTop: 8 }}>{p.cv_text}</div>}
-      {p.website && <div className="partner-meta" style={{ marginTop: 4 }}>{t("recruiterCard.website")}{p.website}</div>}
+      {p.website && (
+        <div className="partner-meta" style={{ marginTop: 4 }}>
+          {t("recruiterCard.website")}
+          <a href={ensureHttpUrl(p.website)} target="_blank" rel="noopener noreferrer">{p.website}</a>
+        </div>
+      )}
       {p.offering && <div className="partner-meta" style={{ marginTop: 4 }}>{t("recruiterCard.offering")}{p.offering}</div>}
     </div>
   );

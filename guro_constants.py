@@ -75,7 +75,7 @@ RECRUITER_SUBSCRIPTION_PLANS = {
 # заполнить нет. "name"/"company"/"vertical"/"profession" здесь — СВОИ,
 # независимые от анкеты бота (человек может представляться иначе в
 # рабочем режиме, например "HR отдел GURO Labs"), не читаются из profiles.
-RECRUITER_EXTRA_FIELDS = ("name", "company", "vertical", "profession", "cv_text", "website", "offering")
+RECRUITER_EXTRA_FIELDS = ("name", "company", "vertical", "profession", "cv_text", "website", "offering", "logo_url")
 
 # Курс Stars -> USD НЕ публикуется Telegram официально как единая ставка —
 # только цена IAP-пакетов (Apple/Google), а она сама плавает по размеру

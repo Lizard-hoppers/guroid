@@ -409,6 +409,8 @@ const STRINGS = {
   "recruiter.field.websitePlaceholder": { ru: "example.com", en: "example.com" },
   "recruiter.field.offering": { ru: "Чем полезен", en: "What you offer" },
   "recruiter.field.offeringPlaceholder": { ru: "Какие вакансии/услуги предлагаете", en: "What roles/services you offer" },
+  "recruiter.field.logoUrl": { ru: "Логотип (ссылка на картинку)", en: "Logo (image link)" },
+  "recruiter.field.logoUrlPlaceholder": { ru: "https://…/logo.png", en: "https://…/logo.png" },
   "recruiter.privacy.name": { ru: "Имя / подпись", en: "Name / title" },
   "recruiter.privacy.company": { ru: "Компания", en: "Company" },
   "recruiter.privacy.vertical": { ru: "Вертикаль", en: "Vertical" },

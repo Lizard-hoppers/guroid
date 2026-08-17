@@ -272,7 +272,13 @@ def _profile_response(storage: GuroStorage, requester_id: int, target_profile) -
 # но show_tenure/show_reputation тут ни на что не влияют — стаж/рейтинг
 # остаются свойством ЛИЧНОГО профиля, у витрины рекрутера их просто нет.
 _RECRUITER_PRIVACY_FIELD_MAP = {
-    "show_name": ("name",),
+    # logo_url привязан к show_name (16.08.2026) — тот же тумблер, что и
+    # имя/подпись, логотип без имени рядом смысла не несёт. Без этой
+    # привязки поле утекало бы чужим ВСЕГДА, независимо от тумблеров —
+    # RECRUITER_EXTRA_FIELDS добавляется в guro_constants.py как generic
+    # список, а _apply_recruiter_privacy скрывает только то, что явно
+    # перечислено в этой карте.
+    "show_name": ("name", "logo_url"),
     "show_company": ("company",),
     "show_vertical": ("vertical",),
     "show_profession": ("profession",),

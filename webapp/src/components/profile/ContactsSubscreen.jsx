@@ -4,6 +4,7 @@ import { EditableField, Msg } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import { openTelegramLink, haptic } from "../../telegram.js";
 import { useLang } from "../../i18n.jsx";
+import { ensureHttpUrl } from "../../utils.js";
 
 // «Пригласить коллегу» (Фаза 2, 11.08.2026, по PDF-фидбеку владельца) —
 // персональная одноразовая реф-ссылка (см. /api/invite_link ->
@@ -62,6 +63,7 @@ export function ContactsSubscreen({ profile, privacy, onPrivacyChange, onFieldSa
           placeholder="example.com"
           value={profile.website}
           onSaved={(v) => onFieldSaved("website", v)}
+          renderValue={(v) => <a href={ensureHttpUrl(v)} target="_blank" rel="noopener noreferrer">{v}</a>}
         />
         <button
           type="button"

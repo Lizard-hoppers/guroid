@@ -10,7 +10,6 @@ import { VacanciesScreen } from "./components/VacanciesScreen.jsx";
 import { SlotIntro } from "./components/SlotIntro.jsx";
 import { BRAND_WORD_1, BRAND_WORD_2 } from "./brandLetters.js";
 import { LangProvider, useLang } from "./i18n.jsx";
-import guroLogo from "./assets/guro-logo.png";
 
 // Переключатель RU/EN в правом верхнем углу (12.08.2026, по просьбе
 // владельца) — текстовые буквы, не флаги (тот же принцип, что и у
@@ -123,7 +122,6 @@ function AppShell() {
         <div className="app">
           <div className="header">
             <LanguageSwitch />
-            <img src={guroLogo} alt="" className="brand-logo" />
             <div className="brand">
               {BRAND_WORD_1.map((l) => (
                 <motion.span key={l.id} layoutId={`brand-${l.id}`} className="brand-letter">

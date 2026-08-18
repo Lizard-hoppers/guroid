@@ -96,8 +96,12 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
         "profession": profile["profession"],
         "linkedin": profile["linkedin"],
         # "Что для вас сейчас актуально" из анкеты бота — семантически
-        # ровно "Я ищу" из макета редизайна, отдельного поля не заводили.
-        "looking_for": profile["request"],
+        # ровно "Я ищу" из макета редизайна. 18.08.2026: сделано
+        # редактируемым прямо в GURO ID (владелец просил после багрепорта
+        # "не заполняется") — теперь это generic extra-поле guro_users
+        # (EXTRA_PROFILE_FIELDS), с фолбэком на исходный ответ анкеты бота,
+        # пока пользователь ни разу не отредактировал его в приложении.
+        "looking_for": extra["looking_for"] or profile["request"],
         "cv_text": extra["cv_text"],
         "website": extra["website"],
         "offering": extra["offering"],
@@ -261,11 +265,19 @@ async def handle_me(request: web.Request) -> web.Response:
     return web.json_response(summary)
 
 
-def _profile_response(storage: GuroStorage, requester_id: int, target_profile) -> dict:
+def _profile_response(
+    storage: GuroStorage, requester_id: int, target_profile, *, bypass_paywall: bool = False,
+) -> dict:
     """Строит JSON для ОДНОГО профиля — полная карточка, если requester
     подписан, иначе урезанный бесплатный тизер (ТЗ экран 2). Общая логика
     для всех трёх режимов handle_search (user_id=/username=/точный матч
-    внутри q=)."""
+    внутри q=). bypass_paywall=True (18.08.2026, по запросу владельца
+    после багрепорта "поделился CV — получатель увидел только тизер") —
+    используется ТОЛЬКО для входа по user_id (QR-код/кнопка "Поделиться
+    CV" — см. handle_search) — владелец явно решил, что сам факт перехода
+    по личной ссылке = разрешение смотреть полностью, независимо от
+    подписки СМОТРЯЩЕГО (как в LinkedIn). Свободный поиск по username=/q=
+    остаётся платным как раньше — сюда не попадает."""
     privileged = requester_id in GC.PRIVILEGED_VIEWER_IDS
     summary = _profile_summary(storage, target_profile["user_id"])
     privacy = storage.get_privacy(target_profile["user_id"])
@@ -274,7 +286,7 @@ def _profile_response(storage: GuroStorage, requester_id: int, target_profile) -
     # сгорает без подписки», см. _apply_subscription_gate.
     summary = _apply_subscription_gate(summary, summary["is_subscribed"], bypass=privileged)
 
-    if storage.is_subscribed(requester_id):
+    if storage.is_subscribed(requester_id) or bypass_paywall:
         summary["locked"] = False
         summary["mode"] = "profile"
         return summary
@@ -607,15 +619,22 @@ async def handle_search(request: web.Request) -> web.Response:
         return web.json_response(response)
 
     if user_id_param:
-        # Заход по QR (?target=<id> у Mini App, см. App.jsx) — ищем по ID,
-        # не по юзернейму (тот мог смениться, ID стабилен).
+        # Заход по QR/"Поделиться CV" (?target=<id> у Mini App, см.
+        # App.jsx) — ищем по ID, не по юзернейму (тот мог смениться, ID
+        # стабилен). bypass_paywall=True: переход по личной ссылке
+        # открывает профиль полностью независимо от подписки смотрящего
+        # (18.08.2026, см. _profile_response) — единственный путь сюда это
+        # QR/расшаренная ссылка/клик по уже открытой карточке из платного
+        # поиска (тогда requester и так уже подписан, флаг ничего не меняет).
         try:
             target_profile = storage.get_profile(int(user_id_param))
         except ValueError:
             target_profile = None
         if target_profile is None:
             return web.json_response({"error": "NOT_FOUND"}, status=404)
-        return web.json_response(_profile_response(storage, requester["id"], target_profile))
+        return web.json_response(
+            _profile_response(storage, requester["id"], target_profile, bypass_paywall=True)
+        )
 
     if username:
         target_profile = storage.find_profile_by_username(username)

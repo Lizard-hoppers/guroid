@@ -11,12 +11,14 @@ export function OffersSubscreen({ profile, privacy, onPrivacyChange, onFieldSave
       </button>
       <div className="card">
         <h3>{t("offers.title")}</h3>
-        <label>{t("offers.lookingForLabel")}</label>
-        {profile.looking_for ? (
-          <div className="editable-field-value">{profile.looking_for}</div>
-        ) : (
-          <div className="editable-field-empty">{t("offers.lookingForEmpty")}</div>
-        )}
+        <EditableField
+          field="looking_for"
+          label={t("offers.lookingForLabel")}
+          placeholder={t("offers.lookingForPlaceholder")}
+          value={profile.looking_for}
+          multiline
+          onSaved={(v) => onFieldSaved("looking_for", v)}
+        />
         <EditableField
           field="offering"
           label={t("offers.offeringLabel")}

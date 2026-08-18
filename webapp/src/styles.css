@@ -1590,11 +1590,15 @@ select {
    для "Посмотреть моё CV" (CvSubscreen.jsx), и для чужого CV при поиске
    (SearchScreen.jsx). */
 .cv-readonly-row {
-  margin-top: 12px;
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .cv-readonly-row:first-of-type {
-  margin-top: 8px;
+  margin-top: 10px;
+  padding-top: 0;
+  border-top: none;
 }
 
 .cv-readonly-label {
@@ -1602,7 +1606,7 @@ select {
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  margin-bottom: 2px;
+  margin-bottom: 5px;
 }
 
 .cv-readonly-value {

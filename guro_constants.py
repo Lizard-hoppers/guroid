@@ -154,7 +154,7 @@ PRIVACY_FIELDS = (
 # другого способа их заполнить не существует. "Я ищу" НЕ входит сюда —
 # уже есть готовое поле profiles.request ("что для вас сейчас актуально"),
 # отдаётся как "looking_for" в API, редактируется только через анкету бота.
-EXTRA_PROFILE_FIELDS = ("cv_text", "website", "offering")
+EXTRA_PROFILE_FIELDS = ("cv_text", "website", "offering", "looking_for")
 
 # Статус трудоустройства (10.08.2026) — публичный маркер вроде "Open to
 # Work" в LinkedIn: виден ВСЕМ бесплатно (даже без подписки просматривающего)

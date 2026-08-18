@@ -387,6 +387,22 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
         <CompanyResultCard p={state.data} onBackToPersonal={backToPersonalCard} />
       )}
 
+      {/* 18.08.2026: раньше locked-кабинеты рекрутера/компании вообще не
+          рендерились (ни один из блоков выше не совпадал) — владелец
+          сообщил "нажимаю кнопку, ничего не происходит". Тизер + пейволл
+          для этих двух воркспейсов у смотрящего без подписки. */}
+      {state.data && state.data.mode === "profile" && state.data.workspace === "recruiter" && state.data.locked && (
+        <LockedOverlay onUnlock={() => onNavigate("subscribe")}>
+          <RecruiterResultCard p={state.data} onBackToPersonal={backToPersonalCard} />
+        </LockedOverlay>
+      )}
+
+      {state.data && state.data.mode === "profile" && state.data.workspace === "company" && state.data.locked && (
+        <LockedOverlay onUnlock={() => onNavigate("subscribe")}>
+          <CompanyResultCard p={state.data} onBackToPersonal={backToPersonalCard} />
+        </LockedOverlay>
+      )}
+
       {state.data && state.data.mode === "profile" &&
         !state.data.workspace && state.data.locked && (
         <LockedOverlay onUnlock={() => onNavigate("subscribe")}>

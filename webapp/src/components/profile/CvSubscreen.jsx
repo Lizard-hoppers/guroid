@@ -472,8 +472,16 @@ function ShareCvButton() {
     try {
       const { deeplink } = await getQr();
       haptic("light");
+      // 18.08.2026: владелец сообщил, что у получателя ссылка приходила
+      // НЕ кликабельной (t.me/share/url?url=...&text=... — судя по
+      // всему, некоторые клиенты не гарантируют автолинковку отдельного
+      // url-параметра для t.me-диплинков бота). Продублировал ссылку ещё
+      // и внутри text — так итоговое сообщение содержит её как обычный
+      // голый URL в теле текста, который Telegram линкует всегда.
+      const shareText = `${t("cv.shareText")}
+${deeplink}`;
       openTelegramLink(
-        `https://t.me/share/url?url=${encodeURIComponent(deeplink)}&text=${encodeURIComponent(t("cv.shareText"))}`,
+        `https://t.me/share/url?url=${encodeURIComponent(deeplink)}&text=${encodeURIComponent(shareText)}`,
       );
       setState({ loading: false, error: false });
     } catch {

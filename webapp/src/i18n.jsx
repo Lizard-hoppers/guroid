@@ -199,9 +199,9 @@ const STRINGS = {
   // --- Мои офферы ---
   "offers.title": { ru: "Мои офферы", en: "My offers" },
   "offers.lookingForLabel": { ru: "Я ищу", en: "I'm looking for" },
-  "offers.lookingForEmpty": {
-    ru: "не указано — заполняется в анкете @GamblingCommunitybot",
-    en: "not specified — fill in via the @GamblingCommunitybot questionnaire",
+  "offers.lookingForPlaceholder": {
+    ru: "Например: ищу трафик на GB, CA, ES…",
+    en: "E.g.: looking for traffic on GB, CA, ES…",
   },
   "offers.offeringLabel": { ru: "Я полезен", en: "I can offer" },
   "offers.offeringPlaceholder": {

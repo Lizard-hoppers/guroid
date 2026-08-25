@@ -279,6 +279,14 @@ h3 {
   margin-top: 2px;
 }
 
+/* Атрибуция "чьи слова" (25.08.2026) — не курсивом/не приглушено, чтобы не
+   сливалось с самим текстом оффера/отзыва. */
+.partner-words-label {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
 input[type="text"],
 input[type="number"],
 textarea {

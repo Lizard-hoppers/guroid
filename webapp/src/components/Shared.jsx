@@ -336,6 +336,21 @@ export function PartnerRow({ partner, allowRating = false }) {
   }
   const hasAmount = partner.amount_received != null || partner.amount_paid != null;
   const otherMeta = partner.other_rating ? RATING_META[partner.other_rating] : null;
+
+  // Атрибуция оффера/отзыва (25.08.2026, баг из "Пофиксить.pdf": Артём
+  // инициировал партнёрство и написал офер/отзыв О СЕБЕ ("прошёл обучение
+  // у Юли"), но в СВОЁМ списке партнёрств это отображалось безлико под
+  // именем Юли — читалось, будто ОНА проходила обучение у него. Офер/отзыв
+  // всегда пишет ИНИЦИАТОР партнёрства (см. guro_id_api.handle_create_
+  // partnership) — partner.user_id это ВСЕГДА собеседник (не владелец
+  // списка), поэтому "инициатор == partner.user_id" однозначно говорит,
+  // что слова принадлежат ИМЕННО ЕМУ, а не владельцу списка, независимо от
+  // того, чей это список (свой — allowRating=true, или чужой через поиск).
+  const partnerInitiated = partner.initiator_id === partner.user_id;
+  const wordsLabel = partnerInitiated
+    ? t("partner.wordsOf", { name: displayName })
+    : (allowRating ? t("partner.wordsYours") : t("partner.wordsInitiator"));
+
   return (
     <div className="partner-row">
       <div className="avatar-dot">{initialOf(partner.name, partner.username)}</div>
@@ -348,7 +363,12 @@ export function PartnerRow({ partner, allowRating = false }) {
           {partner.vertical ? ` · ${partner.vertical}` : ""}
           {partner.geo ? ` · ${partner.geo}` : ""}
         </div>
-        {partner.offer && <div className="partner-offer">{partner.offer}</div>}
+        {partner.offer && (
+          <div className="partner-offer">
+            <span className="partner-words-label">{wordsLabel}: </span>
+            {partner.offer}
+          </div>
+        )}
         {hasAmount && (
           <div className="partner-meta">
             {partner.amount_received != null && `${t("partner.amountReceived")}: $${partner.amount_received}`}
@@ -367,7 +387,15 @@ export function PartnerRow({ partner, allowRating = false }) {
             {partner.tx_verified ? ` · ${t("partner.txVerified")}` : ""}
           </div>
         )}
-        {partner.review && <div className="partner-review">«{partner.review}»</div>}
+        {/* review — legacy-поле (см. handle_create_partnership, 25.08.2026:
+            новые сделки его больше не собирают), но старые записи ещё
+            встречаются и несут ту же атрибуцию (писал ИНИЦИАТОР). */}
+        {partner.review && (
+          <div className="partner-review">
+            <span className="partner-words-label">{wordsLabel}: </span>
+            «{partner.review}»
+          </div>
+        )}
         {myRating && !editingRating && (
           <div className="partner-meta">
             {t("rating.myRating")}: {RATING_META[myRating].emoji} {t(RATING_META[myRating].labelKey)}

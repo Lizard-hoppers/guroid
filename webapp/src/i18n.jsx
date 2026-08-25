@@ -117,6 +117,11 @@ const STRINGS = {
   "partner.amountReceived": { ru: "Получено", en: "Received" },
   "partner.amountPaid": { ru: "Оплачено", en: "Paid" },
   "partner.amountNote": { ru: "(со слов инициатора)", en: "(as stated by the initiator)" },
+  // Атрибуция оффера/отзыва (25.08.2026, баг "Пофиксить.pdf" — офер/отзыв
+  // писал инициатор о СЕБЕ, но отображалось безлико под именем контрагента).
+  "partner.wordsOf": { ru: "Слова {name}", en: "{name}'s words" },
+  "partner.wordsYours": { ru: "Ваши слова", en: "Your words" },
+  "partner.wordsInitiator": { ru: "Слова инициатора", en: "Initiator's words" },
   "partner.notRated": { ru: "не влияет на рейтинг", en: "doesn't affect rating" },
   "partner.txHash": { ru: "Хэш транзакции", en: "Transaction hash" },
   "partner.txVerified": { ru: "подтверждено ончейн", en: "verified on-chain" },

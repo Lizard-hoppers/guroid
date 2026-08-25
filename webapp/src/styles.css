@@ -1642,3 +1642,31 @@ select {
   font-family: "SF Mono", "Roboto Mono", monospace;
   font-size: 11px;
 }
+
+/* Оценка партнёрства, Шаг 2 (ТЗ 6.1, 25.08.2026). */
+.rate-widget {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.rate-widget-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rate-widget-buttons button {
+  flex: 1 1 auto;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.rate-widget textarea {
+  width: 100%;
+  margin-bottom: 6px;
+}

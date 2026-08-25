@@ -18,6 +18,7 @@ from pathlib import Path
 from aiohttp import web
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, WebAppInfo
 
+import guro_chain_verify as GCV
 import guro_constants as GC
 import guro_crypto as GCR
 import guro_logic as GL
@@ -60,12 +61,22 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
         other_id = p["confirmer_id"] if p["initiator_id"] == user_id else p["initiator_id"]
         other_profile = storage.get_profile(other_id)
         amount_visible = bool(p["amount_visible"])
+        # Оценка Шага 2 (6.1, 25.08.2026): своя — видна себе ВСЕГДА сразу
+        # после отправки; чужая (про меня) — только после раскрытия
+        # (rating_revealed_at), anti-retaliation (см. guro_storage._reveal_rating).
+        my_rating_row = storage.get_my_rating(p["id"], user_id)
+        other_rating_row = (
+            storage.get_rating_of(p["id"], user_id) if p["rating_revealed_at"] else None
+        )
         partners.append({
+            "id": p["id"],
             "user_id": other_id,
             "username": other_profile["username"] if other_profile else None,
             "name": other_profile["name"] if other_profile else None,
             "confirmed_at": p["confirmed_at"],
             "counts_toward_rating": bool(p["counts_toward_rating"]),
+            # Тип сделки (6, п.1, 25.08.2026) — Сделка/Найм, влияет на вес.
+            "ptype": p["ptype"],
             # Офер/отзыв — публичны всегда (в этом и смысл "проверить
             # репутацию контакта", решение владельца 11.08.2026); суммы —
             # только если инициатор явно включил показ при создании заявки.
@@ -78,10 +89,16 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
             # Хэш транзакции (16.08.2026) — та же видимость, что у суммы,
             # это подтверждение именно её, отдельного тумблера нет.
             "tx_hash": p["tx_hash"] if amount_visible else None,
+            "tx_verified": bool(p["tx_verified"]) if amount_visible else None,
             # Кто именно указал офер/суммы (со слов инициатора, не факт,
             # подтверждённый confirmer'ом) — фронту нужно, чтобы подписать
             # "получил/заплатил" с правильной стороны.
             "initiator_id": p["initiator_id"],
+            # Оценка партнёрства, Шаг 2 (6.1, 25.08.2026).
+            "my_rating": my_rating_row["verdict"] if my_rating_row else None,
+            "other_rating": other_rating_row["verdict"] if other_rating_row else None,
+            "other_rating_comment": other_rating_row["comment"] if other_rating_row else None,
+            "rating_revealed": bool(p["rating_revealed_at"]),
         })
 
     extra = storage.get_extra_profile(user_id)
@@ -114,6 +131,7 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
         "joined_community_at": joined_at,
         "days_in_community": days_in_community,
         "reputation_score": round(guro_user["reputation_score"], 1),
+        "reputation_tier": GL.reputation_tier(guro_user["reputation_score"]),
         "confirmed_partnerships": storage.count_confirmed_partnerships(user_id),
         "partners": partners,
         "subscription_status": guro_user["subscription_status"],
@@ -142,7 +160,7 @@ _PRIVACY_FIELD_MAP = {
     "show_vertical": ("vertical",),
     "show_profession": ("profession",),
     "show_tenure": ("joined_community_at", "days_in_community"),
-    "show_reputation": ("reputation_score",),
+    "show_reputation": ("reputation_score", "reputation_tier"),
     "show_cv": ("cv_text", "cv_profession") + GC.CV_SIMPLE_FIELDS + (
         "cv_grade", "cv_relocation_ready", "cv_polygraph_consent",
         "cv_salary_from", "cv_salary_to", "cv_salary_negotiable", "cv_experience",
@@ -181,7 +199,7 @@ def _apply_privacy(summary: dict, privacy: dict, *, bypass: bool = False) -> dic
 # число мгновенно вернулось, ничего не потеряно. Отдельная ось от
 # приватности (_apply_privacy) — та зависит от тумблеров смотрящего
 # профиля, эта — от подписки владельца, применяется даже к его /api/me.
-_SUBSCRIPTION_GATED_FIELDS = ("reputation_score", "confirmed_partnerships", "partners")
+_SUBSCRIPTION_GATED_FIELDS = ("reputation_score", "reputation_tier", "confirmed_partnerships", "partners")
 
 
 def _apply_subscription_gate(summary: dict, is_subscribed: bool, *, bypass: bool = False) -> dict:
@@ -562,6 +580,10 @@ async def handle_search(request: web.Request) -> web.Response:
     силы совпадения, см. _rank_directory_matches."""
     settings, storage = request.app["settings"], request.app["storage"]
     requester = _auth(request, settings)
+    # Антифрод (ТЗ 7.3, 25.08.2026) — заморозка блокирует именно поиск/
+    # просмотр (сам механизм абьюза), не всё API (сообщения/CV и т.п.).
+    if storage.is_frozen(requester["id"]):
+        return web.json_response({"error": "ACCOUNT_FROZEN"}, status=403)
     username = request.query.get("username", "")
     user_id_param = request.query.get("user_id", "")
     query = request.query.get("q", "")
@@ -632,6 +654,8 @@ async def handle_search(request: web.Request) -> web.Response:
             target_profile = None
         if target_profile is None:
             return web.json_response({"error": "NOT_FOUND"}, status=404)
+        if not _check_profile_view_limit(storage, requester["id"], target_profile["user_id"]):
+            return web.json_response({"error": "VIEW_LIMIT_REACHED"}, status=429)
         return web.json_response(
             _profile_response(storage, requester["id"], target_profile, bypass_paywall=True)
         )
@@ -640,6 +664,8 @@ async def handle_search(request: web.Request) -> web.Response:
         target_profile = storage.find_profile_by_username(username)
         if target_profile is None:
             return web.json_response({"error": "NOT_FOUND"}, status=404)
+        if not _check_profile_view_limit(storage, requester["id"], target_profile["user_id"]):
+            return web.json_response({"error": "VIEW_LIMIT_REACHED"}, status=429)
         return web.json_response(_profile_response(storage, requester["id"], target_profile))
 
     if resumes:
@@ -658,6 +684,8 @@ async def handle_search(request: web.Request) -> web.Response:
 
     target_profile = storage.find_profile_by_username(q)
     if target_profile is not None:
+        if not _check_profile_view_limit(storage, requester["id"], target_profile["user_id"]):
+            return web.json_response({"error": "VIEW_LIMIT_REACHED"}, status=429)
         return web.json_response(_profile_response(storage, requester["id"], target_profile))
 
     # Не нашли точного юзернейма -> это описание, платный directory-поиск.
@@ -707,16 +735,49 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
     # Хэш транзакции (16.08.2026) — 200 симв. с запасом покрывает любые
     # реальные хэши (Bitcoin/Ethereum/TRON и т.д. — все короче 100).
     tx_hash = (str(body.get("tx_hash", "")).strip()[:200]) or None
+    # Тип партнёрства (6, п.1, 25.08.2026) — обязательный, влияет на
+    # базовый вес (5.1). Сеть (6, п.2) обязательна, ТОЛЬКО если указан хэш —
+    # без неё нельзя понять, какой explorer API дёргать (ETH/BSC неотличимы
+    # по формату хэша, см. guro_chain_verify.py).
+    ptype = str(body.get("ptype", "")).strip()
+    tx_network = str(body.get("tx_network", "")).strip() or None
+    if ptype not in GC.PARTNERSHIP_TYPES:
+        return web.json_response({"error": "INVALID_TYPE"}, status=400)
+    if tx_hash and tx_network not in GC.TX_NETWORKS:
+        return web.json_response({"error": "INVALID_NETWORK"}, status=400)
 
     target_profile = storage.find_profile_by_username(confirmer_username)
     if target_profile is None:
         return web.json_response({"error": "NO_CONFIRMER_PROFILE"}, status=404)
+
+    tx_verified = False
+    tx_company_match = False
+    tx_verify_error = None
+    if tx_hash:
+        api_keys = {
+            "tron": settings.tronscan_api_key or None,
+            "ethereum": settings.etherscan_api_key or None,
+            "bsc": settings.bscscan_api_key or None,
+        }
+        try:
+            result = await GCV.verify_tx(tx_network, tx_hash, api_keys=api_keys)
+        except Exception:  # noqa: BLE001
+            logger.exception("guro_id: ончейн-верификация упала для tx_hash=%s", tx_hash)
+            result = GCV.VerifyResult(False, error="VERIFY_CRASHED")
+        tx_verified = result.verified
+        tx_verify_error = result.error
+        if result.verified:
+            tx_company_match = GCV.matches_company_address(
+                result, tx_network, storage.verified_company_addresses(),
+            )
 
     try:
         partnership = storage.create_partnership(
             user["id"], target_profile["user_id"], vertical, geo,
             offer=offer, amount_received=amount_received, amount_paid=amount_paid,
             review=review, amount_visible=amount_visible, tx_hash=tx_hash,
+            ptype=ptype, tx_network=tx_network, tx_verified=tx_verified,
+            tx_company_match=tx_company_match, tx_verify_error=tx_verify_error,
         )
     except ValueError as e:
         return web.json_response({"error": str(e)}, status=409)
@@ -746,6 +807,98 @@ async def _notify_new_message(bot_token: str, webapp_url: str, recipient_id: int
                 InlineKeyboardButton("Открыть сообщения", web_app=WebAppInfo(url=url)),
             ]]),
         )
+
+
+_RATING_ERROR_STATUS = {
+    "NOT_FOUND": 404, "NOT_YOUR_PARTNERSHIP": 403, "NOT_CONFIRMED": 409,
+    "ALREADY_RATED": 409, "INVALID_VERDICT": 400,
+}
+
+
+async def handle_submit_rating(request: web.Request) -> web.Response:
+    """Оценка партнёрства, Шаг 2 (ТЗ 6.1, 25.08.2026) — POST
+    /api/partnerships/<id>/rate {"verdict", "comment"}."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        partnership_id = int(request.match_info["id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    body = await request.json()
+    verdict = str(body.get("verdict", "")).strip()
+    comment = body.get("comment")
+
+    try:
+        row = storage.submit_rating(partnership_id, user["id"], verdict, comment)
+    except ValueError as e:
+        code = str(e)
+        return web.json_response({"error": code}, status=_RATING_ERROR_STATUS.get(code, 409))
+    return web.json_response({"id": row["id"], "rating_revealed": bool(row["rating_revealed_at"])})
+
+
+async def handle_pending_ratings(request: web.Request) -> web.Response:
+    """Список ПОДТВЕРЖДЁННЫХ партнёрств, которые я ещё НЕ оценил — для
+    экрана "Оцените ваши сделки" (не обязательно, но чтобы юзер знал, что
+    есть что оценить)."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    result = []
+    for p in storage.list_confirmed_partnerships(user["id"]):
+        if storage.get_my_rating(p["id"], user["id"]) is not None:
+            continue
+        other_id = p["confirmer_id"] if p["initiator_id"] == user["id"] else p["initiator_id"]
+        other_profile = storage.get_profile(other_id)
+        result.append({
+            "id": p["id"],
+            "user_id": other_id,
+            "username": other_profile["username"] if other_profile else None,
+            "name": other_profile["name"] if other_profile else None,
+            "confirmed_at": p["confirmed_at"],
+            "ptype": p["ptype"],
+        })
+    return web.json_response({"results": result})
+
+
+async def handle_submit_company_address(request: web.Request) -> web.Response:
+    """5.5 — компания привязывает свой крипто-адрес, ждёт ручного
+    подтверждения модератором (см. handlers/admin_guro.py)."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    if not storage.is_company_subscribed(user["id"]):
+        return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
+    body = await request.json()
+    network = str(body.get("network", "")).strip()
+    address = str(body.get("address", "")).strip()
+    try:
+        row = storage.submit_company_address(user["id"], network, address)
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
+    return web.json_response({"id": row["id"], "status": row["status"]})
+
+
+async def handle_list_company_addresses(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    rows = storage.list_company_addresses(user["id"])
+    return web.json_response({"results": [
+        {"id": r["id"], "network": r["network"], "address": r["address"], "status": r["status"]}
+        for r in rows
+    ]})
+
+
+def _check_profile_view_limit(storage: GuroStorage, viewer_id: int, target_id: int) -> bool:
+    """ТЗ 7 — рейт-лимит просмотра ЧУЖИХ полных карточек, только для
+    подписчиков Рекрутер/Компания (обычные пользователи не лимитируются).
+    True — можно смотреть (и просмотр залогирован); False — лимит исчерпан,
+    вызывающий код должен вернуть 429."""
+    if viewer_id == target_id:
+        return True
+    if not (storage.is_recruiter_subscribed(viewer_id) or storage.is_company_subscribed(viewer_id)):
+        return True
+    if storage.profile_views_today(viewer_id) >= GC.PROFILE_VIEW_DAILY_LIMIT:
+        return False
+    storage.log_profile_view(viewer_id, target_id)
+    return True
 
 
 def _other_display(profile) -> dict:
@@ -1411,6 +1564,10 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/recruiter/privacy", handle_set_recruiter_privacy)
     app.router.add_post("/api/company/profile", handle_set_company_profile_field)
     app.router.add_post("/api/company/privacy", handle_set_company_privacy)
+    app.router.add_post("/api/company/address", handle_submit_company_address)
+    app.router.add_get("/api/company/addresses", handle_list_company_addresses)
+    app.router.add_post("/api/partnerships/{id}/rate", handle_submit_rating)
+    app.router.add_get("/api/partnerships/pending_ratings", handle_pending_ratings)
     app.router.add_get("/api/qr", handle_get_qr)
     app.router.add_get("/api/invite_link", handle_invite_link)
     app.router.add_get("/api/vacancies", handle_list_vacancies)

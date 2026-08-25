@@ -8,10 +8,13 @@ const ERROR_KEYS = {
   SELF_PARTNERSHIP: "confirm.error.SELF_PARTNERSHIP",
   RATE_LIMITED: "confirm.error.RATE_LIMITED",
   NO_CONFIRMER_PROFILE: "confirm.error.NO_CONFIRMER_PROFILE",
+  INVALID_TYPE: "confirm.error.generic",
+  INVALID_NETWORK: "confirm.error.generic",
 };
 
 const EMPTY_FORM = {
   confirmerUsername: "",
+  ptype: "deal",
   vertical: "",
   geo: "",
   offer: "",
@@ -20,6 +23,7 @@ const EMPTY_FORM = {
   review: "",
   amountVisible: false,
   txHash: "",
+  txNetwork: "",
 };
 
 export function ConfirmScreen() {
@@ -63,6 +67,11 @@ export function ConfirmScreen() {
           value={form.confirmerUsername}
           onChange={(e) => set("confirmerUsername", e.target.value)}
         />
+        <label>{t("confirm.ptypeLabel")}</label>
+        <select value={form.ptype} onChange={(e) => set("ptype", e.target.value)}>
+          <option value="deal">{t("confirm.ptype.deal")}</option>
+          <option value="hire">{t("confirm.ptype.hire")}</option>
+        </select>
         <label>{t("confirm.verticalLabel")}</label>
         <input
           type="text"
@@ -119,6 +128,17 @@ export function ConfirmScreen() {
         <div className="privacy-hint" style={{ marginTop: -6, marginBottom: 10 }}>
           {t("confirm.txHashHint")}
         </div>
+        {form.txHash.trim() && (
+          <>
+            <label>{t("confirm.txNetworkLabel")}</label>
+            <select value={form.txNetwork} onChange={(e) => set("txNetwork", e.target.value)}>
+              <option value="">{t("confirm.txNetworkPlaceholder")}</option>
+              <option value="tron">TRON (TRC20)</option>
+              <option value="ethereum">Ethereum (ERC20)</option>
+              <option value="bsc">BNB Smart Chain (BEP20)</option>
+            </select>
+          </>
+        )}
         <label>{t("confirm.reviewLabel")}</label>
         <textarea
           rows={3}
@@ -126,7 +146,14 @@ export function ConfirmScreen() {
           value={form.review}
           onChange={(e) => set("review", e.target.value)}
         />
-        <button className="btn" type="submit" disabled={state.loading || !form.confirmerUsername.trim()}>
+        <button
+          className="btn"
+          type="submit"
+          disabled={
+            state.loading || !form.confirmerUsername.trim() ||
+            (!!form.txHash.trim() && !form.txNetwork)
+          }
+        >
           {state.loading ? t("confirm.submitting") : t("confirm.submit")}
         </button>
       </form>

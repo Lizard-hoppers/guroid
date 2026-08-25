@@ -1,9 +1,80 @@
-import { EditableField } from "../Shared.jsx";
+import { useEffect, useState } from "react";
+import { EditableField, Msg } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
-import { setCompanyProfileField, setCompanyPrivacyField } from "../../api.js";
+import { getCompanyAddresses, setCompanyProfileField, setCompanyPrivacyField, submitCompanyAddress } from "../../api.js";
 import { SubscribeScreen } from "../SubscribeScreen.jsx";
 import { useLang } from "../../i18n.jsx";
 import { ensureHttpUrl, initialOf } from "../../utils.js";
+
+// Верификация крипто-адреса компании (ТЗ 5.5, 25.08.2026) — ручное
+// подтверждение модератором (/admin, см. handlers/admin_guro.py), после
+// одобрения сделки с хешем, совпадающим по адресу, получают повышенный
+// множитель рейтинга (5.4, ×2 вместо ×1.3-1.5). Статусы: pending/approved/rejected.
+const NETWORK_LABELS = { tron: "TRON (TRC20)", ethereum: "Ethereum (ERC20)", bsc: "BNB Smart Chain (BEP20)" };
+
+function CompanyAddressCard() {
+  const { t } = useLang();
+  const [addresses, setAddresses] = useState(null);
+  const [network, setNetwork] = useState("tron");
+  const [address, setAddress] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    getCompanyAddresses().then((r) => setAddresses(r.results)).catch(() => setAddresses([]));
+  }, []);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!address.trim()) return;
+    setBusy(true);
+    setError(false);
+    try {
+      await submitCompanyAddress(network, address.trim());
+      setAddress("");
+      const r = await getCompanyAddresses();
+      setAddresses(r.results);
+    } catch {
+      setError(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h3>{t("company.addressTitle")}</h3>
+      <p className="partner-meta">{t("company.addressHint")}</p>
+      {addresses && addresses.length > 0 && (
+        <div>
+          {addresses.map((a) => (
+            <div key={a.id} className="partner-meta">
+              {NETWORK_LABELS[a.network] || a.network}: <span className="partner-tx-hash-value">{a.address}</span>
+              {" — "}{t(`company.addressStatus.${a.status}`)}
+            </div>
+          ))}
+        </div>
+      )}
+      <form onSubmit={submit}>
+        <select value={network} onChange={(e) => setNetwork(e.target.value)}>
+          {Object.entries(NETWORK_LABELS).map(([k, label]) => (
+            <option key={k} value={k}>{label}</option>
+          ))}
+        </select>
+        <input
+          type="text"
+          placeholder={t("company.addressPlaceholder")}
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+        />
+        <button className="btn" type="submit" disabled={busy || !address.trim()}>
+          {t("company.addressSubmit")}
+        </button>
+      </form>
+      {error && <Msg type="error">{t("company.addressError")}</Msg>}
+    </div>
+  );
+}
 
 // Кабинет "Компания" (Фаза 5, 16-17.08.2026) — зеркало RecruiterHub.jsx,
 // третий воркспейс поверх личного профиля. Компания — бренд-страница
@@ -90,6 +161,7 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed }
         labels={COMPANY_PRIVACY_LABELS}
         hint={t("company.privacyHint")}
       />
+      <CompanyAddressCard />
     </div>
   );
 }

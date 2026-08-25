@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, useAnimation } from "framer-motion";
 import { formatDate, initialOf } from "../utils.js";
-import { setProfileField, setWorkStatus } from "../api.js";
+import { ApiError, ratePartnership, setProfileField, setWorkStatus } from "../api.js";
 import { haptic } from "../telegram.js";
 import { useLang } from "../i18n.jsx";
 
@@ -230,15 +230,86 @@ export function RatingSummaryLine({ reputation, partnerships, isSubscribed, onOp
   );
 }
 
+// Оценка партнёрства, Шаг 2 (ТЗ 6.1, 25.08.2026) — своя оценка (my_rating)
+// не меняется после отправки, чужая (other_rating) приходит от бэкенда
+// ТОЛЬКО когда обе стороны оценили или истёк таймаут (rating_revealed) —
+// anti-retaliation целиком на бэкенде, тут просто рендерим то, что пришло.
+const RATING_META = {
+  success: { emoji: "✅", labelKey: "rating.verdict.success" },
+  nuance: { emoji: "⚠️", labelKey: "rating.verdict.nuance" },
+  problematic: { emoji: "❌", labelKey: "rating.verdict.problematic" },
+};
+
+function RateWidget({ partnershipId, onRated }) {
+  const { t } = useLang();
+  const [pendingComment, setPendingComment] = useState(false);
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function submit(verdict, text) {
+    setBusy(true);
+    setError(null);
+    try {
+      await ratePartnership(partnershipId, verdict, text);
+      haptic("success");
+      onRated(verdict);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.code : "ERROR");
+      haptic("error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (pendingComment) {
+    return (
+      <div className="rate-widget">
+        <textarea
+          rows={2}
+          placeholder={t("rating.commentPlaceholder")}
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+        />
+        <button className="btn" disabled={busy} onClick={() => submit("problematic", comment)}>
+          {t("rating.commentSubmit")}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rate-widget">
+      <div className="partner-meta">{t("rating.ratePrompt")}</div>
+      <div className="rate-widget-buttons">
+        <button type="button" disabled={busy} onClick={() => submit("success")}>
+          ✅ {t("rating.verdict.success")}
+        </button>
+        <button type="button" disabled={busy} onClick={() => submit("nuance")}>
+          ⚠️ {t("rating.verdict.nuance")}
+        </button>
+        <button type="button" disabled={busy} onClick={() => setPendingComment(true)}>
+          ❌ {t("rating.verdict.problematic")}
+        </button>
+      </div>
+      {error && <Msg type="error">{t("rating.error")}</Msg>}
+    </div>
+  );
+}
+
 // Офер/отзыв — публичны всегда (Фаза 2, 11.08.2026): в этом и смысл
 // счётчика сделок — проверить репутацию контакта. Суммы показывает
 // бэкенд только если инициатор включил show при создании заявки
 // (guro_id_api._profile_summary), поэтому здесь просто рендерим то, что
-// пришло — без своей логики видимости.
-export function PartnerRow({ partner }) {
+// пришло — без своей логики видимости. allowRating (25.08.2026) — ТОЛЬКО
+// для списка СВОИХ партнёрств (RatingSubscreen) — просмотр чужого списка
+// через SearchScreen никогда не показывает кнопки оценки (не участник сделки).
+export function PartnerRow({ partner, allowRating = false }) {
   const { t } = useLang();
+  const [myRating, setMyRating] = useState(partner.my_rating);
   const displayName = partner.name || (partner.username ? `@${partner.username}` : t("common.noName"));
   const hasAmount = partner.amount_received != null || partner.amount_paid != null;
+  const otherMeta = partner.other_rating ? RATING_META[partner.other_rating] : null;
   return (
     <div className="partner-row">
       <div className="avatar-dot">{initialOf(partner.name, partner.username)}</div>
@@ -247,6 +318,7 @@ export function PartnerRow({ partner }) {
         <div className="partner-meta">
           {partner.username && partner.name ? `@${partner.username} · ` : ""}
           {formatDate(partner.confirmed_at)}
+          {partner.ptype === "hire" ? ` · ${t("confirm.ptype.hire")}` : ""}
           {partner.vertical ? ` · ${partner.vertical}` : ""}
           {partner.geo ? ` · ${partner.geo}` : ""}
         </div>
@@ -266,16 +338,31 @@ export function PartnerRow({ partner }) {
         {partner.tx_hash && (
           <div className="partner-meta partner-tx-hash">
             {t("partner.txHash")}: <span className="partner-tx-hash-value">{partner.tx_hash}</span>
+            {partner.tx_verified ? ` · ${t("partner.txVerified")}` : ""}
           </div>
         )}
         {partner.review && <div className="partner-review">«{partner.review}»</div>}
+        {myRating && (
+          <div className="partner-meta">
+            {t("rating.myRating")}: {RATING_META[myRating].emoji} {t(RATING_META[myRating].labelKey)}
+          </div>
+        )}
+        {otherMeta && (
+          <div className="partner-meta">
+            {t("rating.otherRating")}: {otherMeta.emoji} {t(otherMeta.labelKey)}
+            {partner.other_rating_comment && ` — «${partner.other_rating_comment}»`}
+          </div>
+        )}
+        {allowRating && !myRating && (
+          <RateWidget partnershipId={partner.id} onRated={setMyRating} />
+        )}
       </div>
       {!partner.counts_toward_rating && <span className="badge-unrated">{t("partner.notRated")}</span>}
     </div>
   );
 }
 
-export function PartnersList({ partners, emptyHint }) {
+export function PartnersList({ partners, emptyHint, allowRating = false }) {
   if (!partners || partners.length === 0) {
     return <div className="partner-meta">{emptyHint}</div>;
   }
@@ -288,7 +375,7 @@ export function PartnersList({ partners, emptyHint }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: Math.min(i, 8) * 0.04, duration: 0.25 }}
         >
-          <PartnerRow partner={p} />
+          <PartnerRow partner={p} allowRating={allowRating} />
         </motion.div>
       ))}
     </div>

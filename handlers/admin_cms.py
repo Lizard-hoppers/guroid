@@ -793,6 +793,12 @@ def build_admin_cms(admin_ids: tuple[int, ...] = ()) -> ConversationHandler:
         CallbackQueryHandler(LOG.log_page, pattern=r"^acms_log_p:\d+$"),
         # раздел «GURO ID» (статистика, read-only) — handlers/admin_guro.py
         CallbackQueryHandler(GURO.nav_guro, pattern=r"^acms_guro$"),
+        # антифрод (ТЗ 7.3, 25.08.2026) + верификация адреса компании (5.5)
+        CallbackQueryHandler(GURO.nav_guro_flagged, pattern=r"^acms_guro_flagged$"),
+        CallbackQueryHandler(GURO.guro_freeze, pattern=r"^guro_freeze:\d+$"),
+        CallbackQueryHandler(GURO.guro_unflag, pattern=r"^guro_unflag:\d+$"),
+        CallbackQueryHandler(GURO.nav_guro_addresses, pattern=r"^acms_guro_addr$"),
+        CallbackQueryHandler(GURO.guro_addr_review, pattern=r"^guro_addr_(ok|no):\d+$"),
     ]
     media_filter = filters.ANIMATION | filters.PHOTO | filters.VIDEO | filters.Document.ALL
     return ConversationHandler(

@@ -33,6 +33,45 @@ CREATE TABLE IF NOT EXISTS partnerships (
     confirmed_at TEXT
 );
 
+-- Оценки партнёрства, Шаг 2 (ТЗ 6.1, 25.08.2026) — КАЖДАЯ сторона независимо
+-- оценивает КОНТРАГЕНТА (rater_id ставит оценку про ratee_id). Обе оценки
+-- одного партнёрства скрыты друг от друга до раскрытия (см.
+-- partnerships.rating_revealed_at) — anti-retaliation, см. ТЗ 6.1.
+CREATE TABLE IF NOT EXISTS guro_partnership_ratings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    partnership_id INTEGER,
+    rater_id INTEGER,
+    ratee_id INTEGER,
+    verdict TEXT,
+    comment TEXT,
+    created_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_guro_ratings_once ON guro_partnership_ratings(partnership_id, rater_id);
+
+-- Просмотры чужих профилей подписчиками Рекрутер/Компания (ТЗ 7, 25.08.2026)
+-- — рейт-лимит + эвристика скрапинга (см. guro_storage.log_profile_view).
+CREATE TABLE IF NOT EXISTS guro_profile_views (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    viewer_id INTEGER,
+    target_id INTEGER,
+    viewed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_guro_profile_views_viewer ON guro_profile_views(viewer_id, viewed_at);
+
+-- Верифицированные крипто-адреса компаний (ТЗ 5.5, 25.08.2026) — ручное
+-- подтверждение модератором один раз, дальше сверяются хеши (5.4).
+CREATE TABLE IF NOT EXISTS guro_company_addresses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_user_id INTEGER,
+    network TEXT,
+    address TEXT,
+    status TEXT DEFAULT 'pending',
+    reviewed_by INTEGER,
+    reviewed_at TEXT,
+    created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_guro_company_addresses_status ON guro_company_addresses(status);
+
 -- Личные сообщения внутри прилы (Фаза 1, 11.08.2026). user_a/user_b всегда
 -- хранятся в канонической паре (меньший id первым, см. _thread_pair) —
 -- один тред на пару людей, независимо от того, кто написал первым.
@@ -185,6 +224,36 @@ class GuroStorage:
         self._ensure_column("guro_users", "cv_salary_from", "REAL")
         self._ensure_column("guro_users", "cv_salary_to", "REAL")
         self._ensure_column("guro_users", "cv_salary_negotiable", "INTEGER DEFAULT 0")
+        # Формула рейтинга v2 (25.08.2026) — total_w хранится отдельно от
+        # reputation_score (кэш производного 0-100 значения, см.
+        # recompute_total_w) — НЕ инкрементальный аккумулятор в 3 разных
+        # местах записи (подтверждение/раскрытие оценки/синхронизация найма),
+        # а всегда пересчитывается с нуля по факту БД, чтобы не рассинхронизироваться.
+        self._ensure_column("guro_users", "total_w", "REAL DEFAULT 0")
+        # Антискрапинг (ТЗ 7.3) — ручная заморозка/флаг подозрительной
+        # активности, см. log_profile_view/freeze_account.
+        self._ensure_column("guro_users", "scraping_flagged_at", "TEXT")
+        self._ensure_column("guro_users", "frozen_until", "TEXT")
+        # Тип сделки (ТЗ 6, п.1) — 'deal'/'hire', влияет на базовый вес (5.1).
+        self._ensure_column("partnerships", "ptype", f"TEXT DEFAULT '{GC.PARTNERSHIP_TYPE_DEAL}'")
+        # Порядковый номер повтора с ТЕМ ЖЕ контрагентом (5.2) и итоговый
+        # базовый вес (5.1+5.2), посчитанные ОДИН раз при подтверждении
+        # (Шаг 1) — используются потом при раскрытии оценки (Шаг 2) и при
+        # recompute_total_w, не пересчитываются задним числом.
+        self._ensure_column("partnerships", "repeat_index", "INTEGER DEFAULT 0")
+        self._ensure_column("partnerships", "base_weight", "REAL DEFAULT 0")
+        # Сеть верификации крипто-хеша (5.4) — ТРЕБУЕТСЯ явно от юзера при
+        # заполнении tx_hash, т.к. ETH/BSC неотличимы по формату хеша.
+        self._ensure_column("partnerships", "tx_network", "TEXT")
+        self._ensure_column("partnerships", "tx_verified", "INTEGER DEFAULT 0")
+        self._ensure_column("partnerships", "tx_company_match", "INTEGER DEFAULT 0")
+        self._ensure_column("partnerships", "tx_verify_error", "TEXT")
+        # "Найм" (ТЗ 6, п.3) — очки отложены, пока кандидат не сменит
+        # work_status на "работаю" (см. respond_partnership/guro_partnership_sync.py).
+        self._ensure_column("partnerships", "hire_status_pending", "INTEGER DEFAULT 0")
+        # Раскрытие оценок Шага 2 (6.1) — оба видят обе оценки, когда обе
+        # поставлены ЛИБО истёк RATING_REVEAL_TIMEOUT_DAYS с подтверждения.
+        self._ensure_column("partnerships", "rating_revealed_at", "TEXT")
         self._conn.commit()
 
     def _ensure_column(self, table: str, column: str, ddl: str) -> None:
@@ -224,13 +293,66 @@ class GuroStorage:
             return row
         profile = self.get_profile(user_id)
         created_at = GL.parse_db_datetime(profile["created_at"]) if profile else None
-        score = GL.initial_reputation(created_at, self._now())
+        w = GL.tenure_bonus(created_at, self._now())
         self._conn.execute(
-            "INSERT INTO guro_users (user_id, reputation_score, updated_at) VALUES (?,?,?)",
-            (user_id, score, self._now_str()),
+            "INSERT INTO guro_users (user_id, reputation_score, total_w, updated_at) VALUES (?,?,?,?)",
+            (user_id, GL.reputation_from_w(w), w, self._now_str()),
         )
         self._conn.commit()
         return self._conn.execute("SELECT * FROM guro_users WHERE user_id=?", (user_id,)).fetchone()
+
+    def any_subscription_active(self, user_id: int) -> bool:
+        """6 — "личную либо через кабинет компании" — любая из трёх
+        независимых подписок (личная GURO ID/рекрутер/компания) считается."""
+        return (
+            self.is_subscribed(user_id)
+            or self.is_recruiter_subscribed(user_id)
+            or self.is_company_subscribed(user_id)
+        )
+
+    def recompute_total_w(self, user_id: int) -> float:
+        """Пересчитывает W С НУЛЯ по текущему состоянию БД (не инкрементальный
+        аккумулятор) — включает: тенюр-бонус (5.6), базовый вес каждого
+        учитываемого подтверждённого партнёрства (5.1+5.2, пропуская "найм",
+        ещё не синхронизированный по статусу кандидата — см. п.3 формы), и
+        поправку раскрытой оценки Шага 2 (6.1, см. GL.rating_delta) с той
+        стороны, где партнёрство касается ЭТОГО user_id. Пишет
+        reputation_score/total_w и возвращает новый reputation_score."""
+        profile = self.get_profile(user_id)
+        created_at = GL.parse_db_datetime(profile["created_at"]) if profile else None
+        w = GL.tenure_bonus(created_at, self._now())
+
+        rows = self._conn.execute(
+            "SELECT * FROM partnerships WHERE status=? AND counts_toward_rating=1 "
+            "AND (initiator_id=? OR confirmer_id=?)",
+            (GC.PARTNERSHIP_STATUS_CONFIRMED, user_id, user_id),
+        ).fetchall()
+        for row in rows:
+            if row["ptype"] == GC.PARTNERSHIP_TYPE_HIRE and row["hire_status_pending"]:
+                continue  # 6, п.3 — найм ещё не подтверждён статусом кандидата
+            base_weight = row["base_weight"] or 0.0
+            w += base_weight
+            if row["rating_revealed_at"]:
+                other_id = row["confirmer_id"] if row["initiator_id"] == user_id else row["initiator_id"]
+                rating = self._conn.execute(
+                    "SELECT verdict FROM guro_partnership_ratings WHERE partnership_id=? AND rater_id=?",
+                    (row["id"], other_id),
+                ).fetchone()
+                verdict = rating["verdict"] if rating else None
+                w += GL.rating_delta(
+                    verdict, base_weight,
+                    tx_verified=bool(row["tx_verified"]), tx_company_match=bool(row["tx_company_match"]),
+                    amount=row["amount_received"] if row["amount_received"] is not None else row["amount_paid"],
+                )
+
+        score = GL.reputation_from_w(w)
+        self.get_or_create_guro_user(user_id)
+        self._conn.execute(
+            "UPDATE guro_users SET total_w=?, reputation_score=?, updated_at=? WHERE user_id=?",
+            (w, score, self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return score
 
     def get_subscription(self, user_id: int) -> tuple[str, datetime | None]:
         row = self.get_or_create_guro_user(user_id)
@@ -476,13 +598,24 @@ class GuroStorage:
         self, initiator_id: int, confirmer_id: int, vertical: str | None, geo: str | None,
         *, offer: str | None = None, amount_received: float | None = None,
         amount_paid: float | None = None, review: str | None = None, amount_visible: bool = False,
-        tx_hash: str | None = None,
+        tx_hash: str | None = None, ptype: str = GC.PARTNERSHIP_TYPE_DEAL,
+        tx_network: str | None = None, tx_verified: bool = False, tx_company_match: bool = False,
+        tx_verify_error: str | None = None,
     ) -> sqlite3.Row:
         """Поднимает ValueError с понятным кодом-строкой при нарушении правил
-        (see ТЗ п.4/п.8): NO_CONFIRMER_PROFILE / SELF_PARTNERSHIP / RATE_LIMITED.
-        offer/amount_*/review/amount_visible (Фаза 2, 11.08.2026) — заполняет
-        ТОЛЬКО инициатор в момент создания заявки; confirmer лишь
-        подтверждает/отклоняет кнопкой, отдельной формы у него нет (см. план)."""
+        (see ТЗ п.4/п.8): NO_CONFIRMER_PROFILE / SELF_PARTNERSHIP / RATE_LIMITED /
+        INVALID_TYPE. offer/amount_*/review/amount_visible (Фаза 2, 11.08.2026) —
+        заполняет ТОЛЬКО инициатор в момент создания заявки; confirmer лишь
+        подтверждает/отклоняет кнопкой, отдельной формы у него нет (см. план).
+        ptype/tx_* (25.08.2026, ТЗ "формула рейтинга") — тип сделки и
+        результат ончейн-верификации хеша (уже посчитан ВЫЗЫВАЮЩИМ кодом,
+        guro_id_api.handle_create_partnership, т.к. это async-сеть, а
+        storage синхронный). Итоговый вес (base_weight)/repeat_index/
+        counts_toward_rating считаются НЕ здесь, а в respond_partnership —
+        на момент ПОДТВЕРЖДЕНИЯ (стаж/подписка проверяются live, могли
+        измениться между заявкой и ответом)."""
+        if ptype not in GC.PARTNERSHIP_TYPES:
+            raise ValueError("INVALID_TYPE")
         if initiator_id == confirmer_id:
             raise ValueError("SELF_PARTNERSHIP")
         confirmer_profile = self.get_profile(confirmer_id)
@@ -494,19 +627,15 @@ class GuroStorage:
         if GL.rate_limited(self._last_request_between(initiator_id, confirmer_id), now):
             raise ValueError("RATE_LIMITED")
 
-        initiator_profile = self.get_profile(initiator_id)
-        counts = GL.counts_toward_rating(
-            GL.parse_db_datetime(initiator_profile["created_at"]) if initiator_profile else None,
-            GL.parse_db_datetime(confirmer_profile["created_at"]),
-            now,
-        )
         cur = self._conn.execute(
             "INSERT INTO partnerships (initiator_id, confirmer_id, status, vertical, geo, "
             "counts_toward_rating, created_at, offer, amount_received, amount_paid, review, "
-            "amount_visible, tx_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "amount_visible, tx_hash, ptype, tx_network, tx_verified, tx_company_match, "
+            "tx_verify_error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (initiator_id, confirmer_id, GC.PARTNERSHIP_STATUS_PENDING, vertical, geo,
-             1 if counts else 0, GL.format_db_datetime(now), offer, amount_received, amount_paid,
-             review, 1 if amount_visible else 0, tx_hash),
+             0, GL.format_db_datetime(now), offer, amount_received, amount_paid,
+             review, 1 if amount_visible else 0, tx_hash, ptype, tx_network,
+             1 if tx_verified else 0, 1 if tx_company_match else 0, tx_verify_error),
         )
         self._conn.commit()
         return self._conn.execute("SELECT * FROM partnerships WHERE id=?", (cur.lastrowid,)).fetchone()
@@ -514,8 +643,28 @@ class GuroStorage:
     def get_partnership(self, partnership_id: int) -> sqlite3.Row | None:
         return self._conn.execute("SELECT * FROM partnerships WHERE id=?", (partnership_id,)).fetchone()
 
+    def _confirmed_count_between(self, user_a: int, user_b: int) -> int:
+        """5.2 — сколько раз этот же контрагент УЖЕ был подтверждён ДО этого
+        момента (независимо от того, кто из пары инициировал)."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM partnerships WHERE status=? AND "
+            "((initiator_id=? AND confirmer_id=?) OR (initiator_id=? AND confirmer_id=?))",
+            (GC.PARTNERSHIP_STATUS_CONFIRMED, user_a, user_b, user_b, user_a),
+        ).fetchone()
+        return row["n"]
+
     def respond_partnership(self, partnership_id: int, responder_id: int, accept: bool) -> sqlite3.Row:
-        """Поднимает ValueError: NOT_FOUND / NOT_YOUR_REQUEST / ALREADY_RESOLVED."""
+        """Поднимает ValueError: NOT_FOUND / NOT_YOUR_REQUEST / ALREADY_RESOLVED.
+
+        При accept=True (25.08.2026, ТЗ "формула рейтинга") — считает
+        counts_toward_rating НА МОМЕНТ ПОДТВЕРЖДЕНИЯ (не на момент заявки,
+        см. create_partnership): стаж ОБОИХ (как раньше) И "оба участника
+        должны иметь активную подписку" (6, новое условие) — любую из
+        трёх (личную/рекрутер/компания). Для типа "Найм" (6, п.3) —
+        дополнительно требуется, чтобы ХОТЯ БЫ ОДИН из пары (кандидат,
+        роль не уточняется в ТЗ) имел work_status="working"; если нет —
+        партнёрство всё равно подтверждается и видимо, но очки откладываются
+        (hire_status_pending=1) до guro_partnership_sync.py."""
         row = self.get_partnership(partnership_id)
         if row is None:
             raise ValueError("NOT_FOUND")
@@ -533,25 +682,275 @@ class GuroStorage:
             return self.get_partnership(partnership_id)
 
         now = self._now()
-        a = self.get_or_create_guro_user(row["initiator_id"])
-        b = self.get_or_create_guro_user(row["confirmer_id"])
-        if row["counts_toward_rating"]:
-            new_a = a["reputation_score"] + GL.confirmation_gain()
-            new_b = b["reputation_score"] + GL.confirmation_gain()
-            self._conn.execute(
-                "UPDATE guro_users SET reputation_score=?, updated_at=? WHERE user_id=?",
-                (new_a, self._now_str(), row["initiator_id"]),
+        initiator_id, confirmer_id = row["initiator_id"], row["confirmer_id"]
+        initiator_profile = self.get_profile(initiator_id)
+        confirmer_profile = self.get_profile(confirmer_id)
+        tenure_ok = GL.counts_toward_rating(
+            GL.parse_db_datetime(initiator_profile["created_at"]) if initiator_profile else None,
+            GL.parse_db_datetime(confirmer_profile["created_at"]) if confirmer_profile else None,
+            now,
+        )
+        subscription_ok = self.any_subscription_active(initiator_id) and self.any_subscription_active(confirmer_id)
+        counts = tenure_ok and subscription_ok
+
+        repeat_index = self._confirmed_count_between(initiator_id, confirmer_id) if counts else 0
+        base_weight = GL.partnership_base_weight(row["ptype"], repeat_index) if counts else 0.0
+
+        hire_pending = 0
+        if counts and row["ptype"] == GC.PARTNERSHIP_TYPE_HIRE:
+            candidate_working = (
+                self.get_work_status(initiator_id) == GC.WORK_STATUS_WORKING
+                or self.get_work_status(confirmer_id) == GC.WORK_STATUS_WORKING
             )
-            self._conn.execute(
-                "UPDATE guro_users SET reputation_score=?, updated_at=? WHERE user_id=?",
-                (new_b, self._now_str(), row["confirmer_id"]),
-            )
+            hire_pending = 0 if candidate_working else 1
+
         self._conn.execute(
-            "UPDATE partnerships SET status=?, confirmed_at=? WHERE id=?",
-            (GC.PARTNERSHIP_STATUS_CONFIRMED, GL.format_db_datetime(now), partnership_id),
+            "UPDATE partnerships SET status=?, confirmed_at=?, counts_toward_rating=?, "
+            "repeat_index=?, base_weight=?, hire_status_pending=? WHERE id=?",
+            (GC.PARTNERSHIP_STATUS_CONFIRMED, GL.format_db_datetime(now), 1 if counts else 0,
+             repeat_index, base_weight, hire_pending, partnership_id),
         )
         self._conn.commit()
+        self.recompute_total_w(initiator_id)
+        self.recompute_total_w(confirmer_id)
         return self.get_partnership(partnership_id)
+
+    # --- оценка партнёрства, Шаг 2 (ТЗ 6.1, 25.08.2026) --------------------
+
+    def submit_rating(self, partnership_id: int, rater_id: int, verdict: str, comment: str | None) -> sqlite3.Row:
+        """Поднимает ValueError: NOT_FOUND / NOT_YOUR_PARTNERSHIP /
+        NOT_CONFIRMED / ALREADY_RATED / INVALID_VERDICT. Комментарий
+        разрешён только у "problematic" (см. ТЗ 6.1) — для остальных
+        обнуляется молча, не 400 (не критично для юзера)."""
+        if verdict not in GC.RATING_VERDICTS:
+            raise ValueError("INVALID_VERDICT")
+        row = self.get_partnership(partnership_id)
+        if row is None:
+            raise ValueError("NOT_FOUND")
+        if rater_id not in (row["initiator_id"], row["confirmer_id"]):
+            raise ValueError("NOT_YOUR_PARTNERSHIP")
+        if row["status"] != GC.PARTNERSHIP_STATUS_CONFIRMED:
+            raise ValueError("NOT_CONFIRMED")
+        ratee_id = row["confirmer_id"] if rater_id == row["initiator_id"] else row["initiator_id"]
+
+        existing = self._conn.execute(
+            "SELECT id FROM guro_partnership_ratings WHERE partnership_id=? AND rater_id=?",
+            (partnership_id, rater_id),
+        ).fetchone()
+        if existing is not None:
+            raise ValueError("ALREADY_RATED")
+
+        comment = (comment or "").strip()[: GC.RATING_COMMENT_MAX] or None
+        if verdict != GC.RATING_PROBLEMATIC:
+            comment = None
+        self._conn.execute(
+            "INSERT INTO guro_partnership_ratings (partnership_id, rater_id, ratee_id, verdict, "
+            "comment, created_at) VALUES (?,?,?,?,?,?)",
+            (partnership_id, rater_id, ratee_id, verdict, comment, self._now_str()),
+        )
+        self._conn.commit()
+        self._maybe_reveal_rating(partnership_id)
+        return self.get_partnership(partnership_id)
+
+    def get_my_rating(self, partnership_id: int, user_id: int) -> sqlite3.Row | None:
+        return self._conn.execute(
+            "SELECT * FROM guro_partnership_ratings WHERE partnership_id=? AND rater_id=?",
+            (partnership_id, user_id),
+        ).fetchone()
+
+    def get_rating_of(self, partnership_id: int, ratee_id: int) -> sqlite3.Row | None:
+        """Оценка КОНТРАГЕНТОМ этого user_id — видна вызывающему коду только
+        если partnerships.rating_revealed_at уже проставлен (проверяется на
+        уровне API, см. guro_id_api._profile_summary)."""
+        return self._conn.execute(
+            "SELECT * FROM guro_partnership_ratings WHERE partnership_id=? AND ratee_id=?",
+            (partnership_id, ratee_id),
+        ).fetchone()
+
+    def _maybe_reveal_rating(self, partnership_id: int) -> None:
+        """Раскрывает обе оценки, если ОБЕ уже поставлены — anti-retaliation
+        таймаут (истечение RATING_REVEAL_TIMEOUT_DAYS) обрабатывает отдельно
+        guro_partnership_sync.py (тут — только "обе сразу")."""
+        row = self.get_partnership(partnership_id)
+        if row is None or row["rating_revealed_at"]:
+            return
+        count = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM guro_partnership_ratings WHERE partnership_id=?",
+            (partnership_id,),
+        ).fetchone()["n"]
+        if count < 2:
+            return
+        self._reveal_rating(partnership_id)
+
+    def _reveal_rating(self, partnership_id: int) -> None:
+        row = self.get_partnership(partnership_id)
+        if row is None or row["rating_revealed_at"]:
+            return
+        self._conn.execute(
+            "UPDATE partnerships SET rating_revealed_at=? WHERE id=?",
+            (self._now_str(), partnership_id),
+        )
+        self._conn.commit()
+        self.recompute_total_w(row["initiator_id"])
+        self.recompute_total_w(row["confirmer_id"])
+
+    def list_partnerships_awaiting_reveal(self) -> list[sqlite3.Row]:
+        """Для guro_partnership_sync.py (таймаут раскрытия) — подтверждённые,
+        ещё не раскрытые, старше RATING_REVEAL_TIMEOUT_DAYS с подтверждения."""
+        cutoff = self._now() - timedelta(days=GC.RATING_REVEAL_TIMEOUT_DAYS)
+        return self._conn.execute(
+            "SELECT * FROM partnerships WHERE status=? AND rating_revealed_at IS NULL "
+            "AND confirmed_at IS NOT NULL AND confirmed_at<=?",
+            (GC.PARTNERSHIP_STATUS_CONFIRMED, GL.format_db_datetime(cutoff)),
+        ).fetchall()
+
+    def reveal_rating_by_timeout(self, partnership_id: int) -> None:
+        self._reveal_rating(partnership_id)
+
+    def list_hire_pending_partnerships(self) -> list[sqlite3.Row]:
+        """Для guro_partnership_sync.py — "найм" в ожидании синка статуса
+        кандидата (6, п.3)."""
+        return self._conn.execute(
+            "SELECT * FROM partnerships WHERE status=? AND ptype=? AND hire_status_pending=1",
+            (GC.PARTNERSHIP_STATUS_CONFIRMED, GC.PARTNERSHIP_TYPE_HIRE),
+        ).fetchall()
+
+    def sync_hire_status(self, partnership_id: int) -> bool:
+        """True, если кандидат теперь working и очки применены (снимает
+        hire_status_pending + пересчитывает W обеих сторон)."""
+        row = self.get_partnership(partnership_id)
+        if row is None or not row["hire_status_pending"]:
+            return False
+        candidate_working = (
+            self.get_work_status(row["initiator_id"]) == GC.WORK_STATUS_WORKING
+            or self.get_work_status(row["confirmer_id"]) == GC.WORK_STATUS_WORKING
+        )
+        if not candidate_working:
+            return False
+        self._conn.execute(
+            "UPDATE partnerships SET hire_status_pending=0 WHERE id=?", (partnership_id,),
+        )
+        self._conn.commit()
+        self.recompute_total_w(row["initiator_id"])
+        self.recompute_total_w(row["confirmer_id"])
+        return True
+
+    # --- антифрод поиска/просмотра профилей (ТЗ 7, 25.08.2026) ------------
+    # Применяется ТОЛЬКО к просмотрам подписчиков Рекрутер/Компания (см.
+    # guro_id_api._check_profile_view) — обычные пользователи не лимитируются.
+
+    def is_frozen(self, user_id: int) -> bool:
+        row = self._conn.execute(
+            "SELECT frozen_until FROM guro_users WHERE user_id=?", (user_id,)
+        ).fetchone()
+        if row is None or row["frozen_until"] is None:
+            return False
+        expires = GL.parse_db_datetime(row["frozen_until"])
+        return expires is not None and expires > self._now()
+
+    def freeze_account(self, user_id: int, hours: int = GC.ACCOUNT_FREEZE_HOURS) -> str:
+        self.get_or_create_guro_user(user_id)
+        until = self._now() + timedelta(hours=hours)
+        self._conn.execute(
+            "UPDATE guro_users SET frozen_until=?, updated_at=? WHERE user_id=?",
+            (GL.format_db_datetime(until), self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return GL.format_db_datetime(until)
+
+    def unfreeze_account(self, user_id: int) -> None:
+        self._conn.execute(
+            "UPDATE guro_users SET frozen_until=NULL, scraping_flagged_at=NULL, updated_at=? WHERE user_id=?",
+            (self._now_str(), user_id),
+        )
+        self._conn.commit()
+
+    def _profile_views_since(self, viewer_id: int, since: datetime) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM guro_profile_views WHERE viewer_id=? AND viewed_at>=?",
+            (viewer_id, GL.format_db_datetime(since)),
+        ).fetchone()
+        return row["n"]
+
+    def profile_views_today(self, viewer_id: int) -> int:
+        today_start = self._now().strftime("%Y-%m-%d 00:00:00")
+        return self._profile_views_since(viewer_id, GL.parse_db_datetime(today_start) or self._now())
+
+    def log_profile_view(self, viewer_id: int, target_id: int) -> None:
+        """Пишет просмотр И флагает аккаунт на ручную проверку (7.3), если
+        поймали "всплеск" (SCRAPING_BURST_COUNT просмотров за
+        SCRAPING_BURST_MINUTES минут) — флаг НЕ блокирует, только помечает
+        для /admin (заморозка — отдельное ручное действие, freeze_account)."""
+        now = self._now()
+        self._conn.execute(
+            "INSERT INTO guro_profile_views (viewer_id, target_id, viewed_at) VALUES (?,?,?)",
+            (viewer_id, target_id, GL.format_db_datetime(now)),
+        )
+        self._conn.commit()
+        burst_since = now - timedelta(minutes=GC.SCRAPING_BURST_MINUTES)
+        if self._profile_views_since(viewer_id, burst_since) >= GC.SCRAPING_BURST_COUNT:
+            self.get_or_create_guro_user(viewer_id)
+            self._conn.execute(
+                "UPDATE guro_users SET scraping_flagged_at=? WHERE user_id=? AND scraping_flagged_at IS NULL",
+                (self._now_str(), viewer_id),
+            )
+            self._conn.commit()
+
+    def list_flagged_accounts(self) -> list[sqlite3.Row]:
+        return self._conn.execute(
+            "SELECT * FROM guro_users WHERE scraping_flagged_at IS NOT NULL ORDER BY scraping_flagged_at DESC"
+        ).fetchall()
+
+    # --- верификация адреса компании (ТЗ 5.5, 25.08.2026) -----------------
+
+    def submit_company_address(self, company_user_id: int, network: str, address: str) -> sqlite3.Row:
+        if network not in GC.TX_NETWORKS:
+            raise ValueError("INVALID_NETWORK")
+        address = address.strip()
+        if not address:
+            raise ValueError("EMPTY_ADDRESS")
+        cur = self._conn.execute(
+            "INSERT INTO guro_company_addresses (company_user_id, network, address, status, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (company_user_id, network, address, "pending", self._now_str()),
+        )
+        self._conn.commit()
+        return self._conn.execute(
+            "SELECT * FROM guro_company_addresses WHERE id=?", (cur.lastrowid,)
+        ).fetchone()
+
+    def list_company_addresses(self, company_user_id: int) -> list[sqlite3.Row]:
+        return self._conn.execute(
+            "SELECT * FROM guro_company_addresses WHERE company_user_id=? ORDER BY created_at DESC",
+            (company_user_id,),
+        ).fetchall()
+
+    def list_pending_company_addresses(self) -> list[sqlite3.Row]:
+        return self._conn.execute(
+            "SELECT * FROM guro_company_addresses WHERE status='pending' ORDER BY created_at ASC"
+        ).fetchall()
+
+    def review_company_address(self, address_id: int, reviewer_id: int, approve: bool) -> bool:
+        row = self._conn.execute(
+            "SELECT * FROM guro_company_addresses WHERE id=?", (address_id,)
+        ).fetchone()
+        if row is None or row["status"] != "pending":
+            return False
+        self._conn.execute(
+            "UPDATE guro_company_addresses SET status=?, reviewed_by=?, reviewed_at=? WHERE id=?",
+            ("approved" if approve else "rejected", reviewer_id, self._now_str(), address_id),
+        )
+        self._conn.commit()
+        return True
+
+    def verified_company_addresses(self) -> set[tuple[str, str]]:
+        """Множество (network, address_lowercase) верифицированных адресов
+        компаний — для сверки при верификации хеша (5.4/5.5), см.
+        guro_chain_verify.matches_company_address."""
+        rows = self._conn.execute(
+            "SELECT network, address FROM guro_company_addresses WHERE status='approved'"
+        ).fetchall()
+        return {(r["network"], r["address"].lower()) for r in rows}
 
     # --- личные сообщения (Фаза 1, 11.08.2026) ---------------------------
 

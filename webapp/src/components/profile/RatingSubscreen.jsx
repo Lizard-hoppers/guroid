@@ -56,7 +56,7 @@ export function RatingSubscreen({ profile, privacy, onPrivacyChange, onBack, onN
       <RatingHelp />
       <div className="card">
         <h3>{t("rating.partnershipsTitle")}</h3>
-        <PartnersList partners={profile.partners} emptyHint={t("rating.emptyOwn")} />
+        <PartnersList partners={profile.partners} emptyHint={t("rating.emptyOwn")} allowRating />
       </div>
       <PrivacyToggles
         privacy={privacy}

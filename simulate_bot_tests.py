@@ -2382,24 +2382,59 @@ def test_guro_id_init_data():
 
 
 def test_guro_id_reputation_formula():
-    print("== guro_id: формула репутации ==")
+    print("== guro_id: формула рейтинга v2 (25.08.2026, ТЗ 'формула рейтинга') ==")
     import guro_logic as GLm
+    import guro_constants as GCm
     from datetime import datetime, timedelta, timezone
 
     now = datetime.now(timezone.utc)
-    check(GLm.initial_reputation(None, now) == 0.0, "база без анкеты/стажа = 0 (16.08.2026: рейтинг = стаж + сделки)")
-    check(GLm.initial_reputation(now, now) == 0.0, "заполненная анкета сама по себе бонуса не даёт (дефолтное условие входа)")
-    old_join = now - timedelta(days=95)
-    check(GLm.initial_reputation(old_join, now) == 1.0, "бонус за 3 мес в комьюнити = +1")
-    very_old = now - timedelta(days=3650)
-    check(GLm.initial_reputation(very_old, now) == 10.0, "бонус за возраст капается в +10")
-    check(GLm.confirmation_gain() == 1.0, "вклад ОДНОГО подтверждённого партнёрства = фиксированный шаг 1 (15.08.2026, было пропорционально репутации подтверждающего)")
 
-    # 16.08.2026: бонус за стаж в комьюнити (tenure_bonus) ВОЗВРАЩЁН в
-    # формулу по официальному макету владельца ("рейтинг порядок.pdf" —
-    # рейтинг = дни в комьюнити + успешные сделки), после того как накануне
-    # был убран совсем ("рейтинг растёт только от сделок") — документ
-    # оказался приоритетнее устного решения днём раньше.
+    # 5.6 — бонус за стаж, теперь часть W (не стартовая репутация).
+    check(GLm.tenure_bonus(None, now) == 0.0, "нет даты регистрации -> бонус за стаж = 0")
+    check(GLm.tenure_bonus(now, now) == 0.0, "0 дней в комьюнити -> бонус за стаж = 0")
+    check(abs(GLm.tenure_bonus(now - timedelta(days=40), now) - 2.0) < 1e-9, "40 дней × 0.05 = +2.0")
+    very_old = now - timedelta(days=3650)
+    check(GLm.tenure_bonus(very_old, now) == GCm.TENURE_BONUS_MAX, "бонус за стаж капается в TENURE_BONUS_MAX")
+
+    # 5.3 — сжатие W в шкалу 0-100, монотонно, без выхода за границы.
+    check(GLm.reputation_from_w(0.0) == 0.0, "W=0 -> R=0")
+    check(GLm.reputation_from_w(-100) < 0, "отрицательный W даёт отрицательный R (штрафы могут увести в минус)")
+    r_small = GLm.reputation_from_w(10)
+    r_big = GLm.reputation_from_w(1000)
+    check(0 < r_small < r_big < 100, "формула монотонна и не превышает 100")
+    check(GLm.reputation_tier(0) == "Bronze", "R=0 -> Bronze")
+    check(GLm.reputation_tier(95) == "Platinum", "R=95 -> Platinum")
+
+    # 5.1+5.2 — базовые очки по типу сделки + диминишинг повторов.
+    check(GLm.partnership_base_weight("deal", 0) == 10.0, "5.1: первая 'сделка' = 10 очков")
+    check(GLm.partnership_base_weight("hire", 0) == 15.0, "5.1: первый 'найм' = 15 очков")
+    check(GLm.partnership_base_weight("deal", 1) == 2.0, "5.2: 1-й повтор с тем же контрагентом = 20% от базы")
+    check(GLm.partnership_base_weight("deal", 3) == 2.0, "5.2: 3-й повтор всё ещё 20%")
+    check(GLm.partnership_base_weight("deal", 4) == 0.0, "5.2: 4-й повтор и далее -> 0 (анти-фарм)")
+
+    # 5.4/5.5 — крипто-бонус.
+    check(GLm.crypto_bonus_multiplier(False, False) == 1.0, "без верификации хеша -> множитель 1.0")
+    check(GLm.crypto_bonus_multiplier(True, False) == GCm.CRYPTO_VERIFIED_MULTIPLIER, "верифицирован -> обычный множитель")
+    check(GLm.crypto_bonus_multiplier(True, True) == GCm.CRYPTO_COMPANY_MULTIPLIER, "адрес компании совпал -> повышенный множитель")
+    check(GLm.log_amount_bonus(100, tx_verified=False) == 0.0, "сумма без верификации хеша НЕ даёт бонуса (анти-фарм, см. допущение в guro_constants.py)")
+    check(GLm.log_amount_bonus(None, tx_verified=True) == 0.0, "нет суммы -> бонус 0 даже при верификации")
+    check(GLm.log_amount_bonus(100, tx_verified=True) > 0, "верифицированная сумма > 0 -> положительный бонус")
+
+    # 6.1 — влияние оценки Шага 2 на W ОДНОЙ стороны (см. rating_delta).
+    base = 10.0
+    check(GLm.rating_delta(None, base, tx_verified=False, tx_company_match=False, amount=None) == 0.0,
+          "контрагент не оценил (или не раскрыто) -> нейтрально, как 'были нюансы'")
+    check(GLm.rating_delta(GCm.RATING_NUANCE, base, tx_verified=False, tx_company_match=False, amount=None) == 0.0,
+          "'были нюансы' -> без бонусов, нейтрально")
+    check(GLm.rating_delta(GCm.RATING_PROBLEMATIC, base, tx_verified=False, tx_company_match=False, amount=None) == -GCm.PARTNERSHIP_PENALTY_POINTS,
+          "'проблемная сделка' -> штраф PARTNERSHIP_PENALTY_POINTS")
+    success_delta = GLm.rating_delta(GCm.RATING_SUCCESS, base, tx_verified=True, tx_company_match=False, amount=None)
+    check(abs(success_delta - base * (GCm.CRYPTO_VERIFIED_MULTIPLIER - 1.0)) < 1e-9,
+          "'успешно' + верифицированный хеш -> бонус = base×(множитель-1)")
+    check(GLm.rating_delta(GCm.RATING_SUCCESS, base, tx_verified=False, tx_company_match=False, amount=None) == 0.0,
+          "'успешно' БЕЗ верификации хеша -> бонуса нет (уже начислено при подтверждении)")
+
+    old_join = now - timedelta(days=95)
     check(GLm.counts_toward_rating(old_join, old_join, now), "оба старше 14 дней -> учитывается")
     fresh = now - timedelta(days=2)
     check(not GLm.counts_toward_rating(old_join, fresh, now), "один младше 14 дней -> НЕ учитывается")
@@ -2430,7 +2465,7 @@ def test_guro_id_storage():
         check(gst.find_profile_by_username("nobody") is None, "поиск несуществующего юзернейма -> None")
 
         u1 = gst.get_or_create_guro_user(1)
-        check(u1["reputation_score"] == 0.0, f"первичная репутация = база 0 (анкета не даёт бонуса), а не {u1['reputation_score']}")
+        check(u1["reputation_score"] == 0.0, f"первичная репутация = 0 (0 сделок, 0 дней стажа), а не {u1['reputation_score']}")
 
         privacy = gst.get_privacy(1)
         check(all(v is False for v in privacy.values()), "приватность по умолчанию -> всё выключено (opt-in, ничего не видно чужим)")
@@ -2456,9 +2491,15 @@ def test_guro_id_storage():
         except ValueError as e:
             check(str(e) == "NO_CONFIRMER_PROFILE", "нет анкеты у confirmer -> ValueError(NO_CONFIRMER_PROFILE)")
 
+        try:
+            gst.create_partnership(1, 2, "casino", "Odessa", ptype="whatever")
+            check(False, "неизвестный тип партнёрства должен кидать INVALID_TYPE")
+        except ValueError as e:
+            check(str(e) == "INVALID_TYPE", "мусорный ptype -> ValueError(INVALID_TYPE)")
+
         p = gst.create_partnership(1, 2, "casino", "Odessa")
         check(p["status"] == "pending", "новое партнёрство в статусе pending")
-        check(p["counts_toward_rating"] == 0, "свежие (<14д) аккаунты -> не учитывается в рейтинге")
+        check(p["ptype"] == "deal", "ptype по умолчанию = 'deal'")
 
         try:
             gst.create_partnership(1, 2, "casino", "Odessa")
@@ -2476,6 +2517,11 @@ def test_guro_id_storage():
         rep2_before = gst.get_or_create_guro_user(2)["reputation_score"]
         confirmed = gst.respond_partnership(p["id"], responder_id=2, accept=True)
         check(confirmed["status"] == "confirmed", "respond_partnership(accept=True) -> confirmed")
+        # 25.08.2026, формула v2: tenure/подписка теперь проверяются НА МОМЕНТ
+        # ПОДТВЕРЖДЕНИЯ (не заявки) — оба свежих (<14д) И без подписки ->
+        # counts_toward_rating=0, base_weight=0, репутация не меняется.
+        check(confirmed["counts_toward_rating"] == 0, "свежие аккаунты без подписки -> НЕ учитывается в рейтинге")
+        check(confirmed["base_weight"] == 0.0, "не учитывается -> base_weight=0")
         rep1_after = gst.get_or_create_guro_user(1)["reputation_score"]
         rep2_after = gst.get_or_create_guro_user(2)["reputation_score"]
         check(rep1_after == rep1_before and rep2_after == rep2_before,
@@ -2488,7 +2534,9 @@ def test_guro_id_storage():
         except ValueError as e:
             check(str(e) == "ALREADY_RESOLVED", "повторный ответ -> ValueError(ALREADY_RESOLVED)")
 
-        # старые аккаунты -> партнёрство должно учитываться и менять репутацию
+        # старые аккаунты + активная подписка ОБОИХ -> партнёрство должно
+        # учитываться и менять репутацию (25.08.2026: оба условия новые —
+        # раньше требовался только стаж).
         import sqlite3
         old_ts = (datetime.now(timezone.utc) - timedelta(days=100)).strftime("%Y-%m-%d %H:%M:%S")
         conn = sqlite3.connect(db_path)
@@ -2501,27 +2549,80 @@ def test_guro_id_storage():
         conn.commit()
         conn.close()
         gst3 = GuroStorage(db_path)
-        p2 = gst3.create_partnership(1, 3, None, None)
-        check(p2["counts_toward_rating"] == 1, "оба старше 14 дней -> partnership учитывается")
+        p2 = gst3.create_partnership(1, 3, None, None, ptype="hire")
+        gst3.activate_subscription(1, 30)
+        gst3.activate_subscription(3, 30)
+        # "Найм" (6, п.3) — очки откладываются, пока кандидат не переключит
+        # work_status на "работаю"; ставим ЗАРАНЕЕ, чтобы очки применились сразу.
+        gst3.set_work_status(3, GC.WORK_STATUS_WORKING)
         rep3_before = gst3.get_or_create_guro_user(3)["reputation_score"]
         rep1_before2 = gst3.get_or_create_guro_user(1)["reputation_score"]
-        gst3.respond_partnership(p2["id"], responder_id=3, accept=True)
+        confirmed2 = gst3.respond_partnership(p2["id"], responder_id=3, accept=True)
+        check(confirmed2["counts_toward_rating"] == 1, "оба старше 14 дней И оба подписаны -> partnership учитывается")
+        check(confirmed2["base_weight"] == 15.0, "тип 'hire', 1-е партнёрство с этим контрагентом -> 15 очков")
+        check(confirmed2["repeat_index"] == 0, "первое партнёрство с этим контрагентом -> repeat_index=0")
+        check(confirmed2["hire_status_pending"] == 0, "кандидат уже 'работаю' на момент подтверждения -> очки не отложены")
         rep3_after = gst3.get_or_create_guro_user(3)["reputation_score"]
         rep1_after2 = gst3.get_or_create_guro_user(1)["reputation_score"]
         check(rep3_after > rep3_before, "подтверждённое учитываемое партнёрство поднимает репутацию confirmer")
         check(rep1_after2 > rep1_before2, "и репутацию initiator тоже (симметрично)")
 
-        gst3.activate_subscription(1, 30)
         check(gst3.is_subscribed(1), "activate_subscription -> is_subscribed True")
         check(not gst3.is_subscribed(2), "user 2 без подписки -> is_subscribed False")
 
+        # оценка партнёрства, Шаг 2 (ТЗ 6.1, 25.08.2026) — anti-retaliation:
+        # раскрытие только когда ОБЕ стороны оценили.
+        gst3.submit_rating(p2["id"], rater_id=1, verdict="success", comment=None)
+        not_yet = gst3.get_partnership(p2["id"])
+        check(not_yet["rating_revealed_at"] is None, "одна оценка из двух -> ещё не раскрыто")
+        try:
+            gst3.submit_rating(p2["id"], rater_id=1, verdict="nuance", comment=None)
+            check(False, "повторная оценка от той же стороны должна кидать ALREADY_RATED")
+        except ValueError as e:
+            check(str(e) == "ALREADY_RATED", "повторная оценка -> ValueError(ALREADY_RATED)")
+        try:
+            gst3.submit_rating(p2["id"], rater_id=999, verdict="success", comment=None)
+            check(False, "оценка от постороннего должна кидать NOT_YOUR_PARTNERSHIP")
+        except ValueError as e:
+            check(str(e) == "NOT_YOUR_PARTNERSHIP", "не участник партнёрства -> ValueError(NOT_YOUR_PARTNERSHIP)")
+
+        rep3_before_rating = gst3.get_or_create_guro_user(3)["reputation_score"]
+        gst3.submit_rating(p2["id"], rater_id=3, verdict="problematic", comment="задержал оплату")
+        revealed = gst3.get_partnership(p2["id"])
+        check(revealed["rating_revealed_at"] is not None, "обе стороны оценили -> раскрыто сразу")
+        rep1_after_rating = gst3.get_or_create_guro_user(1)["reputation_score"]
+        check(rep1_after_rating < rep1_after2, "3 оценил 1 как 'проблемная' -> репутация 1 упала (штраф)")
+        rep3_after_rating = gst3.get_or_create_guro_user(3)["reputation_score"]
+        check(rep3_after_rating == rep3_before_rating, "1 оценил 3 как 'успешно' без крипто-верификации -> без бонуса, без изменений")
+
+        # "Найм" (6, п.3), путь ОТЛОЖЕННЫХ очков — кандидат ещё НЕ "работаю"
+        # на момент подтверждения -> очки не применяются до синка (guro_partnership_sync.py).
+        st.save_profile({"user_id": 4, "username": "dave", "name": "Dave"})
+        conn = sqlite3.connect(db_path)
+        conn.execute("UPDATE profiles SET created_at=? WHERE user_id=4", (old_ts,))
+        conn.commit()
+        conn.close()
+        gst3.activate_subscription(4, 30)
+        p3 = gst3.create_partnership(1, 4, None, None, ptype="hire")
+        rep4_before = gst3.get_or_create_guro_user(4)["reputation_score"]
+        confirmed3 = gst3.respond_partnership(p3["id"], responder_id=4, accept=True)
+        check(confirmed3["hire_status_pending"] == 1, "кандидат ещё не 'работаю' -> очки отложены")
+        rep4_after = gst3.get_or_create_guro_user(4)["reputation_score"]
+        check(rep4_after == rep4_before, "отложенный найм -> репутация НЕ меняется")
+        check(not gst3.sync_hire_status(p3["id"]), "sync_hire_status до смены статуса -> False, ничего не применилось")
+        gst3.set_work_status(4, GC.WORK_STATUS_WORKING)
+        check(gst3.sync_hire_status(p3["id"]), "sync_hire_status после смены статуса -> True, очки применены")
+        rep4_synced = gst3.get_or_create_guro_user(4)["reputation_score"]
+        check(rep4_synced > rep4_after, "после синка репутация кандидата выросла")
+        check(gst3.get_partnership(p3["id"])["hire_status_pending"] == 0, "флаг снят после синка")
+
         stats = gst3.dashboard_stats()
-        check(stats["total"] == 2, f"dashboard_stats: total=2, а не {stats['total']}")
-        check(stats["confirmed"] == 2, f"dashboard_stats: confirmed=2, а не {stats['confirmed']}")
+        check(stats["total"] == 3, f"dashboard_stats: total=3 (1-2, 1-3, 1-4), а не {stats['total']}")
+        check(stats["confirmed"] == 3, f"dashboard_stats: confirmed=3, а не {stats['confirmed']}")
         check(stats["pending"] == 0, "dashboard_stats: pending=0")
         check(stats["declined"] == 0, "dashboard_stats: declined=0")
-        check(stats["active_subscriptions"] == 1, "dashboard_stats: active_subscriptions=1 после activate_subscription")
-        check(stats["tracked_users"] >= 3, "dashboard_stats: tracked_users учитывает всех с guro_users row")
+        check(stats["active_subscriptions"] == 3, "dashboard_stats: active_subscriptions=3 (users 1,3,4)")
+        check(stats["tracked_users"] >= 4, "dashboard_stats: tracked_users учитывает всех с guro_users row")
 
         # расширение "Моё CV" (12.08.2026) — потолок записей опыта работы
         for i in range(GC.CV_EXPERIENCE_MAX):
@@ -3094,17 +3195,21 @@ async def _run_guro_id_api_sim():
                       "а не список по совпадению 'crypto' в других полях")
 
                 resp = await client.post("/api/partnerships", headers=auth_100,
-                                          json={"confirmer_username": "nobody"})
+                                          json={"confirmer_username": "nobody", "ptype": "deal"})
                 check(resp.status == 404, "POST /api/partnerships неизвестному юзернейму -> 404")
 
                 resp = await client.post("/api/partnerships", headers=auth_100,
-                                          json={"confirmer_username": "confirmer", "vertical": "casino"})
+                                          json={"confirmer_username": "confirmer"})
+                check(resp.status == 400, "POST /api/partnerships без ptype -> 400 INVALID_TYPE (6, п.1, обязательное поле)")
+
+                resp = await client.post("/api/partnerships", headers=auth_100,
+                                          json={"confirmer_username": "confirmer", "vertical": "casino", "ptype": "deal"})
                 check(resp.status == 200, "POST /api/partnerships валидный запрос -> 200")
                 body = await resp.json()
                 check(body["status"] == "pending", "созданное партнёрство в статусе pending")
 
                 resp = await client.post("/api/partnerships", headers=auth_100,
-                                          json={"confirmer_username": "confirmer"})
+                                          json={"confirmer_username": "confirmer", "ptype": "deal"})
                 check(resp.status == 409, "повторная заявка <24ч -> 409 (анти-фрод)")
 
                 # --- Фаза 2 (11.08.2026): офер/суммы/отзыв в партнёрстве -------
@@ -3119,7 +3224,7 @@ async def _run_guro_id_api_sim():
                     "amount_received": "1500", "amount_paid": "200.5",
                     "review": "Отличная сделка, всё чётко и в срок",
                     "amount_visible": True,
-                    "tx_hash": "0xabc123def456",
+                    "tx_hash": "0xabc123def456", "ptype": "deal", "tx_network": "ethereum",
                 })
                 check(resp.status == 200, "POST /api/partnerships с офером/суммами/отзывом -> 200")
                 body = await resp.json()
@@ -3147,7 +3252,7 @@ async def _run_guro_id_api_sim():
                     "offer": "Консультация по комплаенсу",
                     "amount_received": "500",
                     "review": "Норм",
-                    "tx_hash": "should_stay_hidden",
+                    "tx_hash": "should_stay_hidden", "ptype": "deal", "tx_network": "ethereum",
                 })
                 body = await resp.json()
                 app["storage"].respond_partnership(body["id"], responder_id=460, accept=True)
@@ -3729,7 +3834,6 @@ async def _run_guro_partnerships_sim():
         gstorage = GuroStorage(db_path)
         p12 = gstorage.create_partnership(1, 2, "casino", None)
         p13 = gstorage.create_partnership(1, 3, "casino", None)
-        check(p12["counts_toward_rating"] == 1, "старые аккаунты -> partnership учитывается")
 
         context = FakeContext(bot_data)
 
@@ -3748,6 +3852,14 @@ async def _run_guro_partnerships_sim():
         check("подтверждено" in ok_q.message.text, "confirm -> сообщение обновлено на подтверждение")
         check(any("подтвердил" in t for _, t in context.bot.sent), "инициатор уведомлён о подтверждении")
         check(gstorage.get_partnership(p12["id"])["status"] == "confirmed", "статус партнёрства -> confirmed")
+        # 25.08.2026, формула v2: без активной подписки у обеих сторон
+        # партнёрство подтверждается (видно, счётчик сделок растёт), но не
+        # учитывается в рейтинге — этот сценарий отдельно и подробно
+        # покрыт в test_guro_id_storage/test_guro_id_reputation_formula,
+        # тут просто убеждаемся, что bot-side confirm не падает и не считает
+        # молча вопреки правилу.
+        check(gstorage.get_partnership(p12["id"])["counts_toward_rating"] == 0,
+              "без активной подписки сторон -> НЕ учитывается в рейтинге, даже у старых аккаунтов")
 
         # повторный confirm -> already resolved
         repeat_q = FakeQuery(f"guro:confirm:{p12['id']}", chat_id=2)

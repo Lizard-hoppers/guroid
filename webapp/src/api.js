@@ -56,6 +56,7 @@ export function searchByUserId(userId, { workspace } = {}) {
 
 export function createPartnership({
   confirmerUsername, vertical, geo, offer, amountReceived, amountPaid, review, amountVisible, txHash,
+  ptype, txNetwork,
 }) {
   return request("/api/partnerships", {
     method: "POST",
@@ -69,8 +70,35 @@ export function createPartnership({
       review: review || null,
       amount_visible: !!amountVisible,
       tx_hash: txHash || null,
+      ptype,
+      tx_network: txHash ? txNetwork : null,
     }),
   });
+}
+
+// Оценка партнёрства, Шаг 2 (ТЗ 6.1, 25.08.2026) — независимо от контрагента,
+// обе оценки скрыты друг от друга до раскрытия (см. guro_id_api.py).
+export function ratePartnership(partnershipId, verdict, comment) {
+  return request(`/api/partnerships/${encodeURIComponent(partnershipId)}/rate`, {
+    method: "POST",
+    body: JSON.stringify({ verdict, comment: comment || null }),
+  });
+}
+
+export function getPendingRatings() {
+  return request("/api/partnerships/pending_ratings");
+}
+
+// Верификация адреса компании (ТЗ 5.5, 25.08.2026) — кабинет "Компания".
+export function submitCompanyAddress(network, address) {
+  return request("/api/company/address", {
+    method: "POST",
+    body: JSON.stringify({ network, address }),
+  });
+}
+
+export function getCompanyAddresses() {
+  return request("/api/company/addresses");
 }
 
 // Browse по вертикали (Фаза 2, 11.08.2026) — альтернатива текстовому

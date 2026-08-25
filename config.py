@@ -57,6 +57,14 @@ class Settings:
     # Юзернейм бота без @ — нужен серверу для сборки QR-дипссылок GURO ID
     # (`t.me/<bot_username>?start=guro_<id>`), без лишнего вызова getMe().
     bot_username: str = "GamblingCommunitybot"
+    # Ончейн-верификация крипто-хеша сделки (ТЗ 5.4, 25.08.2026, см.
+    # guro_chain_verify.py) — НЕ платёжные ключи (те у cryptobot_api_token
+    # выше). TRONSCAN необязателен (публичный эндпойнт работает и без
+    # ключа), ETHERSCAN/BSCSCAN обязательны — без них верификация для
+    # соответствующей сети мягко отключена (verified=False, API_KEY_MISSING).
+    tronscan_api_key: str = ""
+    etherscan_api_key: str = ""
+    bscscan_api_key: str = ""
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -118,6 +126,9 @@ class Settings:
             cryptobot_api_token=os.environ.get("CRYPTOBOT_API_TOKEN", "").strip(),
             bot_username=os.environ.get("BOT_USERNAME", "GamblingCommunitybot").strip()
             or "GamblingCommunitybot",
+            tronscan_api_key=os.environ.get("TRONSCAN_API_KEY", "").strip(),
+            etherscan_api_key=os.environ.get("ETHERSCAN_API_KEY", "").strip(),
+            bscscan_api_key=os.environ.get("BSCSCAN_API_KEY", "").strip(),
         )
 
     def is_admin(self, user_id: int) -> bool:

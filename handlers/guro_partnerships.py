@@ -32,7 +32,10 @@ async def cb_guro_partnership_response(update: Update, context: ContextTypes.DEF
 
     await q.answer()
     if accept:
-        await q.edit_message_text("✅ Партнёрство подтверждено. Запись появится в профилях обоих в GURO ID.")
+        await q.edit_message_text(
+            "✅ Партнёрство подтверждено. Запись появится в профилях обоих в GURO ID. "
+            "Не забудьте оценить сотрудничество в приложении (раздел «Мой рейтинг»)."
+        )
     else:
         await q.edit_message_text("❌ Партнёрство отклонено.")
 

@@ -719,9 +719,17 @@ class GuroStorage:
 
     def submit_rating(self, partnership_id: int, rater_id: int, verdict: str, comment: str | None) -> sqlite3.Row:
         """Поднимает ValueError: NOT_FOUND / NOT_YOUR_PARTNERSHIP /
-        NOT_CONFIRMED / ALREADY_RATED / INVALID_VERDICT. Комментарий
-        разрешён только у "problematic" (см. ТЗ 6.1) — для остальных
-        обнуляется молча, не 400 (не критично для юзера)."""
+        NOT_CONFIRMED / INVALID_VERDICT. Комментарий разрешён только у
+        "problematic" (см. ТЗ 6.1) — для остальных обнуляется молча, не 400
+        (не критично для юзера).
+
+        25.08.2026 (фидбек владельца, "Правки.pdf"): раньше повторная
+        оценка от той же стороны кидала ALREADY_RATED — теперь UPSERT
+        ("добавить возможность редактирования"), можно менять вердикт
+        сколько угодно раз. Если партнёрство уже РАСКРЫТО
+        (rating_revealed_at) — пересчитываем W контрагента сразу же (см.
+        delete_rating — тот же приём), иначе прежнее поведение (эффект
+        применится при раскрытии) не меняется."""
         if verdict not in GC.RATING_VERDICTS:
             raise ValueError("INVALID_VERDICT")
         row = self.get_partnership(partnership_id)
@@ -733,24 +741,54 @@ class GuroStorage:
             raise ValueError("NOT_CONFIRMED")
         ratee_id = row["confirmer_id"] if rater_id == row["initiator_id"] else row["initiator_id"]
 
+        comment = (comment or "").strip()[: GC.RATING_COMMENT_MAX] or None
+        if verdict != GC.RATING_PROBLEMATIC:
+            comment = None
         existing = self._conn.execute(
             "SELECT id FROM guro_partnership_ratings WHERE partnership_id=? AND rater_id=?",
             (partnership_id, rater_id),
         ).fetchone()
         if existing is not None:
-            raise ValueError("ALREADY_RATED")
-
-        comment = (comment or "").strip()[: GC.RATING_COMMENT_MAX] or None
-        if verdict != GC.RATING_PROBLEMATIC:
-            comment = None
-        self._conn.execute(
-            "INSERT INTO guro_partnership_ratings (partnership_id, rater_id, ratee_id, verdict, "
-            "comment, created_at) VALUES (?,?,?,?,?,?)",
-            (partnership_id, rater_id, ratee_id, verdict, comment, self._now_str()),
-        )
+            self._conn.execute(
+                "UPDATE guro_partnership_ratings SET verdict=?, comment=?, created_at=? WHERE id=?",
+                (verdict, comment, self._now_str(), existing["id"]),
+            )
+        else:
+            self._conn.execute(
+                "INSERT INTO guro_partnership_ratings (partnership_id, rater_id, ratee_id, verdict, "
+                "comment, created_at) VALUES (?,?,?,?,?,?)",
+                (partnership_id, rater_id, ratee_id, verdict, comment, self._now_str()),
+            )
         self._conn.commit()
-        self._maybe_reveal_rating(partnership_id)
+        if row["rating_revealed_at"]:
+            self.recompute_total_w(ratee_id)
+        else:
+            self._maybe_reveal_rating(partnership_id)
         return self.get_partnership(partnership_id)
+
+    def delete_rating(self, partnership_id: int, rater_id: int) -> None:
+        """Удаление своей оценки (25.08.2026, фидбек владельца: "удалить
+        может тот, кто отзыв оставил"). Поднимает ValueError: NOT_FOUND /
+        NOT_YOUR_PARTNERSHIP / RATING_NOT_FOUND. Если партнёрство уже
+        раскрыто — сразу пересчитываем W контрагента (эффект этой оценки
+        исчезает, rating_delta(None,...) = нейтрально, см. guro_logic)."""
+        row = self.get_partnership(partnership_id)
+        if row is None:
+            raise ValueError("NOT_FOUND")
+        if rater_id not in (row["initiator_id"], row["confirmer_id"]):
+            raise ValueError("NOT_YOUR_PARTNERSHIP")
+        ratee_id = row["confirmer_id"] if rater_id == row["initiator_id"] else row["initiator_id"]
+
+        existing = self._conn.execute(
+            "SELECT id FROM guro_partnership_ratings WHERE partnership_id=? AND rater_id=?",
+            (partnership_id, rater_id),
+        ).fetchone()
+        if existing is None:
+            raise ValueError("RATING_NOT_FOUND")
+        self._conn.execute("DELETE FROM guro_partnership_ratings WHERE id=?", (existing["id"],))
+        self._conn.commit()
+        if row["rating_revealed_at"]:
+            self.recompute_total_w(ratee_id)
 
     def get_my_rating(self, partnership_id: int, user_id: int) -> sqlite3.Row | None:
         return self._conn.execute(

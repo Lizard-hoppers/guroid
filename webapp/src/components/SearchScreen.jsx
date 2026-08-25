@@ -314,8 +314,14 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
           </button>
         </form>
 
+        <div className="partner-meta search-cabinets-hint">
+          {t("search.cabinetsHint")}
+        </div>
+
         <div className="partner-meta" style={{ margin: "12px 0 6px" }}>
           {t("search.browseHint")}
+          {" "}
+          <span className="search-demo-badge">{t("search.demoLabel")}</span>
         </div>
         <div className="vertical-chips">
           {VERTICALS.map((v) => (

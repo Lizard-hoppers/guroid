@@ -2571,20 +2571,29 @@ def test_guro_id_storage():
         check(not gst3.is_subscribed(2), "user 2 без подписки -> is_subscribed False")
 
         # оценка партнёрства, Шаг 2 (ТЗ 6.1, 25.08.2026) — anti-retaliation:
-        # раскрытие только когда ОБЕ стороны оценили.
+        # раскрытие только когда ОБЕ стороны оценили. 25.08.2026 (фидбек
+        # владельца, "Правки.pdf"): повторная отправка теперь РЕДАКТИРУЕТ
+        # (upsert), а не кидает ALREADY_RATED; своя оценка удаляется через
+        # delete_rating.
         gst3.submit_rating(p2["id"], rater_id=1, verdict="success", comment=None)
         not_yet = gst3.get_partnership(p2["id"])
         check(not_yet["rating_revealed_at"] is None, "одна оценка из двух -> ещё не раскрыто")
-        try:
-            gst3.submit_rating(p2["id"], rater_id=1, verdict="nuance", comment=None)
-            check(False, "повторная оценка от той же стороны должна кидать ALREADY_RATED")
-        except ValueError as e:
-            check(str(e) == "ALREADY_RATED", "повторная оценка -> ValueError(ALREADY_RATED)")
+
+        gst3.submit_rating(p2["id"], rater_id=1, verdict="nuance", comment=None)
+        edited = gst3.get_my_rating(p2["id"], 1)
+        check(edited["verdict"] == "nuance", "повторная отправка РЕДАКТИРУЕТ оценку (upsert), не кидает ошибку")
+
         try:
             gst3.submit_rating(p2["id"], rater_id=999, verdict="success", comment=None)
             check(False, "оценка от постороннего должна кидать NOT_YOUR_PARTNERSHIP")
         except ValueError as e:
             check(str(e) == "NOT_YOUR_PARTNERSHIP", "не участник партнёрства -> ValueError(NOT_YOUR_PARTNERSHIP)")
+
+        try:
+            gst3.delete_rating(p2["id"], 999)
+            check(False, "удаление чужой (несуществующей у 999) оценки должно кидать RATING_NOT_FOUND")
+        except ValueError as e:
+            check(str(e) == "NOT_YOUR_PARTNERSHIP", "999 вообще не участник партнёрства -> NOT_YOUR_PARTNERSHIP раньше RATING_NOT_FOUND")
 
         rep3_before_rating = gst3.get_or_create_guro_user(3)["reputation_score"]
         gst3.submit_rating(p2["id"], rater_id=3, verdict="problematic", comment="задержал оплату")
@@ -2593,7 +2602,20 @@ def test_guro_id_storage():
         rep1_after_rating = gst3.get_or_create_guro_user(1)["reputation_score"]
         check(rep1_after_rating < rep1_after2, "3 оценил 1 как 'проблемная' -> репутация 1 упала (штраф)")
         rep3_after_rating = gst3.get_or_create_guro_user(3)["reputation_score"]
-        check(rep3_after_rating == rep3_before_rating, "1 оценил 3 как 'успешно' без крипто-верификации -> без бонуса, без изменений")
+        check(rep3_after_rating == rep3_before_rating, "1 оценил 3 как 'нюансы' -> нейтрально, без изменений")
+
+        # Удаление оценки ПОСЛЕ раскрытия (25.08.2026, фидбек владельца:
+        # "удалить может тот, кто отзыв оставил") — сразу пересчитывает W контрагента.
+        gst3.delete_rating(p2["id"], rater_id=3)
+        rep1_after_delete = gst3.get_or_create_guro_user(1)["reputation_score"]
+        check(rep1_after_delete == rep1_after2,
+              "оценка 3-го про 1-го удалена -> штраф снят, репутация 1 вернулась к значению до оценки")
+        check(gst3.get_rating_of(p2["id"], 1) is None, "оценки 3-го про 1-го больше нет в БД")
+        try:
+            gst3.delete_rating(p2["id"], rater_id=3)
+            check(False, "повторное удаление уже удалённой оценки должно кидать RATING_NOT_FOUND")
+        except ValueError as e:
+            check(str(e) == "RATING_NOT_FOUND", "повторное удаление -> ValueError(RATING_NOT_FOUND)")
 
         # "Найм" (6, п.3), путь ОТЛОЖЕННЫХ очков — кандидат ещё НЕ "работаю"
         # на момент подтверждения -> очки не применяются до синка (guro_partnership_sync.py).
@@ -2770,9 +2792,17 @@ async def _run_guro_id_api_sim():
                 check(body["name"] is None, "по умолчанию имя скрыто в ЧУЖОМ поиске (opt-in)")
                 check(body["company"] is None and body["vertical"] is None,
                       "по умолчанию company/vertical тоже скрыты")
-                check(body["reputation_score"] is None, "по умолчанию репутация скрыта в чужом поиске")
-                check(body["joined_community_at"] is None and body["days_in_community"] is None,
-                      "по умолчанию оба поля стажа скрыты")
+                # 25.08.2026 (фидбек владельца, "Правки.pdf": "убрать
+                # приватность, рейтинг должен быть доступный при условии,
+                # что человек оплатил подписку") — show_reputation/
+                # show_tenure больше НЕ гейтят видимость, только подписка
+                # ЦЕЛИ (которая тут активна, см. activate_subscription(100)
+                # выше) — рейтинг/стаж видны ВСЕГДА, даже без единого
+                # включённого тумблера.
+                check(body["reputation_score"] is not None,
+                      "рейтинг виден без тумблера -> подписки цели достаточно (приватность рейтинга убрана)")
+                check(body["joined_community_at"] is not None and body["days_in_community"] is not None,
+                      "стаж виден без тумблера по той же причине")
                 check(body["confirmed_partnerships"] == 0, "число партнёрств видно ВСЕГДА, даже без единого включённого тумблера")
                 check(body["profession"] is None, "по умолчанию профессия скрыта")
                 check(body["linkedin"] is None and body["website"] is None,
@@ -2996,10 +3026,10 @@ async def _run_guro_id_api_sim():
                     await client.post("/api/privacy", headers=auth_100, json={"field": f, "value": True})
                 resp = await client.get("/api/search?username=initiator", headers=auth_200)
                 body = await resp.json()
-                check(body["reputation_score"] is not None, "show_reputation включён -> репутация видна в чужом поиске")
+                check(body["reputation_score"] is not None, "репутация видна в чужом поиске (тумблер на неё больше не влияет)")
                 check(body["company"] == "GURO Co" and body["vertical"] == "iGaming", "company/vertical включены -> видны")
                 check(body["joined_community_at"] is not None and body["days_in_community"] is not None,
-                      "show_tenure включён -> видны оба поля стажа")
+                      "оба поля стажа видны (тумблер на них больше не влияет)")
                 check(body["confirmed_partnerships"] == 0, "число партнёрств ВСЕГДА видно (не зависит от тумблеров)")
                 check(isinstance(body.get("partners"), list), "список партнёров виден всегда")
 
@@ -3116,8 +3146,10 @@ async def _run_guro_id_api_sim():
                 resp = await client.get("/api/qr")
                 check(resp.status == 401, "GET /api/qr без Authorization -> 401")
 
-                # directory-поиск по описанию ("менеджер в крипто" -> список) —
-                # целиком платная фича, отдельная от точного /api/search
+                # 25.08.2026 (фидбек владельца, "Правки.pdf", раздел "Поиск"):
+                # поиск по описанию убран из ЛИЧНОГО профиля — только точный
+                # юзернейм. cryptomgr (user 400) заведён тут же — ещё нужен
+                # ниже для теста browse по вертикали (см. "Фаза 2").
                 st.save_profile({
                     "user_id": 400, "username": "cryptomgr", "name": "Crypto Manager",
                     "vertical": "Крипто", "profession": "Manager", "company": "Secret Co",
@@ -3129,25 +3161,12 @@ async def _run_guro_id_api_sim():
                     headers={"Authorization": "tma " + _guro_make_init_data(token, {"id": 400, "username": "cryptomgr"})},
                     json={"field": "show_vertical", "value": True},
                 )
-                await client.post(
-                    "/api/privacy",
-                    headers={"Authorization": "tma " + _guro_make_init_data(token, {"id": 400, "username": "cryptomgr"})},
-                    json={"field": "show_profession", "value": True},
-                )
-                await client.post(
-                    "/api/privacy",
-                    headers={"Authorization": "tma " + _guro_make_init_data(token, {"id": 400, "username": "cryptomgr"})},
-                    json={"field": "show_reputation", "value": True},
-                )
-                # компания НЕ открыта -> не должна светиться ни в поиске, ни в тексте
-                st.save_profile({
-                    "user_id": 401, "username": "hiddencrypto", "name": "Hidden Crypto",
-                    "vertical": "Крипто", "profession": "Trader",
-                })  # ни один privacy-тумблер не включён -> невидим для directory-поиска вообще
 
-                # УНИВЕРСАЛЬНЫЙ поиск (10.08.2026): один инпут ?q=, бэкенд сам решает —
-                # точный юзернейм -> бесплатный тизер-профиль (mode=profile), иначе
-                # (нет такого юзернейма) -> платный directory-поиск (mode=list)
+                # УНИВЕРСАЛЬНЫЙ поиск (10.08.2026, сужен 25.08.2026): один
+                # инпут ?q=, бэкенд ищет ТОЛЬКО точный юзернейм — не нашёл ->
+                # NOT_FOUND, а не платный directory-поиск (тот убран из
+                # личного профиля, `_directory_search` оставлена в коде для
+                # будущих кабинетов Рекрутер/Компания, см. handle_search).
                 resp = await client.get("/api/search?q=initiator", headers=auth_ghost)
                 check(resp.status == 200,
                       "q= точно совпал с юзернеймом -> 200 БЕЗ подписки (это режим profile, не list)")
@@ -3156,10 +3175,8 @@ async def _run_guro_id_api_sim():
                 check(body["locked"] is True, "но карточка всё равно тизер, т.к. auth_ghost не подписан")
 
                 resp = await client.get("/api/search?q=крипто", headers=auth_ghost)
-                check(resp.status == 402,
-                      "q= НЕ совпал ни с одним юзернеймом -> это описание -> 402 без подписки смотрящего")
-                body = await resp.json()
-                check(body["error"] == "SUBSCRIPTION_REQUIRED", "тело ответа содержит понятный код ошибки")
+                check(resp.status == 404,
+                      "q= НЕ совпал ни с одним юзернеймом -> 404 (поиск по описанию убран из личного профиля)")
 
                 # auth_200 (confirmer) уже подписан с самого начала теста (см. paywall-тест выше)
                 resp = await client.get("/api/search?q=", headers=auth_200)
@@ -3169,30 +3186,13 @@ async def _run_guro_id_api_sim():
                       "пустой query -> mode=list с пустым results, не вся база")
 
                 resp = await client.get("/api/search?q=крипто", headers=auth_200)
-                check(resp.status == 200, "q= с подпиской смотрящего, без совпадения по юзернейму -> 200")
-                body = await resp.json()
-                check(body["mode"] == "list", "q= без точного юзернейма -> mode=list (directory-режим)")
-                ids = [r["user_id"] for r in body["results"]]
-                check(400 in ids, "поиск по 'крипто' находит user 400 (открыл show_vertical)")
-                check(401 not in ids,
-                      "user 401 совпадает по тексту, НО ни один privacy-тумблер не включён -> не находится")
-                found = next(r for r in body["results"] if r["user_id"] == 400)
-                check(found["vertical"] == "Крипто", "у найденного видна вертикаль (show_vertical включён)")
-                check(found["company"] is None,
-                      "company НЕ была открыта тумблером -> скрыта даже в найденном результате")
-                check(found["reputation_score"] is not None,
-                      "user 400 подписан -> его репутация видна в результате")
-
-                resp = await client.get("/api/search?q=менеджер", headers=auth_100)
-                body = await resp.json()
-                self_ids = [r["user_id"] for r in body["results"]]
-                check(100 not in self_ids, "поиск по описанию никогда не возвращает самого запрашивающего")
+                check(resp.status == 404,
+                      "q= без точного юзернейма -> 404 ДАЖЕ с подпиской смотрящего (не directory-режим больше)")
 
                 resp = await client.get("/api/search?q=cryptomgr", headers=auth_200)
                 body = await resp.json()
                 check(body["mode"] == "profile" and body["user_id"] == 400,
-                      "q= точно совпал с юзернеймом user 400 -> находит ЕГО ОДНОГО (mode=profile), "
-                      "а не список по совпадению 'crypto' в других полях")
+                      "q= точно совпал с юзернеймом user 400 -> находит его (mode=profile)")
 
                 resp = await client.post("/api/partnerships", headers=auth_100,
                                           json={"confirmer_username": "nobody", "ptype": "deal"})
@@ -3222,6 +3222,10 @@ async def _run_guro_id_api_sim():
                     "confirmer_username": "dealpartner", "vertical": "iGaming", "geo": "Malta",
                     "offer": "Привёл байера на казино-трафик",
                     "amount_received": "1500", "amount_paid": "200.5",
+                    # "review" (25.08.2026, фидбек владельца): свободный
+                    # отзыв убран с этого шага (см. handle_create_partnership) —
+                    # даже если фронт (или старый клиент) его пришлёт,
+                    # бэкенд молча игнорирует, партнёрство хранит review=None.
                     "review": "Отличная сделка, всё чётко и в срок",
                     "amount_visible": True,
                     "tx_hash": "0xabc123def456", "ptype": "deal", "tx_network": "ethereum",
@@ -3235,8 +3239,8 @@ async def _run_guro_id_api_sim():
                 partner = next(p for p in body["partners"] if p["user_id"] == 460)
                 check(partner["offer"] == "Привёл байера на казино-трафик",
                       "офер виден в чужом поиске (публичен всегда)")
-                check(partner["review"] == "Отличная сделка, всё чётко и в срок",
-                      "отзыв виден в чужом поиске (публичен всегда)")
+                check(partner["review"] is None,
+                      "отзыв больше НЕ собирается на этом шаге (25.08.2026) -> всегда None, даже если фронт его прислал")
                 check(partner["amount_received"] == 1500.0, "сумма видна, т.к. amount_visible=True при создании")
                 check(partner["amount_paid"] == 200.5, "вторая сумма тоже видна")
                 check(partner["tx_hash"] == "0xabc123def456", "хэш транзакции виден вместе с суммой (16.08.2026)")

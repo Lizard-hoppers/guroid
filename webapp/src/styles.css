@@ -1361,6 +1361,25 @@ label {
   color: var(--gold);
 }
 
+/* Подсказка про кабинеты Рекрутер/Компания (25.08.2026, фидбек владельца) —
+   лёгкий разделитель перед списком вертикалей, без своей отдельной карточки. */
+.search-cabinets-hint {
+  margin: 6px 0 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.search-demo-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 8px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--gold);
+  font-size: 11px;
+  vertical-align: middle;
+}
+
 /* --- Browse по вертикали (Фаза 2, 11.08.2026) --- */
 
 .vertical-chips {
@@ -1669,4 +1688,16 @@ select {
 .rate-widget textarea {
   width: 100%;
   margin-bottom: 6px;
+}
+
+/* Изменить/удалить свою оценку (25.08.2026) — текстовые ссылки инлайн,
+   рядом с показанной оценкой, не отдельные кнопки-капсулы. */
+.rate-inline-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--gold);
+  text-decoration: underline;
+  font-size: inherit;
+  cursor: pointer;
 }

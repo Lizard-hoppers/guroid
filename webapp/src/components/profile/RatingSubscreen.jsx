@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { MetricsRow, PartnersList } from "../Shared.jsx";
-import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import { useLang } from "../../i18n.jsx";
 
 // Подсказка "как поднять рейтинг" (11.08.2026, по фидбеку владельца —
@@ -27,7 +26,13 @@ function RatingHelp() {
   );
 }
 
-export function RatingSubscreen({ profile, privacy, onPrivacyChange, onBack, onNavigate }) {
+// 25.08.2026 (фидбек владельца, "Правки.pdf"): приватность рейтинга/стажа
+// убрана с этого экрана — видимость чужим теперь определяет ТОЛЬКО
+// подписка ВЛАДЕЛЬЦА профиля (см. guro_id_api._apply_subscription_gate),
+// не отдельный тумблер. privacy/onPrivacyChange больше не нужны тут —
+// пропсы оставлены необязательными на случай, если родитель их всё ещё
+// передаёт (ProfileScreen.jsx), просто не используются.
+export function RatingSubscreen({ profile, onBack, onNavigate }) {
   const { t } = useLang();
   return (
     <div>
@@ -58,12 +63,6 @@ export function RatingSubscreen({ profile, privacy, onPrivacyChange, onBack, onN
         <h3>{t("rating.partnershipsTitle")}</h3>
         <PartnersList partners={profile.partners} emptyHint={t("rating.emptyOwn")} allowRating />
       </div>
-      <PrivacyToggles
-        privacy={privacy}
-        onChange={onPrivacyChange}
-        fields={["show_reputation", "show_tenure"]}
-        hint={t("rating.privacyHint")}
-      />
     </div>
   );
 }

@@ -127,6 +127,8 @@ const STRINGS = {
   "rating.commentPlaceholder": { ru: "Что именно произошло (необязательно)", en: "What happened (optional)" },
   "rating.commentSubmit": { ru: "Отправить оценку", en: "Submit rating" },
   "rating.myRating": { ru: "Ваша оценка", en: "Your rating" },
+  "rating.editLink": { ru: "изменить", en: "edit" },
+  "rating.deleteLink": { ru: "удалить", en: "delete" },
   "rating.otherRating": { ru: "Оценка контрагента", en: "Counterparty's rating" },
   "rating.error": { ru: "Не получилось отправить оценку.", en: "Couldn't submit the rating." },
 
@@ -309,15 +311,20 @@ const STRINGS = {
 
   // --- Поиск ---
   "search.title": { ru: "Поиск", en: "Search" },
-  "search.hint": {
-    ru: "Юзернейм — бесплатно (тизер-карточка). Описание, например «менеджер в крипто» — ищем среди того, что участники сами открыли в профиле (по подписке).",
-    en: "Username — free (teaser card). A description, e.g. \"crypto manager\" — searches what members chose to reveal in their profile (subscription required).",
-  },
-  "search.placeholder": { ru: "Юзернейм или описание", en: "Username or description" },
+  // 25.08.2026 (фидбек владельца, "Правки.pdf"): поиск по описанию убран из
+  // личного профиля — тут только точный юзернейм. Описание/параметры/резюме —
+  // теперь функционал кабинетов Рекрутер/Компания (см. search.cabinetsHint).
+  "search.hint": { ru: "Точный поиск по юзернейму участника.", en: "Exact search by a member's username." },
+  "search.placeholder": { ru: "Юзернейм", en: "Username" },
   "search.submit": { ru: "Найти", en: "Search" },
   "search.submitting": { ru: "Ищем…", en: "Searching…" },
+  "search.cabinetsHint": {
+    ru: "Чтобы находить резюме по категориям, профессиям и навыкам — активируйте кабинет «Рекрутер». А чтобы находить клиентов, кандидатов и представлять бренд — активируйте кабинет «Компания».",
+    en: "To find résumés by category, profession or skill — activate the Recruiter cabinet. To find clients, candidates and represent a brand — activate the Company cabinet.",
+  },
+  "search.demoLabel": { ru: "Демо версия", en: "Demo version" },
   "search.browseHint": { ru: "Или посмотрите по вертикали, если не знаете юзернейм (по подписке):", en: "Or browse by vertical if you don't know the username (subscription required):" },
-  "search.paywallTitle": { ru: "Поиск по описанию и вертикалям — по подписке", en: "Description and vertical search — subscription only" },
+  "search.paywallTitle": { ru: "Поиск по вертикалям — по подписке", en: "Vertical search — subscription only" },
   "search.paywallText": { ru: "Без подписки доступен только точный поиск по юзернейму.", en: "Without a subscription only exact username search is available." },
   "search.notFound": { ru: "Такой участник не найден в GURO ID.", en: "No such member found in GURO ID." },
   "search.genericError": { ru: "Ошибка поиска.", en: "Search error." },
@@ -346,6 +353,7 @@ const STRINGS = {
     en: "Enter the username of someone you've already worked with. They'll get a confirmation request from the bot — the record appears in both profiles only after they respond. The offer and review are visible to everyone (that's the point — checking a contact's reputation), amounts only if you enable showing them below.",
   },
   "confirm.usernameLabel": { ru: "Юзернейм контрагента", en: "Counterparty's username" },
+  "confirm.usernamePlaceholder": { ru: "Например: @username", en: "E.g.: @username" },
   "confirm.ptypeLabel": { ru: "Тип партнёрства", en: "Partnership type" },
   "confirm.ptype.deal": { ru: "Сделка", en: "Deal" },
   "confirm.ptype.hire": { ru: "Найм", en: "Hire" },
@@ -366,8 +374,6 @@ const STRINGS = {
   },
   "confirm.txNetworkLabel": { ru: "Сеть транзакции", en: "Transaction network" },
   "confirm.txNetworkPlaceholder": { ru: "Выберите сеть…", en: "Select network…" },
-  "confirm.reviewLabel": { ru: "Отзыв — ваше сообщение о партнёрстве (необязательно)", en: "Review — your note about the partnership (optional)" },
-  "confirm.reviewPlaceholder": { ru: "Как прошло сотрудничество", en: "How the collaboration went" },
   "confirm.submit": { ru: "Отправить на подтверждение", en: "Send for confirmation" },
   "confirm.submitting": { ru: "Отправляем…", en: "Sending…" },
   "confirm.sentOk": { ru: "Заявка отправлена. Ждём подтверждения от контрагента.", en: "Request sent. Waiting for the counterparty to confirm." },

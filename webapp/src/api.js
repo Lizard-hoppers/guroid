@@ -85,6 +85,13 @@ export function ratePartnership(partnershipId, verdict, comment) {
   });
 }
 
+// Удаление своей оценки (25.08.2026, фидбек владельца "Правки.pdf").
+export function deleteRating(partnershipId) {
+  return request(`/api/partnerships/${encodeURIComponent(partnershipId)}/rate/delete`, {
+    method: "POST",
+  });
+}
+
 export function getPendingRatings() {
   return request("/api/partnerships/pending_ratings");
 }

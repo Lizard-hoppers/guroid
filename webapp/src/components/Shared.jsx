@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, useAnimation } from "framer-motion";
 import { formatDate, initialOf } from "../utils.js";
-import { ApiError, ratePartnership, setProfileField, setWorkStatus } from "../api.js";
+import { ApiError, deleteRating, ratePartnership, setProfileField, setWorkStatus } from "../api.js";
 import { haptic } from "../telegram.js";
 import { useLang } from "../i18n.jsx";
 
@@ -240,7 +240,10 @@ const RATING_META = {
   problematic: { emoji: "❌", labelKey: "rating.verdict.problematic" },
 };
 
-function RateWidget({ partnershipId, onRated }) {
+// onCancel передан только в РЕЖИМЕ РЕДАКТИРОВАНИЯ уже поставленной оценки
+// (25.08.2026, фидбек владельца "Правки.pdf" — "добавить возможность
+// удаления, редактирования") — при первой оценке отменять нечего.
+function RateWidget({ partnershipId, onRated, onCancel }) {
   const { t } = useLang();
   const [pendingComment, setPendingComment] = useState(false);
   const [comment, setComment] = useState("");
@@ -292,6 +295,11 @@ function RateWidget({ partnershipId, onRated }) {
           ❌ {t("rating.verdict.problematic")}
         </button>
       </div>
+      {onCancel && (
+        <button type="button" className="onboarding-more-link" onClick={onCancel} style={{ marginTop: 6 }}>
+          <span className="link-underline">{t("common.cancel")}</span>
+        </button>
+      )}
       {error && <Msg type="error">{t("rating.error")}</Msg>}
     </div>
   );
@@ -307,7 +315,25 @@ function RateWidget({ partnershipId, onRated }) {
 export function PartnerRow({ partner, allowRating = false }) {
   const { t } = useLang();
   const [myRating, setMyRating] = useState(partner.my_rating);
+  const [editingRating, setEditingRating] = useState(false);
+  const [deletingRating, setDeletingRating] = useState(false);
   const displayName = partner.name || (partner.username ? `@${partner.username}` : t("common.noName"));
+
+  // Удаление своей оценки (25.08.2026, фидбек владельца "Правки.pdf":
+  // "удалить может тот, кто отзыв оставил") — сразу пересчитывает рейтинг
+  // контрагента на бэкенде, если партнёрство уже было раскрыто.
+  async function handleDeleteRating() {
+    setDeletingRating(true);
+    try {
+      await deleteRating(partner.id);
+      haptic("success");
+      setMyRating(null);
+    } catch {
+      haptic("error");
+    } finally {
+      setDeletingRating(false);
+    }
+  }
   const hasAmount = partner.amount_received != null || partner.amount_paid != null;
   const otherMeta = partner.other_rating ? RATING_META[partner.other_rating] : null;
   return (
@@ -342,9 +368,26 @@ export function PartnerRow({ partner, allowRating = false }) {
           </div>
         )}
         {partner.review && <div className="partner-review">«{partner.review}»</div>}
-        {myRating && (
+        {myRating && !editingRating && (
           <div className="partner-meta">
             {t("rating.myRating")}: {RATING_META[myRating].emoji} {t(RATING_META[myRating].labelKey)}
+            {allowRating && (
+              <>
+                {" · "}
+                <button type="button" className="rate-inline-link" onClick={() => setEditingRating(true)}>
+                  {t("rating.editLink")}
+                </button>
+                {" · "}
+                <button
+                  type="button"
+                  className="rate-inline-link"
+                  disabled={deletingRating}
+                  onClick={handleDeleteRating}
+                >
+                  {t("rating.deleteLink")}
+                </button>
+              </>
+            )}
           </div>
         )}
         {otherMeta && (
@@ -353,8 +396,12 @@ export function PartnerRow({ partner, allowRating = false }) {
             {partner.other_rating_comment && ` — «${partner.other_rating_comment}»`}
           </div>
         )}
-        {allowRating && !myRating && (
-          <RateWidget partnershipId={partner.id} onRated={setMyRating} />
+        {allowRating && (!myRating || editingRating) && (
+          <RateWidget
+            partnershipId={partner.id}
+            onRated={(v) => { setMyRating(v); setEditingRating(false); }}
+            onCancel={myRating ? () => setEditingRating(false) : null}
+          />
         )}
       </div>
       {!partner.counts_toward_rating && <span className="badge-unrated">{t("partner.notRated")}</span>}

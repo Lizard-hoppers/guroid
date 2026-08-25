@@ -20,6 +20,7 @@ value самой транзакции.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 
 import aiohttp
@@ -43,6 +44,32 @@ _TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df52
 # т.к. продукт работает только с USDT (GC.CRYPTO_ASSET) — если появится
 # другой актив, тут понадобится реальный запрос decimals контракта.
 _USDT_DECIMALS = {"tron": 6, "ethereum": 6, "bsc": 18}
+
+
+# Извлечение хеша из вставленной ссылки на эксплорер (25.08.2026, фидбек
+# владельца "Правки.pdf": "юзеру проще вставить ссылку на транзакцию, чем
+# копировать хеш" — люди реально шлют друг другу именно ссылки вида
+# tronscan.org/transaction/<hash>/overview). Каждый паттерн просто ищет
+# ID-подобную подстроку после известного пути эксплорера — если ничего не
+# совпало, считаем весь ввод уже голым хешем (см. extract_tx_hash).
+_EXPLORER_URL_PATTERNS = (
+    re.compile(r"tronscan\.org/(?:#/)?transaction/([0-9a-fA-F]{64})"),
+    re.compile(r"etherscan\.io/tx/(0x[0-9a-fA-F]{64})"),
+    re.compile(r"bscscan\.com/tx/(0x[0-9a-fA-F]{64})"),
+)
+
+
+def extract_tx_hash(raw: str) -> str:
+    """Если raw — ссылка на известный эксплорер, вырезает из неё сам хеш
+    (то, что реально нужно хранить/проверять — не URL целиком). Если
+    ничего не совпало (уже голый хеш, или неизвестный формат ссылки) —
+    возвращает вход как есть (обрезанный по краям)."""
+    raw = (raw or "").strip()
+    for pattern in _EXPLORER_URL_PATTERNS:
+        match = pattern.search(raw)
+        if match:
+            return match.group(1)
+    return raw
 
 
 @dataclass

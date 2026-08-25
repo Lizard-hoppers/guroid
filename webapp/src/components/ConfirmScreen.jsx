@@ -20,7 +20,6 @@ const EMPTY_FORM = {
   offer: "",
   amountReceived: "",
   amountPaid: "",
-  review: "",
   amountVisible: false,
   txHash: "",
   txNetwork: "",
@@ -63,7 +62,7 @@ export function ConfirmScreen() {
         <label>{t("confirm.usernameLabel")}</label>
         <input
           type="text"
-          placeholder={t("confirm.usernameLabel")}
+          placeholder={t("confirm.usernamePlaceholder")}
           value={form.confirmerUsername}
           onChange={(e) => set("confirmerUsername", e.target.value)}
         />
@@ -139,13 +138,6 @@ export function ConfirmScreen() {
             </select>
           </>
         )}
-        <label>{t("confirm.reviewLabel")}</label>
-        <textarea
-          rows={3}
-          placeholder={t("confirm.reviewPlaceholder")}
-          value={form.review}
-          onChange={(e) => set("review", e.target.value)}
-        />
         <button
           className="btn"
           type="submit"

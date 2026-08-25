@@ -154,13 +154,21 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
 # входят — тумблеры приватности их не трогают (это ядро смысла GURO ID),
 # но их скрывает ДРУГОЙ, независимый механизм — подписка САМОГО владельца
 # профиля, см. _apply_subscription_gate ниже.
+#
+# 25.08.2026 (фидбек владельца, "Правки.pdf", раздел "Мой рейтинг"):
+# show_tenure/show_reputation убраны ИЗ ЭТОЙ КАРТЫ — "убрать приватность,
+# рейтинг должен быть доступный (при условии, что человек оплатил
+# подписку)". Значит рейтинг/стаж больше НЕ прячутся тумблером владельца —
+# видимость определяет ТОЛЬКО подписка (уже существующая независимая ось,
+# _apply_subscription_gate ниже, её не трогали). Сами колонки/тумблеры
+# show_tenure/show_reputation в GC.PRIVACY_FIELDS/БД оставлены как есть
+# (мёртвый, но безвредный остаток) — просто больше нигде не читаются,
+# UI-тумблеры для них убраны (см. RatingSubscreen.jsx).
 _PRIVACY_FIELD_MAP = {
     "show_name": ("name",),
     "show_company": ("company",),
     "show_vertical": ("vertical",),
     "show_profession": ("profession",),
-    "show_tenure": ("joined_community_at", "days_in_community"),
-    "show_reputation": ("reputation_score", "reputation_tier"),
     "show_cv": ("cv_text", "cv_profession") + GC.CV_SIMPLE_FIELDS + (
         "cv_grade", "cv_relocation_ready", "cv_polygraph_consent",
         "cv_salary_from", "cv_salary_to", "cv_salary_negotiable", "cv_experience",
@@ -688,10 +696,15 @@ async def handle_search(request: web.Request) -> web.Response:
             return web.json_response({"error": "VIEW_LIMIT_REACHED"}, status=429)
         return web.json_response(_profile_response(storage, requester["id"], target_profile))
 
-    # Не нашли точного юзернейма -> это описание, платный directory-поиск.
-    if not storage.is_subscribed(requester["id"]):
-        return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
-    return web.json_response(_directory_search(storage, requester["id"], q, top=top))
+    # 25.08.2026 (фидбек владельца, "Правки.pdf", раздел "Поиск"): поиск по
+    # описанию (`_directory_search`, ниже) убран из ЛИЧНОГО профиля — там
+    # отныне ТОЛЬКО точный юзернейм. Логика: описание/параметры/резюме —
+    # это функционал кабинетов Рекрутер/Компания (там за это отдельная
+    # подписка), личный профиль — только предъявить/проверить себя по
+    # юзернейму. Функция `_directory_search` НЕ удалена — понадобится,
+    # когда описание-поиск будет добавлено в workspace=recruiter/company
+    # (не в этом раунде, отдельная будущая задача).
+    return web.json_response({"error": "NOT_FOUND"}, status=404)
 
 
 async def _notify_confirmer(bot_token: str, confirmer_id: int, initiator_username: str, partnership_id: int) -> None:
@@ -728,13 +741,21 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
     vertical = body.get("vertical") or None
     geo = body.get("geo") or None
     offer = (str(body.get("offer", "")).strip()[:300]) or None
-    review = (str(body.get("review", "")).strip()[:500]) or None
+    # Свободный "отзыв" убран с этого шага (25.08.2026, фидбек владельца
+    # "Правки.pdf": факт сотрудничества и оценка/отзыв — теперь два разных
+    # шага, см. submit_rating/6.1) — старые записи с review сохраняются и
+    # по-прежнему отображаются (PartnerRow), просто новых больше не будет.
+    review = None
     amount_received = _parse_amount(body.get("amount_received"))
     amount_paid = _parse_amount(body.get("amount_paid"))
     amount_visible = bool(body.get("amount_visible"))
     # Хэш транзакции (16.08.2026) — 200 симв. с запасом покрывает любые
     # реальные хэши (Bitcoin/Ethereum/TRON и т.д. — все короче 100).
-    tx_hash = (str(body.get("tx_hash", "")).strip()[:200]) or None
+    # 25.08.2026: юзеру проще прислать ссылку на транзакцию целиком, чем
+    # копировать голый хэш (фидбек владельца) — extract_tx_hash вырезает
+    # хэш из известных explorer-ссылок (Tronscan/Etherscan/BscScan), иначе
+    # оставляет ввод как есть (уже голый хэш).
+    tx_hash = GCV.extract_tx_hash(str(body.get("tx_hash", "")))[:200] or None
     # Тип партнёрства (6, п.1, 25.08.2026) — обязательный, влияет на
     # базовый вес (5.1). Сеть (6, п.2) обязательна, ТОЛЬКО если указан хэш —
     # без неё нельзя понять, какой explorer API дёргать (ETH/BSC неотличимы
@@ -811,13 +832,15 @@ async def _notify_new_message(bot_token: str, webapp_url: str, recipient_id: int
 
 _RATING_ERROR_STATUS = {
     "NOT_FOUND": 404, "NOT_YOUR_PARTNERSHIP": 403, "NOT_CONFIRMED": 409,
-    "ALREADY_RATED": 409, "INVALID_VERDICT": 400,
+    "INVALID_VERDICT": 400, "RATING_NOT_FOUND": 404,
 }
 
 
 async def handle_submit_rating(request: web.Request) -> web.Response:
     """Оценка партнёрства, Шаг 2 (ТЗ 6.1, 25.08.2026) — POST
-    /api/partnerships/<id>/rate {"verdict", "comment"}."""
+    /api/partnerships/<id>/rate {"verdict", "comment"}. 25.08.2026: теперь
+    UPSERT — тот же эндпоинт редактирует уже поставленную оценку (см.
+    guro_storage.submit_rating)."""
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
     try:
@@ -834,6 +857,23 @@ async def handle_submit_rating(request: web.Request) -> web.Response:
         code = str(e)
         return web.json_response({"error": code}, status=_RATING_ERROR_STATUS.get(code, 409))
     return web.json_response({"id": row["id"], "rating_revealed": bool(row["rating_revealed_at"])})
+
+
+async def handle_delete_rating(request: web.Request) -> web.Response:
+    """Удаление своей оценки (25.08.2026, фидбек владельца) — POST
+    /api/partnerships/<id>/rate/delete."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        partnership_id = int(request.match_info["id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    try:
+        storage.delete_rating(partnership_id, user["id"])
+    except ValueError as e:
+        code = str(e)
+        return web.json_response({"error": code}, status=_RATING_ERROR_STATUS.get(code, 409))
+    return web.json_response({"ok": True})
 
 
 async def handle_pending_ratings(request: web.Request) -> web.Response:
@@ -1567,6 +1607,7 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/company/address", handle_submit_company_address)
     app.router.add_get("/api/company/addresses", handle_list_company_addresses)
     app.router.add_post("/api/partnerships/{id}/rate", handle_submit_rating)
+    app.router.add_post("/api/partnerships/{id}/rate/delete", handle_delete_rating)
     app.router.add_get("/api/partnerships/pending_ratings", handle_pending_ratings)
     app.router.add_get("/api/qr", handle_get_qr)
     app.router.add_get("/api/invite_link", handle_invite_link)

@@ -607,7 +607,7 @@ function VacancyDetail({ id, onBack, onOpenMessages, onManage, onOpenResponses }
 
 // "Мои вакансии" (раздел 4 ТЗ) — статус/счётчики/действия, тап по строке
 // открывает полную карточку (там же кнопки управления).
-function MyVacancies({ onOpen, refreshKey }) {
+function MyVacancies({ onOpen, onManage, refreshKey }) {
   const { t } = useLang();
   const [state, setState] = useState({ loading: true, vacancies: null, error: null });
 
@@ -626,18 +626,50 @@ function MyVacancies({ onOpen, refreshKey }) {
     return <div className="partner-meta">{t("vacancies.mineEmpty")}</div>;
   }
 
+  function act(e, action, v) {
+    e.stopPropagation();
+    onManage(action, v, { stay: true });
+  }
+
   return (
     <div>
       {state.vacancies.map((v) => (
-        <div key={v.id} className="card partner-row" style={{ alignItems: "center", cursor: "pointer" }} onClick={() => onOpen(v.id)}>
-          <div className="partner-info">
-            <div className="partner-name">{v.title}</div>
-            <div className="partner-meta">{[v.vertical, v.grade].filter(Boolean).join(" · ")}</div>
-            <div className="partner-meta">
-              {t("vacancies.viewsLabel", { n: v.views_count })} · {t("vacancies.responsesLabel", { n: v.responses_count })}
+        <div key={v.id} className="card">
+          <div className="partner-row" style={{ alignItems: "center", cursor: "pointer" }} onClick={() => onOpen(v.id)}>
+            <div className="partner-info">
+              <div className="partner-name">{v.title}</div>
+              <div className="partner-meta">{[v.vertical, v.grade].filter(Boolean).join(" · ")}</div>
+              <div className="partner-meta">
+                {t("vacancies.viewsLabel", { n: v.views_count })} · {t("vacancies.responsesLabel", { n: v.responses_count })}
+              </div>
             </div>
+            <StatusBadge status={v.status} />
           </div>
-          <StatusBadge status={v.status} />
+          <div className="recruiter-quick-actions" style={{ marginTop: 10, flexWrap: "wrap" }}>
+            <button type="button" className="btn secondary" onClick={(e) => act(e, "edit", v)}>
+              {t("vacancies.manage.edit")}
+            </button>
+            {v.status === "active" && (
+              <button type="button" className="btn secondary" onClick={(e) => act(e, "pause", v)}>
+                {t("vacancies.manage.pause")}
+              </button>
+            )}
+            {v.status === "paused" && (
+              <button type="button" className="btn secondary" onClick={(e) => act(e, "resume", v)}>
+                {t("vacancies.manage.resume")}
+              </button>
+            )}
+            {v.status !== "closed" && (
+              <button type="button" className="btn secondary" onClick={(e) => act(e, "extend", v)}>
+                {t("vacancies.manage.extend")}
+              </button>
+            )}
+            {v.status !== "closed" && (
+              <button type="button" className="btn secondary" onClick={(e) => act(e, "close", v)}>
+                {t("vacancies.manage.close")}
+              </button>
+            )}
+          </div>
         </div>
       ))}
     </div>
@@ -783,7 +815,10 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
   const canPublish = caps.recruiter || caps.company;
   const subscriptionRequired = state.error instanceof ApiError && state.error.status === 402;
 
-  async function onManage(action, v) {
+  // stay=true (26.08.2026, ТЗ "рекрутер вакансии", Экран 3) — действия
+  // прямо со строки "Мои вакансии" не должны уводить на полную карточку,
+  // остаёмся в списке (в отличие от тех же действий с экрана детали).
+  async function onManage(action, v, { stay } = {}) {
     try {
       if (action === "edit") {
         setView({ name: "edit", id: v.id, initial: vacancyToForm(v) });
@@ -794,7 +829,7 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
       if (action === "extend") await extendVacancy(v.id, 30);
       if (action === "close") await closeVacancy(v.id, null);
       haptic("light");
-      setView({ name: "detail", id: v.id });
+      if (!stay) setView({ name: "detail", id: v.id });
       setRefreshKey((k) => k + 1);
     } catch {
       haptic("error");
@@ -922,7 +957,9 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
         )}
       </div>
 
-      {tab === "mine" && <MyVacancies onOpen={(id) => setView({ name: "detail", id })} refreshKey={refreshKey} />}
+      {tab === "mine" && (
+        <MyVacancies onOpen={(id) => setView({ name: "detail", id })} onManage={onManage} refreshKey={refreshKey} />
+      )}
 
       {tab === "board" && (
         <>

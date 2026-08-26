@@ -225,15 +225,31 @@ def _apply_subscription_gate(summary: dict, is_subscribed: bool, *, bypass: bool
     return result
 
 
+def _recruiter_tenure_days(row, now: datetime) -> int | None:
+    activated = GL.parse_db_datetime(row["first_activated_at"])
+    if activated is None:
+        return None
+    return max(0, (now - activated).days)
+
+
 def _recruiter_summary(storage: GuroStorage, user_id: int) -> dict:
     """Кабинет рекрутера (Фаза 3, 12.08.2026) — САТЕЛЛИТ личного профиля,
     своя витрина + своя ОТДЕЛЬНАЯ подписка (рейтинг/партнёрства остаются
     общими, берутся из личного /api/me). is_recruiter_subscribed=False не
     404-ит (в отличие от NO_PROFILE у личного профиля) — фронт сам решает,
     показать апсейл или редактор, витрина технически "существует" с
-    первого же запроса (get_or_create)."""
+    первого же запроса (get_or_create).
+
+    26.08.2026 (ТЗ "Гуро рекрутер каб", главный экран) — добавлены: общий
+    рейтинг (та же ось видимости, что у личного профиля — подписка
+    ВЛАДЕЛЬЦА, см. _apply_subscription_gate), панель "Характеристика"
+    (успешные наймы/активные вакансии/отклики-заглушка/стаж в роли),
+    статус активности, кэш процентиля."""
     row = storage.get_or_create_recruiter_profile(user_id)
     extra = storage.get_recruiter_extra(user_id)
+    guro_user = storage.get_or_create_guro_user(user_id)
+    is_subscribed = storage.is_subscribed(user_id)
+    percentile = storage.get_recruiter_percentile(user_id)
     return {
         "workspace": "recruiter",
         "user_id": user_id,
@@ -241,6 +257,25 @@ def _recruiter_summary(storage: GuroStorage, user_id: int) -> dict:
         "recruiter_subscription_status": row["subscription_status"],
         "recruiter_subscription_expires_at": row["subscription_expires_at"],
         "is_recruiter_subscribed": storage.is_recruiter_subscribed(user_id),
+        # Общий рейтинг (не отдельный "рейтинг рекрутера" — раздел 3 ТЗ:
+        # очки за найм идут в ОБЩИЙ W, тут просто тот же кружок, что и в
+        # личном профиле). "Рейтинг сгорает без подписки" — та же ось.
+        "reputation_score": round(guro_user["reputation_score"], 1) if is_subscribed else None,
+        "reputation_tier": GL.reputation_tier(guro_user["reputation_score"]) if is_subscribed else None,
+        # Панель "Характеристика" (2.3).
+        "successful_hires": storage.count_confirmed_partnerships_by_type(user_id, GC.PARTNERSHIP_TYPE_HIRE),
+        "active_vacancies": storage.count_active_vacancies(user_id),
+        # "Откликов за 7 дней" — заглушка 0: структурированной механики
+        # "Отклики" ещё нет (см. ТЗ, раздел 5, "вне рамок" — прорабатывается
+        # отдельно вместе с разделом "Вакансии"), считать пока не из чего.
+        "responses_7d": 0,
+        "tenure_days": _recruiter_tenure_days(row, datetime.now(timezone.utc)),
+        # Статус активности (2.4) — отдельный от work_status личного профиля.
+        "activity_status": row["activity_status"],
+        # Блок процентиля (2.5) — только кэш, пересчитывается раз в сутки
+        # (guro_recruiter_percentile_sync.py), см. GuroStorage.get_recruiter_percentile.
+        "percentile_tier": percentile["tier"],
+        "percentile_computed_at": percentile["computed_at"],
     }
 
 
@@ -676,13 +711,16 @@ async def handle_search(request: web.Request) -> web.Response:
             return web.json_response({"error": "VIEW_LIMIT_REACHED"}, status=429)
         return web.json_response(_profile_response(storage, requester["id"], target_profile))
 
+    # any_subscription_active (26.08.2026, ТЗ "Гуро рекрутер каб", "Найти
+    # кандидата") — рекрутер/компания тоже могут просматривать резюме/
+    # вертикали, не обязательно имея ЛИЧНУЮ подписку GURO ID отдельно.
     if resumes:
-        if not storage.is_subscribed(requester["id"]):
+        if not storage.any_subscription_active(requester["id"]):
             return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
         return web.json_response(_resume_browse(storage, requester["id"], vertical or None, top=top))
 
     if vertical:
-        if not storage.is_subscribed(requester["id"]):
+        if not storage.any_subscription_active(requester["id"]):
             return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
         return web.json_response(_directory_browse(storage, requester["id"], vertical, top=top))
 
@@ -983,6 +1021,9 @@ async def handle_get_thread(request: web.Request) -> web.Response:
             {
                 "id": m["id"], "sender_id": m["sender_id"], "body": m["body"],
                 "created_at": m["created_at"], "mine": m["sender_id"] == user["id"],
+                # Метка кабинета-источника (2.7, ТЗ "Гуро рекрутер каб",
+                # "единый инбокс") — через какой кабинет ОТПРАВИТЕЛЬ писал.
+                "via_workspace": m["via_workspace"] or "personal",
             }
             for m in storage.list_messages(thread["id"])
         ]
@@ -993,8 +1034,9 @@ async def handle_get_thread(request: web.Request) -> web.Response:
         **_other_display(other_profile),
         "messages": messages,
         # Тред уже есть -> отвечать можно всегда; нового треда ещё нет ->
-        # писать первым можно, только если СМОТРЯЩИЙ (сам user) подписан.
-        "can_send_first": thread is not None or storage.is_subscribed(user["id"]),
+        # писать первым можно, только если у СМОТРЯЩЕГО (сам user) есть
+        # ЛЮБАЯ активная подписка — личная/рекрутер/компания.
+        "can_send_first": thread is not None or storage.any_subscription_active(user["id"]),
     })
 
 
@@ -1007,6 +1049,9 @@ _MESSAGE_ERROR_STATUS = {
 }
 
 
+_MESSAGE_WORKSPACES = ("personal", "recruiter", "company")
+
+
 async def handle_send_message(request: web.Request) -> web.Response:
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
@@ -1016,9 +1061,12 @@ async def handle_send_message(request: web.Request) -> web.Response:
         recipient_id = int(body.get("recipient_id"))
     except (TypeError, ValueError):
         return web.json_response({"error": "NO_RECIPIENT_PROFILE"}, status=404)
+    via_workspace = str(body.get("via_workspace", "personal")).strip()
+    if via_workspace not in _MESSAGE_WORKSPACES:
+        via_workspace = "personal"
 
     try:
-        message = storage.send_message(user["id"], recipient_id, text)
+        message = storage.send_message(user["id"], recipient_id, text, via_workspace=via_workspace)
     except ValueError as e:
         code = str(e)
         return web.json_response({"error": code}, status=_MESSAGE_ERROR_STATUS.get(code, 400))
@@ -1132,6 +1180,21 @@ async def handle_set_work_status(request: web.Request) -> web.Response:
     except ValueError:
         return web.json_response({"error": "INVALID_STATUS"}, status=400)
     return web.json_response({"work_status": result})
+
+
+async def handle_set_recruiter_activity_status(request: web.Request) -> web.Response:
+    """Статус активности кабинета "Рекрутер" (2.4, ТЗ "Гуро рекрутер каб") —
+    hiring/not_hiring/выкл, отдельный от work_status личного профиля."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    raw = body.get("status")
+    value = str(raw).strip() if raw else None
+    try:
+        result = storage.set_recruiter_activity_status(user["id"], value)
+    except ValueError:
+        return web.json_response({"error": "INVALID_STATUS"}, status=400)
+    return web.json_response({"activity_status": result})
 
 
 async def handle_set_cv_field(request: web.Request) -> web.Response:
@@ -1259,10 +1322,15 @@ async def handle_get_qr(request: web.Request) -> web.Response:
     """Deep-link на /start бота с payload guro_<user_id> — сканирующий
     получает от бота сообщение с web_app-кнопкой на Mini App с этим
     профилем (см. handlers/flow.py::start). Не прямая ссылка на Mini App —
-    для этого нужна регистрация short name через @BotFather, которой нет."""
+    для этого нужна регистрация short name через @BotFather, которой нет.
+
+    ?workspace=recruiter (26.08.2026, ТЗ "Гуро рекрутер каб", "Мой QR") —
+    суффикс "_r" в payload, сканирующий попадает сразу на РЕКРУТЕРСКУЮ
+    карточку (см. handlers/flow.py::start), не личный профиль."""
     settings = request.app["settings"]
     user = _auth(request, settings)
-    deeplink = f"https://t.me/{settings.bot_username}?start={GC.QR_PAYLOAD_PREFIX}{user['id']}"
+    suffix = "_r" if request.query.get("workspace") == "recruiter" else ""
+    deeplink = f"https://t.me/{settings.bot_username}?start={GC.QR_PAYLOAD_PREFIX}{user['id']}{suffix}"
     return web.json_response({"deeplink": deeplink})
 
 
@@ -1593,6 +1661,7 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/privacy", handle_set_privacy)
     app.router.add_post("/api/profile", handle_set_profile_field)
     app.router.add_post("/api/work_status", handle_set_work_status)
+    app.router.add_post("/api/recruiter/activity_status", handle_set_recruiter_activity_status)
     app.router.add_post("/api/cv/field", handle_set_cv_field)
     app.router.add_post("/api/cv/profession", handle_set_cv_profession)
     app.router.add_post("/api/cv/grade", handle_set_cv_grade)

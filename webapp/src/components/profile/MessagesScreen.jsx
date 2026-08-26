@@ -9,7 +9,11 @@ import { useLang } from "../../i18n.jsx";
 // конкретную переписку (кнопка "Написать" в поиске или deep-link из
 // уведомления бота ?thread=<id>, см. App.jsx), consumед сразу при монтировании,
 // чтобы повторный заход на вкладку "Профиль" не открывал её заново.
-export function MessagesScreen({ initialThreadUserId, onConsumeInitialThread, onBack }) {
+// viaWorkspace (26.08.2026, ТЗ "Гуро рекрутер каб", 2.7 "единый инбокс") —
+// метка кабинета для НОВЫХ сообщений, отправленных отсюда (см.
+// ThreadScreen) — сам список тредов/переписок общий для всех кабинетов,
+// это не отдельный ящик, просто ярлык на исходящих записях.
+export function MessagesScreen({ initialThreadUserId, onConsumeInitialThread, onBack, viaWorkspace }) {
   const { t } = useLang();
   const [activeUserId, setActiveUserId] = useState(
     initialThreadUserId != null ? Number(initialThreadUserId) : null,
@@ -30,7 +34,7 @@ export function MessagesScreen({ initialThreadUserId, onConsumeInitialThread, on
   }, [activeUserId]);
 
   if (activeUserId != null) {
-    return <ThreadScreen otherUserId={activeUserId} onBack={() => setActiveUserId(null)} />;
+    return <ThreadScreen otherUserId={activeUserId} onBack={() => setActiveUserId(null)} viaWorkspace={viaWorkspace} />;
   }
 
   return (

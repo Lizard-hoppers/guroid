@@ -25,9 +25,13 @@ const EMPTY_FORM = {
   txNetwork: "",
 };
 
-export function ConfirmScreen() {
+// forcedType/onBack (26.08.2026, ТЗ "Гуро рекрутер каб", раздел 3-4) —
+// кабинет "Рекрутер" использует ЭТУ ЖЕ форму, но с типом партнёрства
+// жёстко "Найм" (переключатель скрыт) и переименованными подписями
+// ("Подтвердить найм" вместо "Подтвердить партнёрство").
+export function ConfirmScreen({ forcedType, onBack }) {
   const { t } = useLang();
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(() => (forcedType ? { ...EMPTY_FORM, ptype: forcedType } : EMPTY_FORM));
   const [state, setState] = useState({ loading: false, ok: false, error: null });
 
   function set(field, value) {
@@ -42,7 +46,7 @@ export function ConfirmScreen() {
     try {
       await createPartnership({ ...form, confirmerUsername: q });
       setState({ loading: false, ok: true, error: null });
-      setForm(EMPTY_FORM);
+      setForm(forcedType ? { ...EMPTY_FORM, ptype: forcedType } : EMPTY_FORM);
       haptic("success");
     } catch (error) {
       setState({ loading: false, ok: false, error });
@@ -56,7 +60,12 @@ export function ConfirmScreen() {
 
   return (
     <div className="card">
-      <h3>{t("confirm.title")}</h3>
+      {onBack && (
+        <button type="button" className="subscreen-back" onClick={onBack}>
+          {t("common.back")}
+        </button>
+      )}
+      <h3>{t(forcedType === "hire" ? "confirm.title.hire" : "confirm.title")}</h3>
       <div className="privacy-hint">{t("confirm.hint")}</div>
       <form onSubmit={onSubmit}>
         <label>{t("confirm.usernameLabel")}</label>
@@ -66,11 +75,15 @@ export function ConfirmScreen() {
           value={form.confirmerUsername}
           onChange={(e) => set("confirmerUsername", e.target.value)}
         />
-        <label>{t("confirm.ptypeLabel")}</label>
-        <select value={form.ptype} onChange={(e) => set("ptype", e.target.value)}>
-          <option value="deal">{t("confirm.ptype.deal")}</option>
-          <option value="hire">{t("confirm.ptype.hire")}</option>
-        </select>
+        {!forcedType && (
+          <>
+            <label>{t("confirm.ptypeLabel")}</label>
+            <select value={form.ptype} onChange={(e) => set("ptype", e.target.value)}>
+              <option value="deal">{t("confirm.ptype.deal")}</option>
+              <option value="hire">{t("confirm.ptype.hire")}</option>
+            </select>
+          </>
+        )}
         <label>{t("confirm.verticalLabel")}</label>
         <input
           type="text"

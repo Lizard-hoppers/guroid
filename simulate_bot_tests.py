@@ -2658,6 +2658,105 @@ def test_guro_id_storage():
             check(str(e) == "LIMIT_REACHED", "потолок записей опыта -> ValueError(LIMIT_REACHED)")
 
 
+def test_guro_id_recruiter_dashboard():
+    print("== guro_id: кабинет 'Рекрутер', главный экран (26.08.2026) ==")
+    import tempfile
+    from datetime import datetime, timedelta, timezone
+    from pathlib import Path
+
+    import guro_constants as GC
+    import guro_logic as GLm
+    from storage import Storage
+    from guro_storage import GuroStorage
+
+    # 5.2 (перцентиль) — чистые функции.
+    check(GLm.percentile_of(9, 10) == 90.0, "9 из 10 меньше -> перцентиль 90")
+    check(GLm.percentile_of(0, 10) == 0.0, "0 меньше -> перцентиль 0")
+    check(GLm.percentile_of(5, 0) == 0.0, "total=0 -> 0.0, не деление на ноль")
+    check(GLm.percentile_tier(96) == "5", "96-й перцентиль -> топ-5%")
+    check(GLm.percentile_tier(91) == "10", "91-й -> топ-10%")
+    check(GLm.percentile_tier(80) == "25", "80-й -> топ-25%")
+    check(GLm.percentile_tier(55) == "50", "55-й -> топ-50%")
+    check(GLm.percentile_tier(49) is None, "ниже топ-50% -> None (не показываем цифру)")
+
+    with tempfile.TemporaryDirectory() as d:
+        db_path = Path(d) / "t.sqlite3"
+        st = Storage(db_path)
+        st.save_profile({"user_id": 10, "username": "recruiter1", "name": "Rec1"})
+        st.save_profile({"user_id": 20, "username": "candidate1", "name": "Cand1"})
+        old_ts = (datetime.now(timezone.utc) - timedelta(days=100)).strftime("%Y-%m-%d %H:%M:%S")
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        conn.execute("UPDATE profiles SET created_at=?", (old_ts,))
+        conn.commit()
+        conn.close()
+
+        gst = GuroStorage(db_path)
+
+        # Статус активности (2.4) — тот же приём, что work_status.
+        check(gst.get_recruiter_activity_status(10) is None, "по умолчанию статус активности не задан")
+        result = gst.set_recruiter_activity_status(10, GC.RECRUITER_ACTIVITY_HIRING)
+        check(result == "hiring", "статус активности сохраняется")
+        try:
+            gst.set_recruiter_activity_status(10, "garbage")
+            check(False, "мусорное значение статуса должно кидать INVALID_STATUS")
+        except ValueError as e:
+            check(str(e) == "INVALID_STATUS", "невалидный статус -> ValueError(INVALID_STATUS)")
+
+        # "Стаж в роли рекрутера" — first_activated_at ставится ОДИН раз.
+        check(gst.get_or_create_recruiter_profile(10)["first_activated_at"] is None,
+              "до оплаты first_activated_at не проставлен")
+        gst.activate_recruiter_subscription(10, 30)
+        first_at = gst.get_or_create_recruiter_profile(10)["first_activated_at"]
+        check(first_at is not None, "activate_recruiter_subscription проставляет first_activated_at")
+        gst.activate_recruiter_subscription(10, 365)  # продление -> дата НЕ должна поменяться
+        check(gst.get_or_create_recruiter_profile(10)["first_activated_at"] == first_at,
+              "продление подписки НЕ трогает first_activated_at (стаж считается от первой оплаты)")
+
+        # Метрики "Характеристика" (2.3).
+        check(gst.count_active_vacancies(10) == 0, "новых вакансий пока нет")
+        gst.create_vacancy(10, title="QA Engineer")
+        gst.create_vacancy(10, title="Affiliate Manager")
+        check(gst.count_active_vacancies(10) == 2, "2 активные вакансии")
+        v = gst.create_vacancy(10, title="Closed one")
+        gst.close_vacancy(v["id"], 10)
+        check(gst.count_active_vacancies(10) == 2, "закрытая вакансия не считается активной")
+
+        check(gst.count_confirmed_partnerships_by_type(10, GC.PARTNERSHIP_TYPE_HIRE) == 0, "наймов пока 0")
+        gst.activate_subscription(10, 30)
+        gst.activate_subscription(20, 30)
+        gst.set_work_status(20, GC.WORK_STATUS_WORKING)  # кандидат уже "работаю" -> очки не откладываются
+        p = gst.create_partnership(10, 20, None, None, ptype="hire")
+        gst.respond_partnership(p["id"], responder_id=20, accept=True)
+        check(gst.count_confirmed_partnerships_by_type(10, GC.PARTNERSHIP_TYPE_HIRE) == 1,
+              "1 подтверждённый найм засчитан в метрику")
+
+        # W_найм (2.5) — БЕЗ бонуса за стаж, только сумма base_weight подтверждённых hire.
+        w = gst.hire_w(10)
+        check(w == 15.0, f"W_найм = 15 (1-й найм, без диминишинга, без стажа), а не {w}")
+        w_candidate = gst.hire_w(20)
+        check(w_candidate == 15.0, "W_найм симметричен для confirmer'а тоже")
+
+        # Кэш процентиля — читает/пишет storage, НЕ считает сам (это дело
+        # guro_recruiter_percentile_sync.py).
+        cached = gst.get_recruiter_percentile(10)
+        check(cached["tier"] is None and cached["computed_at"] is None, "до первого прогона джоба кэш пуст")
+        gst.set_recruiter_percentile(10, "10")
+        cached2 = gst.get_recruiter_percentile(10)
+        check(cached2["tier"] == "10" and cached2["computed_at"] is not None, "кэш обновился и проставил дату")
+
+        # Вход для фонового джоба — рекрутер с вертикалью и хотя бы 1 наймом.
+        gst.set_recruiter_extra_field(10, "vertical", "Gambling")
+        pairs = gst.list_recruiter_verticals_with_hires()
+        check((10, "Gambling") in pairs, "рекрутер с вертикалью и наймом попадает в выборку для перцентиля")
+
+        # Единый инбокс: метка кабинета-источника у сообщения (2.7).
+        msg = gst.send_message(10, 20, "Здравствуйте, есть вакансия", via_workspace="recruiter")
+        check(msg["via_workspace"] == "recruiter", "сообщение помечено кабинетом-источником")
+        msg2 = gst.send_message(20, 10, "Спасибо, расскажите подробнее")
+        check(msg2["via_workspace"] == "personal", "via_workspace по умолчанию 'personal'")
+
+
 def _guro_make_init_data(token: str, user: dict) -> str:
     import hashlib as _hl
     import hmac as _hmac
@@ -3402,6 +3501,24 @@ async def _run_guro_id_api_sim():
                 check(body["privacy"] == {f: False for f in GC.PRIVACY_FIELDS},
                       "приватность рекрутера тоже default-False (opt-in, тот же принцип)")
 
+                # Главный экран кабинета "Рекрутер" (26.08.2026, ТЗ "Гуро
+                # рекрутер каб") — панель "Характеристика"/статус/процентиль.
+                check(body["successful_hires"] == 0, "успешных наймов пока 0")
+                check(body["active_vacancies"] == 0, "активных вакансий пока 0")
+                check(body["responses_7d"] == 0, "откликов за 7 дней -> 0 (заглушка, механики ещё нет)")
+                check(body["tenure_days"] is None, "стаж в роли -> None, подписка ещё не оформлена")
+                check(body["activity_status"] is None, "статус активности по умолчанию не задан")
+                check(body["percentile_tier"] is None, "кэш процентиля пуст до первого прогона джоба")
+
+                resp = await client.post("/api/recruiter/activity_status", headers=auth_100,
+                                          json={"status": "garbage"})
+                check(resp.status == 400, "POST /api/recruiter/activity_status с мусором -> 400")
+                resp = await client.post("/api/recruiter/activity_status", headers=auth_100,
+                                          json={"status": "hiring"})
+                check(resp.status == 200, "POST /api/recruiter/activity_status hiring -> 200")
+                body = await resp.json()
+                check(body["activity_status"] == "hiring", "статус активности сохранён")
+
                 resp = await client.post("/api/recruiter/profile", headers=auth_100,
                                           json={"field": "unknown_field", "value": "x"})
                 check(resp.status == 400, "POST /api/recruiter/profile с неизвестным полем -> 400")
@@ -4087,6 +4204,7 @@ def main():
     test_guro_id_init_data()
     test_guro_id_reputation_formula()
     test_guro_id_storage()
+    test_guro_id_recruiter_dashboard()
     asyncio.run(_run_scenarios())
     asyncio.run(_run_lang())
     asyncio.run(_run_admin_cms())

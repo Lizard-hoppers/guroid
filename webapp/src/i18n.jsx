@@ -359,6 +359,9 @@ const STRINGS = {
 
   // --- Подтвердить партнёрство ---
   "confirm.title": { ru: "Подтвердить партнёрство", en: "Confirm partnership" },
+  // Кабинет "Рекрутер" (26.08.2026, ТЗ раздел 4) — переименование экрана,
+  // тип партнёрства тут жёстко "Найм", переключатель скрыт.
+  "confirm.title.hire": { ru: "Подтвердить найм", en: "Confirm a hire" },
   "confirm.hint": {
     ru: "Укажите юзернейм человека, с которым уже состоялось сотрудничество. Ему придёт запрос на подтверждение от бота — запись появится в профилях обоих только после его ответа. Офер и отзыв видны всем чужим (в этом и смысл — проверить репутацию контакта), суммы — только если включите показ ниже.",
     en: "Enter the username of someone you've already worked with. They'll get a confirmation request from the bot — the record appears in both profiles only after they respond. The offer and review are visible to everyone (that's the point — checking a contact's reputation), amounts only if you enable showing them below.",
@@ -468,6 +471,48 @@ const STRINGS = {
   },
   "recruiter.loading": { ru: "Загружаем кабинет рекрутера…", en: "Loading recruiter cabinet…" },
   "recruiter.loadError": { ru: "Не удалось загрузить кабинет рекрутера.", en: "Couldn't load the recruiter cabinet." },
+
+  // Главный экран кабинета "Рекрутер" (26.08.2026, ТЗ "Гуро рекрутер каб").
+  "recruiter.roleBadge": { ru: "HR / Рекрутер", en: "HR / Recruiter" },
+  "recruiter.settingsBtn": { ru: "Настройки", en: "Settings" },
+  "recruiter.characteristic.title": { ru: "Характеристика", en: "Characteristic" },
+  "recruiter.characteristic.hires": { ru: "Успешных наймов", en: "Successful hires" },
+  "recruiter.characteristic.vacancies": { ru: "Активных вакансий", en: "Active vacancies" },
+  "recruiter.characteristic.responses": { ru: "Откликов за 7 дней", en: "Responses (7 days)" },
+  "recruiter.characteristic.tenure": { ru: "Стаж в роли рекрутера, дней", en: "Days as recruiter" },
+  "recruiter.activity.label": { ru: "Статус", en: "Status" },
+  "recruiter.activity.hiring": { ru: "Активно нанимаю", en: "Actively hiring" },
+  "recruiter.activity.notHiring": { ru: "Не набираю сейчас", en: "Not hiring right now" },
+  "recruiter.percentile.top": { ru: "Топ-{tier}% рекрутеров", en: "Top {tier}% of recruiters" },
+  "recruiter.percentile.goodText": {
+    ru: "Вы входите в число самых результативных рекрутеров вертикали.",
+    en: "You're among the most effective recruiters in this vertical.",
+  },
+  "recruiter.percentile.ctaTitle": { ru: "Поднимите рейтинг за 2 минуты", en: "Raise your rating in 2 minutes" },
+  "recruiter.percentile.ctaText": {
+    ru: "Подтвердите наймы, которые уже состоялись до GURO ID — это сразу увеличит ваш рейтинг.",
+    en: "Confirm hires that already happened before GURO ID — this immediately raises your rating.",
+  },
+  "recruiter.percentile.ctaButton": { ru: "Подтвердить прошлый найм →", en: "Confirm a past hire →" },
+  "recruiter.quickPublish": { ru: "+ Опубликовать вакансию", en: "+ Publish a vacancy" },
+  "recruiter.quickFind": { ru: "Найти кандидата", en: "Find a candidate" },
+  "recruiter.menu.messages": { ru: "Сообщения", en: "Messages" },
+  "recruiter.menu.responses": { ru: "Отклики", en: "Responses" },
+  "recruiter.menu.qr": { ru: "Мой QR", en: "My QR" },
+  "recruiter.history.title": { ru: "История наймов", en: "Hiring history" },
+  "recruiter.history.empty": { ru: "Подтверждённых наймов пока нет.", en: "No confirmed hires yet." },
+  "recruiter.responses.title": { ru: "Отклики", en: "Responses" },
+  "recruiter.responses.comingSoon": {
+    ru: "Скоро здесь будут отклики кандидатов на ваши вакансии.",
+    en: "Candidate responses to your vacancies will appear here soon.",
+  },
+  "recruiter.candidates.title": { ru: "Найти кандидата", en: "Find a candidate" },
+  "recruiter.candidates.hint": {
+    ru: "Просмотр по вертикали или среди тех, кто ищет работу.",
+    en: "Browse by vertical or among those looking for work.",
+  },
+  "recruiter.candidates.showAllResumes": { ru: "Показать всех, кто ищет работу", en: "Show everyone looking for work" },
+  "thread.viaWorkspace": { ru: "Написал(а) через кабинет: {workspace}", en: "Sent via cabinet: {workspace}" },
 
   // --- Кабинет "Компания" (Фаза 5, 16-17.08.2026) ---
   "company.title": { ru: "Кабинет компании", en: "Company cabinet" },

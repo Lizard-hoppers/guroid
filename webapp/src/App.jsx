@@ -61,6 +61,15 @@ function readDeepLinkTarget() {
   return new URLSearchParams(window.location.search).get("target");
 }
 
+// "Мой QR" кабинета Рекрутер (26.08.2026, ТЗ "Гуро рекрутер каб") — payload
+// guro_<id>_r даёт боту ?target=<id>&workspace=recruiter (см. handlers/
+// flow.py::start), сканирующий должен попасть сразу на РЕКРУТЕРСКУЮ
+// карточку, не личный профиль.
+function readDeepLinkWorkspace() {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("workspace");
+}
+
 // Уведомление о новом сообщении (Фаза 1, 11.08.2026, см. guro_id_api.py::
 // _notify_new_message) открывает Mini App на `?thread=<sender_id>` — та же
 // механика deep-link'а, что уже была у QR (?target=), только ведёт не в
@@ -74,6 +83,7 @@ function AppShell() {
   const { t } = useLang();
   const [intro, setIntro] = useState(true);
   const initialTargetRef = useRef(readDeepLinkTarget());
+  const initialWorkspaceRef = useRef(readDeepLinkWorkspace());
   const targetConsumedRef = useRef(false);
   const initialThreadRef = useRef(readDeepLinkThread());
   // messageTargetId — не только начальный deep-link, но и рантайм-переход
@@ -163,6 +173,7 @@ function AppShell() {
                       ? initialTargetRef.current
                       : undefined
                   }
+                  deepLinkWorkspace={initialWorkspaceRef.current || undefined}
                   onConsumeDeepLink={() => {
                     targetConsumedRef.current = true;
                   }}

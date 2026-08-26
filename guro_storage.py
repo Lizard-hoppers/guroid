@@ -207,6 +207,20 @@ class GuroStorage:
             self._ensure_column("guro_recruiter_profiles", field, "TEXT")
         for field in GC.PRIVACY_FIELDS:
             self._ensure_column("guro_recruiter_profiles", field, "INTEGER DEFAULT 0")
+        # Главный экран кабинета "Рекрутер" (26.08.2026, ТЗ "Гуро рекрутер
+        # каб"): статус активности (2.4), стаж считается от ПЕРВОЙ реальной
+        # оплаты (first_activated_at), НЕ от первого open-a вкладки (тот
+        # создаёт строку раньше оплаты через get_or_create, см. handle_me) —
+        # проставляется один раз в activate_recruiter_subscription. Кэш
+        # процентиля (2.5) — пересчитывается раз в сутки отдельным
+        # скриптом (guro_recruiter_percentile_sync.py), не в реальном времени.
+        self._ensure_column("guro_recruiter_profiles", "activity_status", "TEXT")
+        self._ensure_column("guro_recruiter_profiles", "first_activated_at", "TEXT")
+        self._ensure_column("guro_recruiter_profiles", "percentile_tier", "TEXT")
+        self._ensure_column("guro_recruiter_profiles", "percentile_computed_at", "TEXT")
+        # Метка кабинета-источника сообщения (2.7, "единый инбокс") — через
+        # какой кабинет автор писал: 'personal'/'recruiter'/'company'.
+        self._ensure_column("guro_messages", "via_workspace", "TEXT DEFAULT 'personal'")
         # Кабинет "Компания" (16.08.2026) — тот же приём, что у рекрутера
         # выше, применённый к третьей таблице.
         for field in GC.COMPANY_EXTRA_FIELDS:
@@ -459,15 +473,113 @@ class GuroStorage:
         )
 
     def activate_recruiter_subscription(self, user_id: int, duration_days: int) -> str:
-        self.get_or_create_recruiter_profile(user_id)
+        row = self.get_or_create_recruiter_profile(user_id)
         expires_at = GL.subscription_expires_at(self._now(), duration_days)
+        # "Стаж в роли рекрутера" (2.3) считается от ПЕРВОЙ реальной оплаты,
+        # не от первого захода на вкладку (та строку создаёт раньше, через
+        # get_or_create в handle_me, ещё до оплаты) — пишем только один раз.
+        first_activated_at = row["first_activated_at"] or self._now_str()
         self._conn.execute(
             "UPDATE guro_recruiter_profiles SET subscription_status=?, subscription_expires_at=?, "
-            "updated_at=? WHERE user_id=?",
-            (GC.SUBSCRIPTION_ACTIVE, GL.format_db_datetime(expires_at), self._now_str(), user_id),
+            "first_activated_at=?, updated_at=? WHERE user_id=?",
+            (GC.SUBSCRIPTION_ACTIVE, GL.format_db_datetime(expires_at), first_activated_at,
+             self._now_str(), user_id),
         )
         self._conn.commit()
         return GL.format_db_datetime(expires_at)
+
+    def get_recruiter_activity_status(self, user_id: int) -> str | None:
+        row = self.get_or_create_recruiter_profile(user_id)
+        return row["activity_status"]
+
+    def set_recruiter_activity_status(self, user_id: int, value: str | None) -> str | None:
+        """Поднимает ValueError('INVALID_STATUS') — тот же приём, что
+        set_work_status личного профиля (2.4, отдельный статус от него)."""
+        if value is not None and value not in GC.RECRUITER_ACTIVITY_VALUES:
+            raise ValueError("INVALID_STATUS")
+        self.get_or_create_recruiter_profile(user_id)
+        self._conn.execute(
+            "UPDATE guro_recruiter_profiles SET activity_status=?, updated_at=? WHERE user_id=?",
+            (value, self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return self.get_recruiter_activity_status(user_id)
+
+    def count_active_vacancies(self, author_id: int) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM guro_vacancies WHERE author_id=? AND status=?",
+            (author_id, GC.VACANCY_STATUS_ACTIVE),
+        ).fetchone()
+        return row["n"]
+
+    def count_confirmed_partnerships_by_type(self, user_id: int, ptype: str) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM partnerships WHERE status=? AND ptype=? "
+            "AND (initiator_id=? OR confirmer_id=?)",
+            (GC.PARTNERSHIP_STATUS_CONFIRMED, ptype, user_id, user_id),
+        ).fetchone()
+        return row["n"]
+
+    def hire_w(self, user_id: int) -> float:
+        """W_найм (ТЗ "Гуро рекрутер каб", раздел 2.5) — та же логика, что
+        recompute_total_w, но ТОЛЬКО по партнёрствам ptype='hire' этого
+        пользователя, и БЕЗ бонуса за стаж (это отдельная производная
+        метрика для процентиля, не общий рейтинг пользователя)."""
+        w = 0.0
+        rows = self._conn.execute(
+            "SELECT * FROM partnerships WHERE status=? AND counts_toward_rating=1 AND ptype=? "
+            "AND (initiator_id=? OR confirmer_id=?)",
+            (GC.PARTNERSHIP_STATUS_CONFIRMED, GC.PARTNERSHIP_TYPE_HIRE, user_id, user_id),
+        ).fetchall()
+        for row in rows:
+            if row["hire_status_pending"]:
+                continue
+            base_weight = row["base_weight"] or 0.0
+            w += base_weight
+            if row["rating_revealed_at"]:
+                other_id = row["confirmer_id"] if row["initiator_id"] == user_id else row["initiator_id"]
+                rating = self._conn.execute(
+                    "SELECT verdict FROM guro_partnership_ratings WHERE partnership_id=? AND rater_id=?",
+                    (row["id"], other_id),
+                ).fetchone()
+                verdict = rating["verdict"] if rating else None
+                w += GL.rating_delta(
+                    verdict, base_weight,
+                    tx_verified=bool(row["tx_verified"]), tx_company_match=bool(row["tx_company_match"]),
+                    amount=row["amount_received"] if row["amount_received"] is not None else row["amount_paid"],
+                )
+        return w
+
+    def get_recruiter_percentile(self, user_id: int) -> dict:
+        """Кэш из фонового джоба (guro_recruiter_percentile_sync.py) —
+        никогда не считает в реальном времени (ТЗ 2.5: "пересчёт раз в
+        сутки, кешировать"). computed_at=None -> джоб ещё ни разу не
+        прогонялся для этого юзера (совсем новый рекрутер) — фронт должен
+        трактовать это как "недостаточно данных", как и tier=None."""
+        row = self.get_or_create_recruiter_profile(user_id)
+        return {"tier": row["percentile_tier"], "computed_at": row["percentile_computed_at"]}
+
+    def set_recruiter_percentile(self, user_id: int, tier: str | None) -> None:
+        self._conn.execute(
+            "UPDATE guro_recruiter_profiles SET percentile_tier=?, percentile_computed_at=? WHERE user_id=?",
+            (tier, self._now_str(), user_id),
+        )
+        self._conn.commit()
+
+    def list_recruiter_verticals_with_hires(self) -> list[tuple[int, str]]:
+        """(user_id, vertical) для ВСЕХ рекрутеров с хотя бы 1 подтверждённым
+        наймом и заполненной вертикалью — вход для фонового пересчёта
+        процентиля (guro_recruiter_percentile_sync.py), группировка по
+        вертикали делается там."""
+        rows = self._conn.execute(
+            "SELECT user_id, vertical FROM guro_recruiter_profiles "
+            "WHERE vertical IS NOT NULL AND vertical != ''"
+        ).fetchall()
+        result = []
+        for row in rows:
+            if self.count_confirmed_partnerships_by_type(row["user_id"], GC.PARTNERSHIP_TYPE_HIRE) > 0:
+                result.append((row["user_id"], row["vertical"]))
+        return result
 
     def get_recruiter_extra(self, user_id: int) -> dict:
         row = self.get_or_create_recruiter_profile(user_id)
@@ -1056,14 +1168,21 @@ class GuroStorage:
         ).fetchone()
         return row["n"]
 
-    def send_message(self, sender_id: int, recipient_id: int, body: str) -> sqlite3.Row:
+    def send_message(
+        self, sender_id: int, recipient_id: int, body: str, *, via_workspace: str = "personal",
+    ) -> sqlite3.Row:
         """Поднимает ValueError с кодом: SELF_MESSAGE / EMPTY_BODY /
         NO_RECIPIENT_PROFILE (бот не может написать юзеру, который никогда
         не писал боту, тот же случай, что NO_CONFIRMER_PROFILE в
         create_partnership) / SUBSCRIPTION_REQUIRED (первое сообщение
-        незнакомцу без активной подписки отправителя — писать в уже
+        незнакомцу без ЛЮБОЙ активной подписки отправителя — личной,
+        рекрутера или компании, см. any_subscription_active; писать в уже
         существующий тред можно и без неё) / RATE_LIMITED (слишком много
-        НОВЫХ тредов за сутки, не ограничивает переписку в открытых)."""
+        НОВЫХ тредов за сутки, не ограничивает переписку в открытых).
+        via_workspace (26.08.2026, ТЗ "Гуро рекрутер каб" 2.7, "единый
+        инбокс") — метка, через какой кабинет отправитель писал это
+        сообщение, для показа собеседнику ("Написал через Кабинет:
+        Рекрутер") — сам инбокс общий, это только ярлык на записи."""
         if sender_id == recipient_id:
             raise ValueError("SELF_MESSAGE")
         body = body.strip()[: GC.MESSAGE_MAX_LENGTH]
@@ -1075,7 +1194,7 @@ class GuroStorage:
         thread = self.find_thread(sender_id, recipient_id)
         now_str = self._now_str()
         if thread is None:
-            if not self.is_subscribed(sender_id):
+            if not self.any_subscription_active(sender_id):
                 raise ValueError("SUBSCRIPTION_REQUIRED")
             if self._count_new_threads_today(sender_id) >= GC.MESSAGE_MAX_NEW_THREADS_PER_DAY:
                 raise ValueError("RATE_LIMITED")
@@ -1090,8 +1209,9 @@ class GuroStorage:
             thread_id = thread["id"]
 
         cur = self._conn.execute(
-            "INSERT INTO guro_messages (thread_id, sender_id, body, created_at) VALUES (?,?,?,?)",
-            (thread_id, sender_id, body, now_str),
+            "INSERT INTO guro_messages (thread_id, sender_id, body, created_at, via_workspace) "
+            "VALUES (?,?,?,?,?)",
+            (thread_id, sender_id, body, now_str, via_workspace),
         )
         self._conn.execute("UPDATE guro_threads SET last_message_at=? WHERE id=?", (now_str, thread_id))
         self._conn.commit()

@@ -1709,3 +1709,136 @@ select {
   font-size: inherit;
   cursor: pointer;
 }
+
+/* Кабинет "Рекрутер" — главный экран (26.08.2026, ТЗ "Гуро рекрутер каб").
+   Карточка визуально ОТЛИЧАЕТСЯ от личного профиля (2.1): полоса-обложка
+   сверху + скруглённый квадрат вместо круга у аватара + бейдж роли. */
+.recruiter-card {
+  padding-top: 0;
+  overflow: hidden;
+}
+
+.recruiter-card-cover {
+  height: 56px;
+  margin: 0 -18px 14px;
+  background: linear-gradient(120deg, #2a1a05, var(--gold-soft), #2a1a05);
+}
+
+.recruiter-header {
+  align-items: flex-start;
+}
+
+.recruiter-avatar {
+  border-radius: 14px !important;
+}
+
+.recruiter-role-badge {
+  display: inline-block;
+  margin-top: 8px;
+  margin-right: 6px;
+  padding: 2px 10px;
+  border-radius: 8px;
+  background: var(--gold);
+  color: #1a1206;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.settings-gear-btn {
+  width: 100%;
+  text-align: left;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  padding: 12px 16px;
+  color: var(--text);
+  font-size: 14px;
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+
+.recruiter-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.recruiter-metric {
+  text-align: center;
+  padding: 10px 6px;
+  border-radius: 12px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+}
+
+.recruiter-metric-value {
+  font-family: Lora, serif;
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--gold);
+}
+
+.recruiter-metric-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.activity-status-toggle {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.activity-status-toggle button {
+  flex: 1 1 auto;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.activity-status-toggle button.is-active.hiring {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #08210f;
+  font-weight: 600;
+}
+
+.activity-status-toggle button.is-active.not-hiring {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #2a0b08;
+  font-weight: 600;
+}
+
+.percentile-block.percentile-good {
+  border-color: var(--gold);
+}
+
+.percentile-badge {
+  font-family: Lora, serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--gold);
+  margin-bottom: 6px;
+}
+
+.recruiter-quick-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.recruiter-quick-actions .btn {
+  flex: 1 1 50%;
+}
+
+/* Метка кабинета-источника сообщения (2.7, "единый инбокс"). */
+.thread-bubble-source {
+  margin-top: 4px;
+  font-size: 10px;
+  opacity: 0.7;
+}

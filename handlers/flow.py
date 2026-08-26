@@ -227,9 +227,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     qr_payload = qr_args[0] if qr_args else ""
     if qr_payload.startswith("guro_"):
         qr_target = qr_payload[len("guro_"):]
+        # "Мой QR" кабинета Рекрутер (26.08.2026, ТЗ "Гуро рекрутер каб",
+        # 2.7) — payload guro_<id>_r открывает сразу РЕКРУТЕРСКУЮ карточку,
+        # не личный профиль (суффикс, не отдельный префикс — экономит место
+        # в куда более коротком QR-коде).
+        qr_workspace = None
+        if qr_target.endswith("_r"):
+            qr_target, qr_workspace = qr_target[:-2], "recruiter"
         storage = context.bot_data["storage"]
         if qr_target.isdigit() and storage.has_profile(user.id):
             webapp_url = f"{settings.guro_id_webapp_url.rstrip('/')}/?target={qr_target}"
+            if qr_workspace:
+                webapp_url += f"&workspace={qr_workspace}"
             await context.bot.send_message(
                 update.effective_chat.id,
                 "🪪 Открыть профиль в GURO ID:",

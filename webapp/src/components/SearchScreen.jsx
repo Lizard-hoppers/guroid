@@ -88,7 +88,11 @@ function ResultCard({ p, onWrite, onViewRecruiter, onViewCompany }) {
 // Карточка кабинета рекрутера контрагента (Фаза 3) — упрощённая версия
 // ResultCard: своя вертикаль/компания/должность + CV/сайт/полезен, без
 // рейтинга/партнёрств (те остаются свойством личного профиля).
-function RecruiterResultCard({ p, onBackToPersonal }) {
+// onWrite (26.08.2026, ТЗ "Гуро рекрутер каб", 2.7 "Кнопка Написать на
+// чужом профиле в режиме Рекрутер") — без неё кандидат, видящий ТОЛЬКО
+// рекрутерскую витрину (личный профиль мог быть закрыт приватностью),
+// не мог бы связаться вообще.
+function RecruiterResultCard({ p, onBackToPersonal, onWrite }) {
   const { t } = useLang();
   const heading = p.name || (p.username ? `@${p.username}` : t("common.noName"));
   return (
@@ -117,6 +121,11 @@ function RecruiterResultCard({ p, onBackToPersonal }) {
         </div>
       )}
       {p.offering && <div className="partner-meta" style={{ marginTop: 4 }}>{t("recruiterCard.offering")}{p.offering}</div>}
+      {onWrite && (
+        <button type="button" className="btn secondary" style={{ marginTop: 12 }} onClick={() => onWrite(p.user_id)}>
+          {t("messageBtn")}
+        </button>
+      )}
     </div>
   );
 }
@@ -156,7 +165,9 @@ function CompanyResultCard({ p, onBackToPersonal }) {
 // Компактная строка результата поиска по описанию/browse по вертикали
 // (mode=list) — тап открывает полную карточку тем же кодом, что и обычный
 // поиск по юзернейму (см. onOpen -> searchByUserId).
-function DirectoryRow({ r, onOpen }) {
+// Экспортирован (26.08.2026) — переиспользуется в RecruiterCandidatesScreen.jsx
+// ("Найти кандидата", ТЗ "Гуро рекрутер каб") без дублирования разметки.
+export function DirectoryRow({ r, onOpen }) {
   const { t } = useLang();
   const heading = r.name || (r.username ? `@${r.username}` : t("common.noName"));
   return (
@@ -173,7 +184,7 @@ function DirectoryRow({ r, onOpen }) {
   );
 }
 
-export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, onOpenMessages }) {
+export function SearchScreen({ onNavigate, deepLinkTargetId, deepLinkWorkspace, onConsumeDeepLink, onOpenMessages }) {
   const { t } = useLang();
   const [query, setQuery] = useState("");
   const [state, setState] = useState(
@@ -194,7 +205,7 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
   useEffect(() => {
     if (!deepLinkTargetId) return;
     onConsumeDeepLink?.();
-    searchByUserId(deepLinkTargetId)
+    searchByUserId(deepLinkTargetId, deepLinkWorkspace ? { workspace: deepLinkWorkspace } : undefined)
       .then((data) => setState({ loading: false, data, error: null }))
       .catch((error) => setState({ loading: false, data: null, error }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -385,7 +396,7 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, onConsumeDeepLink, 
       )}
 
       {state.data && state.data.mode === "profile" && state.data.workspace === "recruiter" && !state.data.locked && (
-        <RecruiterResultCard p={state.data} onBackToPersonal={backToPersonalCard} />
+        <RecruiterResultCard p={state.data} onBackToPersonal={backToPersonalCard} onWrite={onOpenMessages} />
       )}
 
       {state.data && state.data.mode === "profile" && state.data.workspace === "company" && !state.data.locked && (

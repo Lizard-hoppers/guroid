@@ -4,13 +4,16 @@ import { getQr } from "../../api.js";
 import { Msg, Spinner } from "../Shared.jsx";
 import { useLang } from "../../i18n.jsx";
 
-export function QrSubscreen({ onBack }) {
+// workspace="recruiter" (26.08.2026, ТЗ "Гуро рекрутер каб", "Мой QR") —
+// рабочая визитка кабинета, открывает у сканирующего РЕКРУТЕРСКУЮ карточку,
+// не личный профиль (см. guro_id_api.handle_get_qr/handlers/flow.py).
+export function QrSubscreen({ onBack, workspace }) {
   const { t } = useLang();
   const [state, setState] = useState({ loading: true, dataUrl: null, error: null });
 
   useEffect(() => {
     let cancelled = false;
-    getQr()
+    getQr({ workspace })
       .then(async ({ deeplink }) => {
         const dataUrl = await QRCode.toDataURL(deeplink, {
           margin: 1,

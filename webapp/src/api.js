@@ -216,8 +216,16 @@ export function setWorkStatus(status) {
   });
 }
 
-export function getQr() {
-  return request("/api/qr");
+// Статус активности кабинета "Рекрутер" (26.08.2026) — отдельный от work_status.
+export function setRecruiterActivityStatus(status) {
+  return request("/api/recruiter/activity_status", {
+    method: "POST",
+    body: JSON.stringify({ status }),
+  });
+}
+
+export function getQr({ workspace } = {}) {
+  return request(`/api/qr${workspace ? `?workspace=${workspace}` : ""}`);
 }
 
 // Расширение "Моё CV" (12.08.2026) — см. guro_id_api.py /api/cv/*.
@@ -261,10 +269,10 @@ export function getThread(otherUserId) {
   return request(`/api/messages/with/${encodeURIComponent(otherUserId)}`);
 }
 
-export function sendMessage({ recipientId, body }) {
+export function sendMessage({ recipientId, body, viaWorkspace }) {
   return request("/api/messages", {
     method: "POST",
-    body: JSON.stringify({ recipient_id: recipientId, body }),
+    body: JSON.stringify({ recipient_id: recipientId, body, via_workspace: viaWorkspace || "personal" }),
   });
 }
 

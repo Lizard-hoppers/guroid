@@ -172,3 +172,22 @@ def subscription_expires_at(now: datetime, duration_days: int) -> datetime:
 
 def subscription_active(status: str | None, expires_at: datetime | None, now: datetime) -> bool:
     return status == GC.SUBSCRIPTION_ACTIVE and expires_at is not None and expires_at > now
+
+
+def percentile_of(rank_below: int, total: int) -> float:
+    """5.2 (каб. Рекрутер) — доля рекрутеров той же вертикали с R_найм
+    МЕНЬШЕ, чем у текущего. total=0 -> 0.0 (вызывающий код и так не должен
+    сюда попадать при total < RECRUITER_PERCENTILE_MIN_SAMPLE)."""
+    if total <= 0:
+        return 0.0
+    return 100.0 * rank_below / total
+
+
+def percentile_tier(percentile: float) -> str | None:
+    """Округление процентиля до ступени ("5"/"10"/"25"/"50") — см.
+    GC.RECRUITER_PERCENTILE_TIERS. None -> ниже топ-50%, цифру не
+    показываем вообще (ТЗ 2.5, "Правила отображения")."""
+    for threshold, tier in GC.RECRUITER_PERCENTILE_TIERS:
+        if percentile >= threshold:
+            return tier
+    return None

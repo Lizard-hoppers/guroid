@@ -11,7 +11,11 @@ import { QrSubscreen } from "./profile/QrSubscreen.jsx";
 import { MessagesScreen } from "./profile/MessagesScreen.jsx";
 import { OnboardingScreen } from "./profile/OnboardingScreen.jsx";
 import { RecruiterHub } from "./profile/RecruiterHub.jsx";
+import { RecruiterHistorySubscreen } from "./profile/RecruiterHistorySubscreen.jsx";
+import { RecruiterCandidatesScreen } from "./profile/RecruiterCandidatesScreen.jsx";
+import { RecruiterResponsesSubscreen } from "./profile/RecruiterResponsesSubscreen.jsx";
 import { CompanyHub } from "./profile/CompanyHub.jsx";
+import { ConfirmScreen } from "./ConfirmScreen.jsx";
 import { useLang } from "../i18n.jsx";
 
 // Переключатель Личный/Рекрутер/Компания (Фаза 3, 12.08.2026; Компания
@@ -53,7 +57,15 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
   const [state, setState] = useState({ loading: true, data: null, error: null });
   const [recruiterState, setRecruiterState] = useState({ loading: true, data: null, error: null });
   const [companyState, setCompanyState] = useState({ loading: true, data: null, error: null });
-  const [sub, setSub] = useState(null); // null | "rating" | "cv" | "contacts" | "offers" | "messages" | "qr"
+  // null | "rating" | "cv" | "contacts" | "offers" | "messages" | "qr" |
+  // "recruiter-confirm" | "recruiter-history" | "recruiter-candidates" |
+  // "recruiter-responses" | "recruiter-qr" (26.08.2026, кабинет "Рекрутер")
+  const [sub, setSub] = useState(null);
+  // "Найти кандидата" -> "Написать" (26.08.2026) — ОТДЕЛЬНЫЙ таргет от
+  // messageTargetId личного профиля, чтобы не путать deep-link/поиск с
+  // рекрутерским компоузом (тот тегируется via_workspace="recruiter",
+  // см. openRecruiterMessages).
+  const [recruiterMessageTargetId, setRecruiterMessageTargetId] = useState(null);
 
   function switchWorkspace(next) {
     setWorkspace(next);
@@ -62,9 +74,28 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
 
   // Заход сразу в сообщения — кнопка "Написать" в поиске или deep-link из
   // уведомления бота ?thread=<id> (см. App.jsx), консьюмится MessagesScreen'ом.
+  // Единый инбокс общий для всех кабинетов (ТЗ "Гуро рекрутер каб", 2.7) —
+  // принудительно возвращаем workspace в "personal", иначе если юзер был на
+  // вкладке "Рекрутер", сообщение открылось бы "внутри" recruiter-ветки
+  // рендера, где sub="messages" ещё не обработан.
   useEffect(() => {
-    if (messageTargetId != null) setSub("messages");
+    if (messageTargetId != null) {
+      setWorkspace("personal");
+      setSub("messages");
+    }
   }, [messageTargetId]);
+
+  // Компоуз "Написать" из "Найти кандидата" (внутри кабинета Рекрутер) —
+  // остаёмся в workspace="recruiter", чтобы сообщение тегировалось
+  // via_workspace="recruiter" (см. MessagesScreen/ThreadScreen ниже).
+  function openRecruiterMessages(userId) {
+    setRecruiterMessageTargetId(String(userId));
+    setSub("recruiter-messages");
+  }
+
+  function updateRecruiterActivityStatus(activity_status) {
+    setRecruiterState((s) => ({ ...s, data: { ...s.data, activity_status } }));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -137,6 +168,34 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
   }
 
   if (workspace === "recruiter") {
+    if (sub === "recruiter-confirm") {
+      return <ConfirmScreen forcedType="hire" onBack={() => setSub(null)} />;
+    }
+    if (sub === "recruiter-history") {
+      return <RecruiterHistorySubscreen partners={p.partners} onBack={() => setSub(null)} />;
+    }
+    if (sub === "recruiter-candidates") {
+      return <RecruiterCandidatesScreen onBack={() => setSub(null)} onWrite={openRecruiterMessages} />;
+    }
+    if (sub === "recruiter-responses") {
+      return <RecruiterResponsesSubscreen onBack={() => setSub(null)} />;
+    }
+    if (sub === "recruiter-qr") {
+      return <QrSubscreen workspace="recruiter" onBack={() => setSub(null)} />;
+    }
+    if (sub === "recruiter-messages") {
+      return (
+        <MessagesScreen
+          initialThreadUserId={recruiterMessageTargetId}
+          onConsumeInitialThread={() => setRecruiterMessageTargetId(null)}
+          onBack={() => setSub(null)}
+          viaWorkspace="recruiter"
+        />
+      );
+    }
+    if (sub === "messages") {
+      return <MessagesScreen onBack={() => setSub(null)} />;
+    }
     return (
       <div>
         <WorkspaceSwitch workspace={workspace} onChange={switchWorkspace} />
@@ -147,6 +206,9 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
             data={recruiterState.data}
             onFieldSaved={updateRecruiterField}
             onPrivacyChange={updateRecruiterPrivacy}
+            onActivityChange={updateRecruiterActivityStatus}
+            onNavigateSub={setSub}
+            onNavigateTab={onNavigate}
             onSubscribed={() =>
               setRecruiterState((s) => ({ ...s, data: { ...s.data, is_recruiter_subscribed: true } }))
             }

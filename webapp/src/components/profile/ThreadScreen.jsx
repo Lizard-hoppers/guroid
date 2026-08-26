@@ -14,7 +14,7 @@ const ERROR_KEYS = {
 // Переписка с ОДНИМ человеком (адресуется по его user_id, не по id треда —
 // тред может ещё не существовать в БД, если сообщений ещё не было, см.
 // GET /api/messages/with/<user_id> в guro_id_api.py).
-export function ThreadScreen({ otherUserId, onBack }) {
+export function ThreadScreen({ otherUserId, onBack, viaWorkspace }) {
   const { t } = useLang();
   const [state, setState] = useState({ loading: true, data: null, error: null });
   const [draft, setDraft] = useState("");
@@ -43,7 +43,7 @@ export function ThreadScreen({ otherUserId, onBack }) {
     setSending(true);
     setSendError(null);
     try {
-      await sendMessage({ recipientId: otherUserId, body: text });
+      await sendMessage({ recipientId: otherUserId, body: text, viaWorkspace });
       setDraft("");
       haptic("light");
       load();
@@ -80,6 +80,14 @@ export function ThreadScreen({ otherUserId, onBack }) {
           {data.messages.map((m) => (
             <div key={m.id} className={`thread-bubble ${m.mine ? "mine" : "theirs"}`}>
               {m.body}
+              {/* Метка кабинета-источника (2.7, ТЗ "Гуро рекрутер каб") —
+                  только когда написано НЕ из личного профиля, чтобы не
+                  засорять обычную переписку очевидным по умолчанию ярлыком. */}
+              {m.via_workspace && m.via_workspace !== "personal" && (
+                <div className="thread-bubble-source">
+                  {t("thread.viaWorkspace", { workspace: t(`workspace.${m.via_workspace}`) })}
+                </div>
+              )}
             </div>
           ))}
           <div ref={bottomRef} />

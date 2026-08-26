@@ -51,7 +51,10 @@ function WorkspaceSwitch({ workspace, onChange }) {
   );
 }
 
-export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTarget }) {
+export function ProfileScreen({
+  onNavigate, messageTargetId, onConsumeMessageTarget,
+  hireConfirmPrefill, onConsumeHireConfirmPrefill,
+}) {
   const { t } = useLang();
   const [workspace, setWorkspace] = useState("personal");
   const [state, setState] = useState({ loading: true, data: null, error: null });
@@ -66,11 +69,32 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
   // рекрутерским компоузом (тот тегируется via_workspace="recruiter",
   // см. openRecruiterMessages).
   const [recruiterMessageTargetId, setRecruiterMessageTargetId] = useState(null);
+  // Префилл формы "Подтвердить найм" — либо из PercentileBlock (null, как
+  // раньше), либо из отклика на вакансию (username кандидата + вертикаль/
+  // грейд/должность, см. goToHireConfirm/ConfirmScreen.jsx).
+  const [confirmPrefill, setConfirmPrefill] = useState(null);
 
   function switchWorkspace(next) {
     setWorkspace(next);
     setSub(null); // подэкраны личного режима не имеют смысла в рекрутерском и наоборот
   }
+
+  function goToHireConfirm(prefill) {
+    setConfirmPrefill(prefill || null);
+    setWorkspace("recruiter");
+    setSub("recruiter-confirm");
+  }
+
+  // Межвкладочный переход "Подтвердить найм" из вкладки Вакансии (App.jsx,
+  // hireConfirmPrefill) — так же, как messageTargetId ниже, форсит нужный
+  // workspace/sub, когда приходит новое значение.
+  useEffect(() => {
+    if (hireConfirmPrefill != null) {
+      goToHireConfirm(hireConfirmPrefill);
+      onConsumeHireConfirmPrefill();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hireConfirmPrefill]);
 
   // Заход сразу в сообщения — кнопка "Написать" в поиске или deep-link из
   // уведомления бота ?thread=<id> (см. App.jsx), консьюмится MessagesScreen'ом.
@@ -169,7 +193,16 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
 
   if (workspace === "recruiter") {
     if (sub === "recruiter-confirm") {
-      return <ConfirmScreen forcedType="hire" onBack={() => setSub(null)} />;
+      return (
+        <ConfirmScreen
+          forcedType="hire"
+          prefill={confirmPrefill}
+          onBack={() => {
+            setSub(null);
+            setConfirmPrefill(null);
+          }}
+        />
+      );
     }
     if (sub === "recruiter-history") {
       return <RecruiterHistorySubscreen partners={p.partners} onBack={() => setSub(null)} />;
@@ -178,7 +211,13 @@ export function ProfileScreen({ onNavigate, messageTargetId, onConsumeMessageTar
       return <RecruiterCandidatesScreen onBack={() => setSub(null)} onWrite={openRecruiterMessages} />;
     }
     if (sub === "recruiter-responses") {
-      return <RecruiterResponsesSubscreen onBack={() => setSub(null)} />;
+      return (
+        <RecruiterResponsesSubscreen
+          onBack={() => setSub(null)}
+          onWrite={openRecruiterMessages}
+          onConfirmHire={goToHireConfirm}
+        />
+      );
     }
     if (sub === "recruiter-qr") {
       return <QrSubscreen workspace="recruiter" onBack={() => setSub(null)} />;

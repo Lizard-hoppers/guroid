@@ -128,12 +128,20 @@ export function getInviteLink() {
   return request("/api/invite_link");
 }
 
-// Вакансии (Фаза 4, 12.08.2026) — публикует только подписчик кабинета
-// рекрутера, просматривает любой с базовой подпиской GURO ID.
-export function getVacancies({ lang, vertical } = {}) {
+// Вакансии (Фаза 4, 12.08.2026; переписано 26.08.2026 под ТЗ "Recruitment —
+// ВАКАНСИИ") — публикует подписчик кабинета Рекрутер ИЛИ Компания,
+// просматривает любой с базовой подпиской GURO ID.
+export function getPositions() {
+  return request("/api/positions");
+}
+
+export function getVacancies({ lang, vertical, grade, position, q } = {}) {
   const params = new URLSearchParams();
   if (lang) params.set("lang", lang);
   if (vertical) params.set("vertical", vertical);
+  if (grade) params.set("grade", grade);
+  if (position) params.set("position", position);
+  if (q) params.set("q", q);
   const qs = params.toString();
   return request(`/api/vacancies${qs ? `?${qs}` : ""}`);
 }
@@ -142,12 +150,63 @@ export function getMyVacancies() {
   return request("/api/vacancies/mine");
 }
 
+export function getVacancy(id) {
+  return request(`/api/vacancies/${encodeURIComponent(id)}`);
+}
+
 export function createVacancy(data) {
   return request("/api/vacancies", { method: "POST", body: JSON.stringify(data) });
 }
 
-export function closeVacancy(id) {
-  return request(`/api/vacancies/${encodeURIComponent(id)}/close`, { method: "POST" });
+export function editVacancy(id, fields) {
+  return request(`/api/vacancies/${encodeURIComponent(id)}/edit`, {
+    method: "POST",
+    body: JSON.stringify(fields),
+  });
+}
+
+export function pauseVacancy(id) {
+  return request(`/api/vacancies/${encodeURIComponent(id)}/pause`, { method: "POST" });
+}
+
+export function resumeVacancy(id) {
+  return request(`/api/vacancies/${encodeURIComponent(id)}/resume`, { method: "POST" });
+}
+
+export function extendVacancy(id, durationDays) {
+  return request(`/api/vacancies/${encodeURIComponent(id)}/extend`, {
+    method: "POST",
+    body: JSON.stringify({ duration_days: durationDays }),
+  });
+}
+
+export function closeVacancy(id, reason) {
+  return request(`/api/vacancies/${encodeURIComponent(id)}/close`, {
+    method: "POST",
+    body: JSON.stringify({ reason: reason || null }),
+  });
+}
+
+export function respondVacancy(id, message) {
+  return request(`/api/vacancies/${encodeURIComponent(id)}/respond`, {
+    method: "POST",
+    body: JSON.stringify({ message: message || null }),
+  });
+}
+
+export function getVacancyResponses(id, { status } = {}) {
+  return request(`/api/vacancies/${encodeURIComponent(id)}/responses${status ? `?status=${status}` : ""}`);
+}
+
+export function getMyResponses({ status } = {}) {
+  return request(`/api/responses${status ? `?status=${status}` : ""}`);
+}
+
+export function updateResponseStatus(id, status) {
+  return request(`/api/responses/${encodeURIComponent(id)}/status`, {
+    method: "POST",
+    body: JSON.stringify({ status }),
+  });
 }
 
 // product="recruiter" (Фаза 3) — тарифы/оплата кабинета рекрутера вместо

@@ -164,6 +164,36 @@ CREATE TABLE IF NOT EXISTS guro_cv_experience (
     created_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_guro_cv_experience_user ON guro_cv_experience(user_id);
+
+-- Отклики на вакансии — мини-ATS (ТЗ "Recruitment — ВАКАНСИИ", раздел 5,
+-- 26.08.2026). Один отклик на пару (вакансия, кандидат) — уникальный
+-- индекс ниже. status — воронка (см. GC.RESPONSE_STATUSES).
+CREATE TABLE IF NOT EXISTS guro_vacancy_responses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vacancy_id INTEGER,
+    candidate_id INTEGER,
+    status TEXT DEFAULT 'new',
+    message TEXT,
+    created_at TEXT,
+    updated_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_guro_vacancy_responses_pair
+    ON guro_vacancy_responses(vacancy_id, candidate_id);
+CREATE INDEX IF NOT EXISTS idx_guro_vacancy_responses_vacancy ON guro_vacancy_responses(vacancy_id);
+CREATE INDEX IF NOT EXISTS idx_guro_vacancy_responses_candidate ON guro_vacancy_responses(candidate_id);
+
+-- Значения "Должность", введённые через "Другое" при публикации вакансии
+-- (раздел 3, п.4 ТЗ) — НЕ попадают сразу в основной справочник
+-- (professions_data.py), логируются тут для последующего централизованного
+-- review и расширения справочника.
+CREATE TABLE IF NOT EXISTS guro_vacancy_other_positions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vacancy_id INTEGER,
+    vertical TEXT,
+    grade TEXT,
+    text TEXT,
+    created_at TEXT
+);
 """
 
 
@@ -268,6 +298,23 @@ class GuroStorage:
         # Раскрытие оценок Шага 2 (6.1) — оба видят обе оценки, когда обе
         # поставлены ЛИБО истёк RATING_REVEAL_TIMEOUT_DAYS с подтверждения.
         self._ensure_column("partnerships", "rating_revealed_at", "TEXT")
+        # Вакансии — переработано 26.08.2026 по ТЗ "Recruitment — ВАКАНСИИ".
+        # position/grade — строгий справочник (professions_data.py), title —
+        # свободный текст (раздел 3.1, "два типа полей"). author_workspace —
+        # 'recruiter'/'company', публикует любой из двух (раздел 1).
+        self._ensure_column("guro_vacancies", "position", "TEXT")
+        self._ensure_column("guro_vacancies", "position_is_other", "INTEGER DEFAULT 0")
+        self._ensure_column("guro_vacancies", "grade", "TEXT")
+        self._ensure_column("guro_vacancies", "work_format", "TEXT")
+        self._ensure_column("guro_vacancies", "employment_type", "TEXT")
+        self._ensure_column("guro_vacancies", "salary_visible", "INTEGER DEFAULT 0")
+        self._ensure_column("guro_vacancies", "contact_method", f"TEXT DEFAULT '{GC.VACANCY_CONTACT_GURO_ID}'")
+        self._ensure_column("guro_vacancies", "contact_url", "TEXT")
+        self._ensure_column("guro_vacancies", "duration_days", f"INTEGER DEFAULT {GC.VACANCY_DURATION_DEFAULT}")
+        self._ensure_column("guro_vacancies", "expires_at", "TEXT")
+        self._ensure_column("guro_vacancies", "views_count", "INTEGER DEFAULT 0")
+        self._ensure_column("guro_vacancies", "closed_reason", "TEXT")
+        self._ensure_column("guro_vacancies", "author_workspace", "TEXT DEFAULT 'recruiter'")
         self._conn.commit()
 
     def _ensure_column(self, table: str, column: str, ddl: str) -> None:
@@ -1249,43 +1296,105 @@ class GuroStorage:
             "active_subscriptions": active_subs,
         }
 
-    # --- вакансии (Фаза 4, 12.08.2026) ------------------------------------
+    # --- вакансии (Фаза 4, 12.08.2026; переработано 26.08.2026 по ТЗ
+    # "Recruitment — ВАКАНСИИ") ------------------------------------------
+
+    _VACANCY_EDITABLE_FIELDS = (
+        "title", "vertical", "grade", "position", "position_is_other", "location",
+        "work_format", "employment_type", "salary_from", "salary_to", "salary_negotiable",
+        "salary_visible", "description", "contact_method", "contact_url", "lang",
+    )
 
     def create_vacancy(
-        self, author_id: int, *, title: str, vertical: str | None = None, seniority: str | None = None,
-        location: str | None = None, remote: bool = False, relocation: bool = False,
+        self, author_id: int, *, author_workspace: str, title: str, vertical: str | None = None,
+        grade: str | None = None, position: str | None = None, position_is_other: bool = False,
+        location: str | None = None, work_format: str | None = None, employment_type: str | None = None,
         salary_from: float | None = None, salary_to: float | None = None,
-        salary_negotiable: bool = False, description: str | None = None, lang: str = "ru",
+        salary_negotiable: bool = False, salary_visible: bool = False, description: str | None = None,
+        contact_method: str = GC.VACANCY_CONTACT_GURO_ID, contact_url: str | None = None,
+        duration_days: int = GC.VACANCY_DURATION_DEFAULT, lang: str = "ru",
     ) -> sqlite3.Row:
+        now = self._now()
+        expires_at = GL.format_db_datetime(now + timedelta(days=duration_days))
         cur = self._conn.execute(
-            "INSERT INTO guro_vacancies (author_id, title, vertical, seniority, location, remote, "
-            "relocation, salary_from, salary_to, salary_negotiable, description, lang, status, "
-            "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (author_id, title, vertical, seniority, location, 1 if remote else 0,
-             1 if relocation else 0, salary_from, salary_to, 1 if salary_negotiable else 0,
-             description, lang, GC.VACANCY_STATUS_ACTIVE, self._now_str()),
+            "INSERT INTO guro_vacancies (author_id, author_workspace, title, vertical, grade, position, "
+            "position_is_other, location, work_format, employment_type, salary_from, salary_to, "
+            "salary_negotiable, salary_visible, description, contact_method, contact_url, "
+            "duration_days, expires_at, lang, status, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (author_id, author_workspace, title, vertical, grade, position,
+             1 if position_is_other else 0, location, work_format, employment_type, salary_from, salary_to,
+             1 if salary_negotiable else 0, 1 if salary_visible else 0, description, contact_method, contact_url,
+             duration_days, expires_at, lang, GC.VACANCY_STATUS_ACTIVE, GL.format_db_datetime(now)),
         )
         self._conn.commit()
-        return self._conn.execute("SELECT * FROM guro_vacancies WHERE id=?", (cur.lastrowid,)).fetchone()
+        vacancy = self._conn.execute("SELECT * FROM guro_vacancies WHERE id=?", (cur.lastrowid,)).fetchone()
+        if position_is_other and position:
+            self.log_vacancy_other_position(vacancy["id"], vertical, grade, position)
+        return vacancy
+
+    def log_vacancy_other_position(self, vacancy_id: int, vertical: str | None, grade: str | None, text: str) -> None:
+        """"Другое" в поле Должность (раздел 3, п.4 ТЗ) — не попадает сразу
+        в справочник, копится тут для последующего централизованного review."""
+        self._conn.execute(
+            "INSERT INTO guro_vacancy_other_positions (vacancy_id, vertical, grade, text, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (vacancy_id, vertical, grade, text, self._now_str()),
+        )
+        self._conn.commit()
+
+    def _vacancy_matches_query(self, row, query_lower: str) -> bool:
+        haystack = " ".join(filter(None, [row["title"], row["description"]])).lower()
+        return query_lower in haystack
 
     def list_vacancies(
-        self, *, lang: str | None = None, vertical: str | None = None, limit: int = GC.VACANCY_LIST_LIMIT,
-    ) -> list[sqlite3.Row]:
-        query = "SELECT * FROM guro_vacancies WHERE status=?"
-        params: list = [GC.VACANCY_STATUS_ACTIVE]
+        self, *, lang: str | None = None, vertical: str | None = None, grade: str | None = None,
+        position: str | None = None, query: str | None = None, limit: int = GC.VACANCY_LIST_LIMIT,
+    ) -> tuple[list[sqlite3.Row], bool]:
+        """Доска вакансий (раздел 3.2, "устойчивость к неточному
+        тегированию") — если задан query (текстовый поиск), запись
+        попадает в выдачу при совпадении СТРУКТУРНЫХ фильтров (вертикаль/
+        грейд/должность) ИЛИ текста в названии/описании — не строгое AND.
+        Без query — обычные AND-фильтры, как раньше. Возвращает
+        (результаты, truncated)."""
+        now_str = self._now_str()
+        sql = "SELECT * FROM guro_vacancies WHERE status=? AND (expires_at IS NULL OR expires_at > ?)"
+        params: list = [GC.VACANCY_STATUS_ACTIVE, now_str]
         if lang:
-            query += " AND lang=?"
+            sql += " AND lang=?"
             params.append(lang)
-        if vertical:
-            query += " AND vertical=?"
-            params.append(vertical)
-        query += " ORDER BY created_at DESC LIMIT ?"
-        params.append(limit)
-        return self._conn.execute(query, params).fetchall()
+        query_lower = query.strip().lower() if query else None
+        if not query_lower:
+            if vertical:
+                sql += " AND vertical=?"
+                params.append(vertical)
+            if grade:
+                sql += " AND grade=?"
+                params.append(grade)
+            if position:
+                sql += " AND position=?"
+                params.append(position)
+        sql += " ORDER BY created_at DESC"
+        rows = self._conn.execute(sql, params).fetchall()
+
+        if query_lower:
+            def structured_match(row) -> bool:
+                if vertical and row["vertical"] != vertical:
+                    return False
+                if grade and row["grade"] != grade:
+                    return False
+                if position and row["position"] != position:
+                    return False
+                return bool(vertical or grade or position)
+
+            rows = [r for r in rows if structured_match(r) or self._vacancy_matches_query(r, query_lower)]
+
+        truncated = len(rows) > limit
+        return rows[:limit], truncated
 
     def list_my_vacancies(self, author_id: int) -> list[sqlite3.Row]:
-        """Все свои — включая закрытые, для управления (в отличие от
-        list_vacancies, которая отдаёт только активные для чужого просмотра)."""
+        """Все свои — включая закрытые/на паузе, для управления (в отличие
+        от list_vacancies, которая отдаёт только активные для чужого просмотра)."""
         return self._conn.execute(
             "SELECT * FROM guro_vacancies WHERE author_id=? ORDER BY created_at DESC", (author_id,)
         ).fetchall()
@@ -1293,17 +1402,151 @@ class GuroStorage:
     def get_vacancy(self, vacancy_id: int) -> sqlite3.Row | None:
         return self._conn.execute("SELECT * FROM guro_vacancies WHERE id=?", (vacancy_id,)).fetchone()
 
-    def close_vacancy(self, vacancy_id: int, author_id: int) -> bool:
-        """False — вакансии нет или закрывает не автор (проверяем тут, а не
-        в API, чтобы правило жило рядом с данными)."""
+    def increment_vacancy_views(self, vacancy_id: int, viewer_id: int) -> None:
+        """Считает только чужие просмотры (не накручивает счётчик автору,
+        когда он сам открывает свою вакансию — раздел 4, "Счётчик просмотров")."""
+        row = self.get_vacancy(vacancy_id)
+        if row is None or row["author_id"] == viewer_id:
+            return
+        self._conn.execute(
+            "UPDATE guro_vacancies SET views_count=views_count+1 WHERE id=?", (vacancy_id,),
+        )
+        self._conn.commit()
+
+    def edit_vacancy(self, vacancy_id: int, author_id: int, fields: dict) -> sqlite3.Row | None:
+        """Поднимает ValueError('UNKNOWN_FIELD') на неразрешённое поле.
+        None — вакансии нет или редактирует не автор."""
+        row = self.get_vacancy(vacancy_id)
+        if row is None or row["author_id"] != author_id:
+            return None
+        unknown = set(fields) - set(self._VACANCY_EDITABLE_FIELDS)
+        if unknown:
+            raise ValueError("UNKNOWN_FIELD")
+        if not fields:
+            return row
+        set_clause = ", ".join(f"{k}=?" for k in fields)
+        self._conn.execute(
+            f"UPDATE guro_vacancies SET {set_clause} WHERE id=?",
+            (*fields.values(), vacancy_id),
+        )
+        self._conn.commit()
+        return self.get_vacancy(vacancy_id)
+
+    def _set_vacancy_status(self, vacancy_id: int, author_id: int, status: str, *, reason: str | None = None) -> bool:
         row = self.get_vacancy(vacancy_id)
         if row is None or row["author_id"] != author_id:
             return False
         self._conn.execute(
-            "UPDATE guro_vacancies SET status=? WHERE id=?", (GC.VACANCY_STATUS_CLOSED, vacancy_id),
+            "UPDATE guro_vacancies SET status=?, closed_reason=? WHERE id=?",
+            (status, reason, vacancy_id),
         )
         self._conn.commit()
         return True
+
+    def pause_vacancy(self, vacancy_id: int, author_id: int) -> bool:
+        return self._set_vacancy_status(vacancy_id, author_id, GC.VACANCY_STATUS_PAUSED)
+
+    def resume_vacancy(self, vacancy_id: int, author_id: int) -> bool:
+        return self._set_vacancy_status(vacancy_id, author_id, GC.VACANCY_STATUS_ACTIVE)
+
+    def close_vacancy(self, vacancy_id: int, author_id: int, *, reason: str | None = None) -> bool:
+        """False — вакансии нет или закрывает не автор (проверяем тут, а не
+        в API, чтобы правило жило рядом с данными)."""
+        return self._set_vacancy_status(vacancy_id, author_id, GC.VACANCY_STATUS_CLOSED, reason=reason)
+
+    def extend_vacancy(self, vacancy_id: int, author_id: int, duration_days: int) -> bool:
+        """Продлить — срок считается ЗАНОВО от текущего момента (не
+        накопительно к старому expires_at)."""
+        row = self.get_vacancy(vacancy_id)
+        if row is None or row["author_id"] != author_id:
+            return False
+        expires_at = GL.format_db_datetime(self._now() + timedelta(days=duration_days))
+        self._conn.execute(
+            "UPDATE guro_vacancies SET duration_days=?, expires_at=?, status=? WHERE id=?",
+            (duration_days, expires_at, GC.VACANCY_STATUS_ACTIVE, vacancy_id),
+        )
+        self._conn.commit()
+        return True
+
+    # --- отклики на вакансии, мини-ATS (раздел 5 ТЗ, 26.08.2026) ----------
+
+    def create_vacancy_response(self, vacancy_id: int, candidate_id: int, message: str | None) -> sqlite3.Row:
+        """Поднимает ValueError: NOT_FOUND / NOT_ACTIVE / SELF_RESPONSE /
+        ALREADY_RESPONDED (уникальный индекс на (vacancy_id, candidate_id))."""
+        row = self.get_vacancy(vacancy_id)
+        if row is None:
+            raise ValueError("NOT_FOUND")
+        if row["status"] != GC.VACANCY_STATUS_ACTIVE:
+            raise ValueError("NOT_ACTIVE")
+        if row["author_id"] == candidate_id:
+            raise ValueError("SELF_RESPONSE")
+        try:
+            cur = self._conn.execute(
+                "INSERT INTO guro_vacancy_responses (vacancy_id, candidate_id, status, message, "
+                "created_at, updated_at) VALUES (?,?,?,?,?,?)",
+                (vacancy_id, candidate_id, GC.RESPONSE_STATUS_NEW, message, self._now_str(), self._now_str()),
+            )
+        except sqlite3.IntegrityError:
+            raise ValueError("ALREADY_RESPONDED") from None
+        self._conn.commit()
+        return self._conn.execute(
+            "SELECT * FROM guro_vacancy_responses WHERE id=?", (cur.lastrowid,)
+        ).fetchone()
+
+    def get_vacancy_response(self, response_id: int) -> sqlite3.Row | None:
+        return self._conn.execute(
+            "SELECT * FROM guro_vacancy_responses WHERE id=?", (response_id,)
+        ).fetchone()
+
+    def count_vacancy_responses(self, vacancy_id: int) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM guro_vacancy_responses WHERE vacancy_id=?", (vacancy_id,)
+        ).fetchone()
+        return row["n"]
+
+    def list_vacancy_responses(self, vacancy_id: int, *, status: str | None = None) -> list[sqlite3.Row]:
+        sql = "SELECT * FROM guro_vacancy_responses WHERE vacancy_id=?"
+        params: list = [vacancy_id]
+        if status:
+            sql += " AND status=?"
+            params.append(status)
+        sql += " ORDER BY created_at DESC"
+        return self._conn.execute(sql, params).fetchall()
+
+    def list_responses_for_owner(self, author_id: int, *, status: str | None = None) -> list[sqlite3.Row]:
+        """Агрегированные отклики по ВСЕМ вакансиям рекрутера/компании
+        (раздел 5.5, "Отклики" на главном экране кабинета) — с полями самой
+        вакансии подмешанными через JOIN, чтобы фронт мог показать метку
+        вакансии на каждой карточке без отдельных запросов."""
+        sql = (
+            "SELECT r.*, v.title AS vacancy_title FROM guro_vacancy_responses r "
+            "JOIN guro_vacancies v ON v.id = r.vacancy_id WHERE v.author_id=?"
+        )
+        params: list = [author_id]
+        if status:
+            sql += " AND r.status=?"
+            params.append(status)
+        sql += " ORDER BY r.created_at DESC"
+        return self._conn.execute(sql, params).fetchall()
+
+    def update_vacancy_response_status(self, response_id: int, author_id: int, status: str) -> sqlite3.Row | None:
+        """Поднимает ValueError('INVALID_STATUS'). None — отклика нет или
+        статус меняет не владелец вакансии (проверка через JOIN)."""
+        if status not in GC.RESPONSE_STATUSES:
+            raise ValueError("INVALID_STATUS")
+        row = self._conn.execute(
+            "SELECT r.* FROM guro_vacancy_responses r JOIN guro_vacancies v ON v.id=r.vacancy_id "
+            "WHERE r.id=? AND v.author_id=?",
+            (response_id, author_id),
+        ).fetchone()
+        if row is None:
+            return None
+        self._conn.execute(
+            "UPDATE guro_vacancy_responses SET status=?, updated_at=? WHERE id=?",
+            (status, self._now_str(), response_id),
+        )
+        self._conn.commit()
+        return self.get_vacancy_response(response_id)
 
     # --- расширение "Моё CV" (12.08.2026) ---------------------------------
 

@@ -286,16 +286,51 @@ DIRECTORY_QUERY_MAX_KEYWORDS = 10
 MESSAGE_MAX_LENGTH = 2000
 MESSAGE_MAX_NEW_THREADS_PER_DAY = 20
 
-# Вакансии (Фаза 4, 12.08.2026) — публикует ТОЛЬКО подписчик кабинета
-# рекрутера (решение владельца), просматривает любой с базовой подпиской
-# GURO ID (тот же пейволл, что у остального поиска). Отклик — через уже
-# готовые личные сообщения (Фаза 1), отдельного механизма не заводим.
+# Вакансии (Фаза 4, 12.08.2026; переработано 26.08.2026 по ТЗ "Recruitment —
+# ВАКАНСИИ" — раздел 0: минимализм, вакансия = 3 структурных поля + рейтинг
+# + базовые условия, без обязательного текста). Публикует подписчик
+# кабинета Рекрутер ИЛИ Компания (было — только рекрутер), просматривает
+# любой с базовой подпиской GURO ID.
 VACANCY_TITLE_MAX = 120
 VACANCY_DESCRIPTION_MAX = 2000
 VACANCY_LANGS = ("ru", "en")
 VACANCY_STATUS_ACTIVE = "active"
+VACANCY_STATUS_PAUSED = "paused"
 VACANCY_STATUS_CLOSED = "closed"
 VACANCY_LIST_LIMIT = 30
+
+# Грейд вакансии — ТЕ ЖЕ 6 ключей, что в professions_data.PROFESSIONS
+# (справочник должностей, раздел "Приложение" ТЗ) — Вертикаль→Грейд→
+# Должность, единый источник и для анкеты регистрации, и для вакансий.
+# "Инвестор" сюда намеренно не входит (см. ТЗ, раздел 3, п.3).
+VACANCY_GRADES = ("C-Level", "Head of / Director", "Management", "Senior", "Specialist", "Junior / Entry")
+# Сентинел последнего пункта каскадного списка должностей — открывает
+# свободный ввод, значения логируются отдельно (см. guro_storage.
+# log_vacancy_other_position) для последующего review справочника.
+VACANCY_POSITION_OTHER = "Другое"
+
+VACANCY_WORK_FORMATS = ("remote", "office", "hybrid")
+VACANCY_EMPLOYMENT_TYPES = ("full", "part", "project")
+# Контакт для отклика (раздел 3, п.11) — по умолчанию через GURO ID
+# (создаёт запись в guro_vacancy_responses), либо внешняя ссылка (URL,
+# отклик тогда не создаёт запись в системе — рекрутер ведёт кандидата вовне).
+VACANCY_CONTACT_GURO_ID = "guro_id"
+VACANCY_CONTACT_EXTERNAL = "external"
+VACANCY_CONTACT_METHODS = (VACANCY_CONTACT_GURO_ID, VACANCY_CONTACT_EXTERNAL)
+VACANCY_DURATION_OPTIONS = (15, 30, 60)
+VACANCY_DURATION_DEFAULT = 30
+
+# Воронка статусов отклика — мини-ATS (раздел 5.3 ТЗ).
+RESPONSE_STATUS_NEW = "new"
+RESPONSE_STATUS_REVIEWING = "reviewing"
+RESPONSE_STATUS_INTERVIEW = "interview"
+RESPONSE_STATUS_OFFER = "offer"
+RESPONSE_STATUS_HIRED = "hired"
+RESPONSE_STATUS_REJECTED = "rejected"
+RESPONSE_STATUSES = (
+    RESPONSE_STATUS_NEW, RESPONSE_STATUS_REVIEWING, RESPONSE_STATUS_INTERVIEW,
+    RESPONSE_STATUS_OFFER, RESPONSE_STATUS_HIRED, RESPONSE_STATUS_REJECTED,
+)
 
 # Расширение "Моё CV" (12.08.2026, по макету владельца "2Правки СV.pdf") —
 # новые поля личного профиля, которых нет в анкете бота, редактируются

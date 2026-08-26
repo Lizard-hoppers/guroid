@@ -29,9 +29,18 @@ const EMPTY_FORM = {
 // кабинет "Рекрутер" использует ЭТУ ЖЕ форму, но с типом партнёрства
 // жёстко "Найм" (переключатель скрыт) и переименованными подписями
 // ("Подтвердить найм" вместо "Подтвердить партнёрство").
-export function ConfirmScreen({ forcedType, onBack }) {
+// prefill (26.08.2026, ТЗ "Recruitment — ВАКАНСИИ", раздел 5.4) — кнопка
+// "Подтвердить найм" из отклика на вакансию подставляет username кандидата
+// + вертикаль вакансии; грейд/должность своих полей тут не имеют — вместо
+// расширения схемы партнёрства сложены в свободный "offer" (минимально
+// инвазивная интерпретация, ТЗ этого явно не описывает).
+export function ConfirmScreen({ forcedType, prefill, onBack }) {
   const { t } = useLang();
-  const [form, setForm] = useState(() => (forcedType ? { ...EMPTY_FORM, ptype: forcedType } : EMPTY_FORM));
+  const [form, setForm] = useState(() => ({
+    ...EMPTY_FORM,
+    ...(forcedType ? { ptype: forcedType } : {}),
+    ...(prefill || {}),
+  }));
   const [state, setState] = useState({ loading: false, ok: false, error: null });
 
   function set(field, value) {

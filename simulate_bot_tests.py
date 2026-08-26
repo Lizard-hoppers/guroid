@@ -2715,10 +2715,10 @@ def test_guro_id_recruiter_dashboard():
 
         # Метрики "Характеристика" (2.3).
         check(gst.count_active_vacancies(10) == 0, "новых вакансий пока нет")
-        gst.create_vacancy(10, title="QA Engineer")
-        gst.create_vacancy(10, title="Affiliate Manager")
+        gst.create_vacancy(10, author_workspace="recruiter", title="QA Engineer")
+        gst.create_vacancy(10, author_workspace="recruiter", title="Affiliate Manager")
         check(gst.count_active_vacancies(10) == 2, "2 активные вакансии")
-        v = gst.create_vacancy(10, title="Closed one")
+        v = gst.create_vacancy(10, author_workspace="recruiter", title="Closed one")
         gst.close_vacancy(v["id"], 10)
         check(gst.count_active_vacancies(10) == 2, "закрытая вакансия не считается активной")
 
@@ -3702,10 +3702,18 @@ async def _run_guro_id_api_sim():
                 check(body["has_company_profile"] is True,
                       "has_company_profile=True после activate_company_subscription")
 
-                # --- Фаза 4 (12.08.2026): вакансии + резюме ---------------------
+                # --- Фаза 4 (12.08.2026, переписано 26.08.2026 под новую схему
+                # вакансий из ТЗ "Recruitment — ВАКАНСИИ") -----------------------
+                resp = await client.get("/api/positions", headers=auth_200)
+                check(resp.status == 200, "GET /api/positions -> 200")
+                body = await resp.json()
+                check(body["grades"] == list(GC.VACANCY_GRADES), "справочник грейдов совпадает с константой")
+                check("Gambling" in body["professions"] and "Senior" in body["professions"]["Gambling"],
+                      "справочник должностей отдаёт structure вертикаль -> грейд -> должности (из professions_data.py)")
+
                 resp = await client.post("/api/vacancies", headers=auth_200, json={"title": "PM"})
                 check(resp.status == 402,
-                      "POST /api/vacancies без подписки РЕКРУТЕРА (даже с базовой) -> 402")
+                      "POST /api/vacancies без подписки Рекрутер/Компания (даже с базовой) -> 402")
                 body = await resp.json()
                 check(body["error"] == "RECRUITER_SUBSCRIPTION_REQUIRED", "тело содержит понятный код ошибки")
 
@@ -3715,9 +3723,11 @@ async def _run_guro_id_api_sim():
                 # auth_100 (initiator) уже подписан на кабинет рекрутера и заполнил
                 # company="GURO Recruiting" в предыдущем блоке тестов (Фаза 3)
                 resp = await client.post("/api/vacancies", headers=auth_100, json={
-                    "title": "Senior Product Manager", "vertical": "Gambling", "seniority": "Senior",
-                    "location": "Malta", "remote": True, "relocation": False,
+                    "title": "Senior Product Manager", "vertical": "Gambling", "grade": "Senior",
+                    "position": "Senior Media Buyer (Facebook/Meta)",
+                    "location": "Malta", "work_format": "remote", "employment_type": "full",
                     "salary_from": "3000", "salary_to": "5000", "salary_negotiable": False,
+                    "salary_visible": True, "contact_method": "guro_id",
                     "description": "Ищем продакта в казино-направление", "lang": "ru",
                 })
                 check(resp.status == 200, "POST /api/vacancies валидный запрос (recruiter подписан) -> 200")
@@ -3726,12 +3736,36 @@ async def _run_guro_id_api_sim():
                 check(body["company"] == "GURO Recruiting",
                       "company подтягивается из кабинета рекрутера автора, не хранится в самой вакансии")
                 check(body["status"] == "active", "новая вакансия сразу активна")
+                check(body["grade"] == "Senior" and body["work_format"] == "remote"
+                      and body["employment_type"] == "full", "структурные поля грейд/формат/занятость сохранены")
+                check(body["salary_from"] == 3000 and body["salary_to"] == 5000,
+                      "зарплата видна автору (salary_visible=True)")
+                check(body["duration_days"] == GC.VACANCY_DURATION_DEFAULT and body["expires_at"],
+                      "duration_days по умолчанию (не передан) и expires_at посчитан")
+                check(body["is_owner"] is True and body["views_count"] == 0,
+                      "владельческие поля видны автору сразу после создания")
 
                 resp = await client.post("/api/vacancies", headers=auth_100, json={
                     "title": "Head of Marketing", "vertical": "Crypto", "lang": "en",
+                    "duration_days": 15, "salary_from": "1000", "salary_to": "2000",
                 })
                 check(resp.status == 200, "вторая вакансия (en) -> 200")
-                vacancy_en_id = (await resp.json())["id"]
+                body = await resp.json()
+                vacancy_en_id = body["id"]
+                check(body["duration_days"] == 15, "явно переданный duration_days применяется")
+                check(body["salary_from"] == 1000, "владельцу зарплата видна всегда, вне зависимости от salary_visible")
+
+                # Компания (тот же юзер 100, кабинет company уже активирован в Фазе 3)
+                # тоже может публиковать вакансии — capability-based доступ (раздел 1 ТЗ)
+                resp = await client.post("/api/vacancies", headers=auth_100, json={
+                    "title": "Компания-вакансия", "vertical": "Crypto",
+                    "author_workspace": "company", "lang": "ru",
+                })
+                check(resp.status == 200, "кабинет Компания тоже может публиковать вакансии (не только Рекрутер)")
+                body = await resp.json()
+                vacancy_company_id = body["id"]
+                check(body["author_workspace"] == "company" and body["verified_company"] is True,
+                      "вакансия от компании помечена author_workspace=company + верифицирована")
 
                 st.save_profile({"user_id": 496, "username": "nosub4", "name": "No Sub 4"})
                 auth_496 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 496, "username": "nosub4"})}
@@ -3741,9 +3775,18 @@ async def _run_guro_id_api_sim():
                 resp = await client.get("/api/vacancies", headers=auth_200)
                 check(resp.status == 200, "GET /api/vacancies с базовой подпиской -> 200 (подписка рекрутера НЕ нужна)")
                 body = await resp.json()
+                check("truncated" in body, "ответ доски содержит флаг truncated")
                 titles = [v["title"] for v in body["vacancies"]]
                 check("Senior Product Manager" in titles and "Head of Marketing" in titles,
                       "обе активные вакансии видны в общей выдаче")
+                board_ru = next(v for v in body["vacancies"] if v["title"] == "Senior Product Manager")
+                check(board_ru["salary_from"] == 3000,
+                      "не-владельцу salary_from виден, т.к. у этой вакансии salary_visible=True")
+                check("views_count" not in board_ru, "владельческие поля (views_count) не утекают не-владельцу")
+
+                board_en = next(v for v in body["vacancies"] if v["title"] == "Head of Marketing")
+                check(board_en["salary_from"] is None,
+                      "не-владельцу salary_from скрыт, т.к. у этой вакансии salary_visible не задан (False)")
 
                 resp = await client.get("/api/vacancies?lang=en", headers=auth_200)
                 body = await resp.json()
@@ -3755,16 +3798,124 @@ async def _run_guro_id_api_sim():
                 body = await resp.json()
                 check(all(v["vertical"] == "Crypto" for v in body["vacancies"]), "?vertical= фильтрует по вертикали")
 
+                resp = await client.get("/api/vacancies?grade=Senior", headers=auth_200)
+                body = await resp.json()
+                check([v["title"] for v in body["vacancies"]] == ["Senior Product Manager"],
+                      "?grade= фильтрует по грейду")
+
+                resp = await client.get("/api/vacancies", params={"q": "продакта"}, headers=auth_200)
+                body = await resp.json()
+                check("Senior Product Manager" in [v["title"] for v in body["vacancies"]],
+                      "?q= находит по свободному тексту в описании")
+
+                resp = await client.get(
+                    "/api/vacancies",
+                    params={"vertical": "Crypto", "q": "совершенно левый текст, которого нигде нет"},
+                    headers=auth_200,
+                )
+                body = await resp.json()
+                check("Head of Marketing" in [v["title"] for v in body["vacancies"]],
+                      "?q= с несовпадающим текстом всё равно находит по структурным фильтрам — "
+                      "OR-логика, не строгое AND (раздел 6 ТЗ, устойчивость к неточному тегированию)")
+
                 resp = await client.get("/api/vacancies/mine", headers=auth_100)
                 check(resp.status == 200, "GET /api/vacancies/mine -> 200")
                 body = await resp.json()
-                check(len(body["vacancies"]) == 2, "у автора обе его вакансии видны в /mine")
+                check(len(body["vacancies"]) == 3, "у автора все 3 его вакансии видны в /mine (recruiter + company)")
+
+                # Просмотр чужой карточки увеличивает views_count у владельца
+                resp = await client.get(f"/api/vacancies/{vacancy_ru_id}", headers=auth_200)
+                check(resp.status == 200, "GET /api/vacancies/{id} чужой активной вакансии -> 200")
+                resp = await client.get(f"/api/vacancies/{vacancy_ru_id}", headers=auth_100)
+                body = await resp.json()
+                check(body["views_count"] == 1,
+                      "просмотр НЕ-автором увеличил views_count (просмотр автором — нет)")
+
+                # Редактирование
+                resp = await client.post(f"/api/vacancies/{vacancy_ru_id}/edit", headers=auth_200,
+                                          json={"title": "Hacked"})
+                check(resp.status == 404, "редактировать чужую вакансию -> 404 (не автор)")
+                resp = await client.post(f"/api/vacancies/{vacancy_ru_id}/edit", headers=auth_100,
+                                          json={"salary_to": "6000"})
+                check(resp.status == 200, "автор редактирует свою вакансию -> 200")
+                body = await resp.json()
+                check(body["salary_to"] == 6000, "изменённое поле применилось")
+
+                # Пауза / возобновление
+                resp = await client.post(f"/api/vacancies/{vacancy_ru_id}/pause", headers=auth_100)
+                check(resp.status == 200, "пауза своей вакансии -> 200")
+                body = await resp.json()
+                check(body["status"] == "paused", "статус сменился на paused")
+                resp = await client.get("/api/vacancies", headers=auth_200)
+                body = await resp.json()
+                check("Senior Product Manager" not in [v["title"] for v in body["vacancies"]],
+                      "вакансия на паузе пропадает из общей выдачи")
+                resp = await client.post(f"/api/vacancies/{vacancy_ru_id}/resume", headers=auth_100)
+                check(resp.status == 200, "возобновление -> 200")
+                body = await resp.json()
+                check(body["status"] == "active", "статус снова active")
+
+                # Продление
+                resp = await client.post(f"/api/vacancies/{vacancy_ru_id}/extend", headers=auth_100,
+                                          json={"duration_days": 60})
+                check(resp.status == 200, "продление своей вакансии -> 200")
+                body = await resp.json()
+                check(body["duration_days"] == 60, "duration_days обновлён продлением")
+
+                # Отклики (мини-ATS, раздел 5 ТЗ) — кандидат откликается на
+                # vacancy_ru_id (contact_method=guro_id)
+                st.save_profile({"user_id": 499, "username": "candidate1", "name": "Cand One", "vertical": "Gambling"})
+                auth_499 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 499, "username": "candidate1"})}
+                app["storage"].activate_subscription(499, 30)
+
+                resp = await client.post(f"/api/vacancies/{vacancy_ru_id}/respond", headers=auth_100, json={})
+                check(resp.status == 400, "автор не может откликнуться на свою же вакансию -> 400 SELF_RESPONSE")
+
+                resp = await client.post(f"/api/vacancies/{vacancy_ru_id}/respond", headers=auth_499,
+                                          json={"message": "Готов начать сразу"})
+                check(resp.status == 200, "кандидат откликается -> 200")
+                body = await resp.json()
+                response_id = body["id"]
+                check(body["status"] == "new", "новый отклик сразу в статусе new")
+
+                resp = await client.post(f"/api/vacancies/{vacancy_ru_id}/respond", headers=auth_499, json={})
+                check(resp.status == 409, "повторный отклик той же вакансии -> 409 ALREADY_RESPONDED")
+
+                resp = await client.get(f"/api/vacancies/{vacancy_ru_id}/responses", headers=auth_200)
+                check(resp.status == 404, "чужой список откликов -> 404 (не владелец)")
+
+                resp = await client.get(f"/api/vacancies/{vacancy_ru_id}/responses", headers=auth_100)
+                check(resp.status == 200, "владелец видит отклики своей вакансии -> 200")
+                body = await resp.json()
+                check(len(body["responses"]) == 1 and body["responses"][0]["candidate_username"] == "candidate1",
+                      "отклик кандидата виден владельцу с его username")
+
+                resp = await client.post(f"/api/responses/{response_id}/status", headers=auth_200,
+                                          json={"status": "interview"})
+                check(resp.status == 404, "менять статус чужого отклика -> 404 (не владелец вакансии)")
+
+                resp = await client.post(f"/api/responses/{response_id}/status", headers=auth_100,
+                                          json={"status": "not_a_status"})
+                check(resp.status == 400, "невалидный статус отклика -> 400 INVALID_STATUS")
+
+                resp = await client.post(f"/api/responses/{response_id}/status", headers=auth_100,
+                                          json={"status": "interview"})
+                check(resp.status == 200, "владелец двигает воронку отклика -> 200")
+                body = await resp.json()
+                check(body["status"] == "interview", "статус отклика обновлён (воронка Найм-раздела 5.3)")
+
+                resp = await client.get("/api/responses", headers=auth_100)
+                check(resp.status == 200, "GET /api/responses (агрегация по всем своим вакансиям) -> 200")
+                body = await resp.json()
+                check(len(body["responses"]) == 1 and body["responses"][0]["vacancy_title"] == "Senior Product Manager",
+                      "агрегированный отклик подписан названием вакансии (раздел 5.5)")
 
                 resp = await client.post(f"/api/vacancies/{vacancy_ru_id}/close", headers=auth_200)
                 check(resp.status == 404, "закрыть чужую вакансию -> 404 (не автор)")
 
-                resp = await client.post(f"/api/vacancies/{vacancy_ru_id}/close", headers=auth_100)
-                check(resp.status == 200, "автор закрывает свою вакансию -> 200")
+                resp = await client.post(f"/api/vacancies/{vacancy_ru_id}/close", headers=auth_100,
+                                          json={"reason": "Нашли кандидата"})
+                check(resp.status == 200, "автор закрывает свою вакансию (с причиной) -> 200")
                 body = await resp.json()
                 check(body["status"] == "closed", "статус вакансии сменился на closed")
 
@@ -3775,8 +3926,11 @@ async def _run_guro_id_api_sim():
 
                 resp = await client.get("/api/vacancies/mine", headers=auth_100)
                 body = await resp.json()
-                check(len(body["vacancies"]) == 2,
+                check(len(body["vacancies"]) == 3,
                       "но в /mine у автора закрытая вакансия всё ещё видна (для истории/архива)")
+                closed_row = next(v for v in body["vacancies"] if v["id"] == vacancy_ru_id)
+                check(closed_row["closed_reason"] == "Нашли кандидата",
+                      "closed_reason сохранён и виден владельцу в /mine")
 
                 # «Резюме» — не отдельный экран, а фильтр work_status=looking
                 # поверх того же поиска; НЕ требует ни подписки, ни единого

@@ -25,6 +25,7 @@ import guro_logic as GL
 import guro_tags as GT
 from config import Settings
 from guro_storage import GuroStorage
+from professions_data import PROFESSIONS
 from storage import Storage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -1349,96 +1350,385 @@ async def handle_invite_link(request: web.Request) -> web.Response:
     return web.json_response({"link": link})
 
 
-def _vacancy_public(storage: GuroStorage, row) -> dict:
-    """Подмешивает компанию/имя автора из ЕГО кабинета рекрутера — вакансия
-    сама по себе не хранит company, чтобы не дублировать данные, которые
-    уже живут в guro_recruiter_profiles."""
-    recruiter = storage.get_recruiter_extra(row["author_id"])
+def _vacancy_poster_summary(storage: GuroStorage, row) -> dict:
+    """Кто разместил (раздел 2, "Кто разместил: имя/бренд + рейтинг") —
+    берёт витрину из ТОГО кабинета, откуда была опубликована вакансия
+    (author_workspace), плюс общий рейтинг (общий для всех воркспейсов,
+    раздел 3 отдельного ТЗ по рекрутеру)."""
+    workspace = row["author_workspace"] or "recruiter"
+    if workspace == "company":
+        extra = storage.get_company_extra(row["author_id"])
+        name, verified = extra["name"], True
+    else:
+        extra = storage.get_recruiter_extra(row["author_id"])
+        name, verified = extra["name"], False
+    guro_user = storage.get_or_create_guro_user(row["author_id"])
     return {
+        "author_workspace": workspace,
+        "poster_name": name,
+        "company": extra.get("company"),
+        "verified_company": verified,
+        "reputation_score": round(guro_user["reputation_score"], 1),
+        "reputation_tier": GL.reputation_tier(guro_user["reputation_score"]),
+    }
+
+
+def _vacancy_public(storage: GuroStorage, row, *, viewer_id: int | None = None) -> dict:
+    """viewer_id (26.08.2026) — если передан и равен author_id, подмешивает
+    "владельческие" поля (счётчики просмотров/откликов, closed_reason) —
+    та же карточка, публичная и "моя", просто с доп. полями для владельца
+    (раздел 4/7, "Три состояния карточки")."""
+    is_owner = viewer_id is not None and viewer_id == row["author_id"]
+    data = {
         "id": row["id"],
         "author_id": row["author_id"],
-        "company": recruiter["company"],
-        "recruiter_name": recruiter["name"],
+        **_vacancy_poster_summary(storage, row),
         "title": row["title"],
         "vertical": row["vertical"],
-        "seniority": row["seniority"],
+        "grade": row["grade"],
+        "position": row["position"],
         "location": row["location"],
-        "remote": bool(row["remote"]),
-        "relocation": bool(row["relocation"]),
-        "salary_from": row["salary_from"],
-        "salary_to": row["salary_to"],
+        "work_format": row["work_format"],
+        "employment_type": row["employment_type"],
+        "salary_from": row["salary_from"] if (row["salary_visible"] or is_owner) else None,
+        "salary_to": row["salary_to"] if (row["salary_visible"] or is_owner) else None,
         "salary_negotiable": bool(row["salary_negotiable"]),
+        "salary_visible": bool(row["salary_visible"]),
         "description": row["description"],
+        "contact_method": row["contact_method"],
+        "contact_url": row["contact_url"] if row["contact_method"] == GC.VACANCY_CONTACT_EXTERNAL else None,
         "lang": row["lang"],
         "status": row["status"],
+        "duration_days": row["duration_days"],
+        "expires_at": row["expires_at"],
         "created_at": row["created_at"],
+        "is_owner": is_owner,
     }
+    if is_owner:
+        data["views_count"] = row["views_count"]
+        data["responses_count"] = storage.count_vacancy_responses(row["id"])
+        data["closed_reason"] = row["closed_reason"]
+    return data
+
+
+async def handle_get_positions(request: web.Request) -> web.Response:
+    """Справочник должностей (Вертикаль -> Грейд -> [должности]) — единый
+    источник для анкеты регистрации (бот), фильтра "Должность" в Поиске и
+    формы публикации вакансии (ТЗ "Recruitment — ВАКАНСИИ", Приложение)."""
+    _auth(request, request.app["settings"])
+    return web.json_response({"grades": list(GC.VACANCY_GRADES), "professions": PROFESSIONS})
 
 
 async def handle_list_vacancies(request: web.Request) -> web.Response:
     """Просмотр доски — по БАЗОВОЙ подписке GURO ID (тот же пейволл, что и
-    у остального поиска), публиковать может только подписчик кабинета
-    рекрутера (см. handle_create_vacancy)."""
+    у остального поиска), публиковать может подписчик кабинета Рекрутер
+    ИЛИ Компания (см. handle_create_vacancy)."""
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
     if not storage.is_subscribed(user["id"]):
         return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
     lang = request.query.get("lang") or None
     vertical = request.query.get("vertical") or None
-    rows = storage.list_vacancies(lang=lang, vertical=vertical)
-    return web.json_response({"vacancies": [_vacancy_public(storage, r) for r in rows]})
+    grade = request.query.get("grade") or None
+    position = request.query.get("position") or None
+    query = request.query.get("q") or None
+    rows, truncated = storage.list_vacancies(
+        lang=lang, vertical=vertical, grade=grade, position=position, query=query,
+    )
+    return web.json_response({
+        "vacancies": [_vacancy_public(storage, r, viewer_id=user["id"]) for r in rows],
+        "truncated": truncated,
+    })
 
 
 async def handle_my_vacancies(request: web.Request) -> web.Response:
-    """Свои вакансии (включая закрытые) — для управления, доступно любому
-    (даже если подписка рекрутера с тех пор истекла — старые публикации
-    остаются видны владельцу для архивации)."""
+    """Свои вакансии (включая закрытые/на паузе) — для управления, доступно
+    любому (даже если подписка рекрутера/компании с тех пор истекла —
+    старые публикации остаются видны владельцу для архивации)."""
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
     rows = storage.list_my_vacancies(user["id"])
-    return web.json_response({"vacancies": [_vacancy_public(storage, r) for r in rows]})
+    return web.json_response({"vacancies": [_vacancy_public(storage, r, viewer_id=user["id"]) for r in rows]})
 
 
-async def handle_create_vacancy(request: web.Request) -> web.Response:
-    settings, storage = request.app["settings"], request.app["storage"]
-    user = _auth(request, settings)
-    if not storage.is_recruiter_subscribed(user["id"]):
-        return web.json_response({"error": "RECRUITER_SUBSCRIPTION_REQUIRED"}, status=402)
-    body = await request.json()
-    title = str(body.get("title", "")).strip()[: GC.VACANCY_TITLE_MAX]
-    if not title:
-        return web.json_response({"error": "TITLE_REQUIRED"}, status=400)
-    lang = str(body.get("lang", "ru"))
-    if lang not in GC.VACANCY_LANGS:
-        lang = "ru"
-    description = str(body.get("description", "")).strip()[: GC.VACANCY_DESCRIPTION_MAX] or None
-    vacancy = storage.create_vacancy(
-        user["id"],
-        title=title,
-        vertical=body.get("vertical") or None,
-        seniority=body.get("seniority") or None,
-        location=body.get("location") or None,
-        remote=bool(body.get("remote")),
-        relocation=bool(body.get("relocation")),
-        salary_from=_parse_amount(body.get("salary_from")),
-        salary_to=_parse_amount(body.get("salary_to")),
-        salary_negotiable=bool(body.get("salary_negotiable")),
-        description=description,
-        lang=lang,
-    )
-    return web.json_response(_vacancy_public(storage, vacancy))
-
-
-async def handle_close_vacancy(request: web.Request) -> web.Response:
+async def handle_get_vacancy(request: web.Request) -> web.Response:
+    """Полная карточка (раздел 2.1) — увеличивает счётчик просмотров, если
+    смотрит НЕ автор (см. GuroStorage.increment_vacancy_views)."""
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
     try:
         vacancy_id = int(request.match_info["vacancy_id"])
     except ValueError:
         return web.json_response({"error": "NOT_FOUND"}, status=404)
-    if not storage.close_vacancy(vacancy_id, user["id"]):
+    row = storage.get_vacancy(vacancy_id)
+    if row is None:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    storage.increment_vacancy_views(vacancy_id, user["id"])
+    row = storage.get_vacancy(vacancy_id)  # свежий views_count, если инкрементнули
+    return web.json_response(_vacancy_public(storage, row, viewer_id=user["id"]))
+
+
+def _parse_vacancy_fields(body: dict) -> dict:
+    """Общий разбор полей формы публикации/редактирования (раздел 3 ТЗ) —
+    используется и в create, и в edit."""
+    out: dict = {}
+    if "title" in body:
+        out["title"] = str(body.get("title", "")).strip()[: GC.VACANCY_TITLE_MAX]
+    if "vertical" in body:
+        out["vertical"] = body.get("vertical") or None
+    if "grade" in body:
+        grade = body.get("grade") or None
+        out["grade"] = grade if grade in GC.VACANCY_GRADES else None
+    if "position" in body:
+        out["position"] = str(body.get("position", "")).strip()[:200] or None
+    if "position_is_other" in body:
+        out["position_is_other"] = bool(body.get("position_is_other"))
+    if "location" in body:
+        out["location"] = str(body.get("location", "")).strip()[:200] or None
+    if "work_format" in body:
+        wf = body.get("work_format") or None
+        out["work_format"] = wf if wf in GC.VACANCY_WORK_FORMATS else None
+    if "employment_type" in body:
+        et = body.get("employment_type") or None
+        out["employment_type"] = et if et in GC.VACANCY_EMPLOYMENT_TYPES else None
+    if "salary_from" in body:
+        out["salary_from"] = _parse_amount(body.get("salary_from"))
+    if "salary_to" in body:
+        out["salary_to"] = _parse_amount(body.get("salary_to"))
+    if "salary_negotiable" in body:
+        out["salary_negotiable"] = bool(body.get("salary_negotiable"))
+    if "salary_visible" in body:
+        out["salary_visible"] = bool(body.get("salary_visible"))
+    if "description" in body:
+        out["description"] = str(body.get("description", "")).strip()[: GC.VACANCY_DESCRIPTION_MAX] or None
+    if "contact_method" in body:
+        cm = str(body.get("contact_method", GC.VACANCY_CONTACT_GURO_ID))
+        out["contact_method"] = cm if cm in GC.VACANCY_CONTACT_METHODS else GC.VACANCY_CONTACT_GURO_ID
+    if "contact_url" in body:
+        out["contact_url"] = str(body.get("contact_url", "")).strip()[:500] or None
+    if "lang" in body:
+        lang = str(body.get("lang", "ru"))
+        out["lang"] = lang if lang in GC.VACANCY_LANGS else "ru"
+    return out
+
+
+async def handle_create_vacancy(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    # Публикует подписчик Рекрутер ИЛИ Компания (раздел 1 ТЗ) — воркспейс
+    # выбирает фронт явно (кнопка "Опубликовать вакансию" живёт внутри
+    # конкретного кабинета), тут только сверяем, что подписка НА НЕГО реальна.
+    body = await request.json()
+    author_workspace = str(body.get("author_workspace", "recruiter"))
+    if author_workspace == "company":
+        if not storage.is_company_subscribed(user["id"]):
+            return web.json_response({"error": "COMPANY_SUBSCRIPTION_REQUIRED"}, status=402)
+    else:
+        author_workspace = "recruiter"
+        if not storage.is_recruiter_subscribed(user["id"]):
+            return web.json_response({"error": "RECRUITER_SUBSCRIPTION_REQUIRED"}, status=402)
+
+    fields = _parse_vacancy_fields(body)
+    if not fields.get("title"):
+        return web.json_response({"error": "TITLE_REQUIRED"}, status=400)
+    duration_days = body.get("duration_days", GC.VACANCY_DURATION_DEFAULT)
+    try:
+        duration_days = int(duration_days)
+    except (TypeError, ValueError):
+        duration_days = GC.VACANCY_DURATION_DEFAULT
+    if duration_days not in GC.VACANCY_DURATION_OPTIONS:
+        duration_days = GC.VACANCY_DURATION_DEFAULT
+
+    vacancy = storage.create_vacancy(
+        user["id"], author_workspace=author_workspace, duration_days=duration_days,
+        title=fields.get("title", ""), vertical=fields.get("vertical"), grade=fields.get("grade"),
+        position=fields.get("position"), position_is_other=fields.get("position_is_other", False),
+        location=fields.get("location"), work_format=fields.get("work_format"),
+        employment_type=fields.get("employment_type"), salary_from=fields.get("salary_from"),
+        salary_to=fields.get("salary_to"), salary_negotiable=fields.get("salary_negotiable", False),
+        salary_visible=fields.get("salary_visible", False), description=fields.get("description"),
+        contact_method=fields.get("contact_method", GC.VACANCY_CONTACT_GURO_ID),
+        contact_url=fields.get("contact_url"), lang=fields.get("lang", "ru"),
+    )
+    return web.json_response(_vacancy_public(storage, vacancy, viewer_id=user["id"]))
+
+
+async def handle_edit_vacancy(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        vacancy_id = int(request.match_info["vacancy_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    body = await request.json()
+    fields = _parse_vacancy_fields(body)
+    try:
+        vacancy = storage.edit_vacancy(vacancy_id, user["id"], fields)
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
+    if vacancy is None:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    if fields.get("position_is_other") and fields.get("position"):
+        storage.log_vacancy_other_position(vacancy_id, vacancy["vertical"], vacancy["grade"], fields["position"])
+    return web.json_response(_vacancy_public(storage, vacancy, viewer_id=user["id"]))
+
+
+async def _vacancy_action(request: web.Request, action) -> web.Response:
+    settings = request.app["settings"]
+    storage = request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        vacancy_id = int(request.match_info["vacancy_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    ok = action(storage, vacancy_id, user["id"])
+    if not ok:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    row = storage.get_vacancy(vacancy_id)
+    return web.json_response(_vacancy_public(storage, row, viewer_id=user["id"]))
+
+
+async def handle_pause_vacancy(request: web.Request) -> web.Response:
+    return await _vacancy_action(request, lambda s, vid, uid: s.pause_vacancy(vid, uid))
+
+
+async def handle_resume_vacancy(request: web.Request) -> web.Response:
+    return await _vacancy_action(request, lambda s, vid, uid: s.resume_vacancy(vid, uid))
+
+
+async def handle_extend_vacancy(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        vacancy_id = int(request.match_info["vacancy_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    body = await request.json()
+    duration_days = body.get("duration_days", GC.VACANCY_DURATION_DEFAULT)
+    try:
+        duration_days = int(duration_days)
+    except (TypeError, ValueError):
+        duration_days = GC.VACANCY_DURATION_DEFAULT
+    if duration_days not in GC.VACANCY_DURATION_OPTIONS:
+        duration_days = GC.VACANCY_DURATION_DEFAULT
+    if not storage.extend_vacancy(vacancy_id, user["id"], duration_days):
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    row = storage.get_vacancy(vacancy_id)
+    return web.json_response(_vacancy_public(storage, row, viewer_id=user["id"]))
+
+
+async def handle_close_vacancy(request: web.Request) -> web.Response:
+    """closed_reason (раздел 4 ТЗ, "опциональная пометка 'Закрыта — нашли
+    кандидата'") — необязательное короткое тело запроса."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        vacancy_id = int(request.match_info["vacancy_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    reason = None
+    try:
+        body = await request.json()
+        reason = (str(body.get("reason", "")).strip()[:200]) or None
+    except Exception:  # noqa: BLE001
+        pass
+    if not storage.close_vacancy(vacancy_id, user["id"], reason=reason):
         return web.json_response({"error": "NOT_FOUND"}, status=404)
     return web.json_response({"status": "closed"})
+
+
+_RESPONSE_ERROR_STATUS = {
+    "NOT_FOUND": 404, "NOT_ACTIVE": 409, "SELF_RESPONSE": 400,
+    "ALREADY_RESPONDED": 409, "INVALID_STATUS": 400,
+}
+
+
+async def handle_respond_vacancy(request: web.Request) -> web.Response:
+    """Отклик — один тап (раздел 5.1 ТЗ, "без сопроводительного письма") —
+    message опционален. Только для вакансий с contact_method=guro_id (раздел
+    3, п.11) — "внешняя ссылка" ведёт кандидата вовне, тут отклик не создаётся."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        vacancy_id = int(request.match_info["vacancy_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    body = await request.json()
+    message = (str(body.get("message", "")).strip()[:500]) or None
+    try:
+        response = storage.create_vacancy_response(vacancy_id, user["id"], message)
+    except ValueError as e:
+        code = str(e)
+        return web.json_response({"error": code}, status=_RESPONSE_ERROR_STATUS.get(code, 409))
+    return web.json_response({"id": response["id"], "status": response["status"]})
+
+
+def _response_public(storage: GuroStorage, row) -> dict:
+    profile = storage.get_profile(row["candidate_id"])
+    guro_user = storage.get_or_create_guro_user(row["candidate_id"])
+    out = {
+        "id": row["id"],
+        "vacancy_id": row["vacancy_id"],
+        "candidate_id": row["candidate_id"],
+        "candidate_name": profile["name"] if profile else None,
+        "candidate_username": profile["username"] if profile else None,
+        "candidate_vertical": profile["vertical"] if profile else None,
+        "reputation_score": round(guro_user["reputation_score"], 1) if storage.is_subscribed(row["candidate_id"]) else None,
+        "status": row["status"],
+        "message": row["message"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+    if "vacancy_title" in row.keys():
+        out["vacancy_title"] = row["vacancy_title"]
+    return out
+
+
+async def handle_list_vacancy_responses(request: web.Request) -> web.Response:
+    """Отклики ПО ОДНОЙ вакансии (раздел 5.2) — только владелец."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        vacancy_id = int(request.match_info["vacancy_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    vacancy = storage.get_vacancy(vacancy_id)
+    if vacancy is None or vacancy["author_id"] != user["id"]:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    status = request.query.get("status") or None
+    rows = storage.list_vacancy_responses(vacancy_id, status=status)
+    return web.json_response({
+        "vacancy": _vacancy_public(storage, vacancy, viewer_id=user["id"]),
+        "responses": [_response_public(storage, r) for r in rows],
+    })
+
+
+async def handle_list_my_responses(request: web.Request) -> web.Response:
+    """Агрегированные отклики по ВСЕМ своим вакансиям (раздел 5.5,
+    пункт "Отклики" на главном экране кабинета)."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    status = request.query.get("status") or None
+    rows = storage.list_responses_for_owner(user["id"], status=status)
+    return web.json_response({"responses": [_response_public(storage, r) for r in rows]})
+
+
+async def handle_update_response_status(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        response_id = int(request.match_info["response_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    body = await request.json()
+    status = str(body.get("status", ""))
+    try:
+        row = storage.update_vacancy_response_status(response_id, user["id"], status)
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
+    if row is None:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    return web.json_response(_response_public(storage, row))
 
 
 # product -> тарифная сетка. Обобщено под ключ продукта (Фаза 3, 12.08.2026)
@@ -1680,10 +1970,20 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_get("/api/partnerships/pending_ratings", handle_pending_ratings)
     app.router.add_get("/api/qr", handle_get_qr)
     app.router.add_get("/api/invite_link", handle_invite_link)
+    app.router.add_get("/api/positions", handle_get_positions)
     app.router.add_get("/api/vacancies", handle_list_vacancies)
     app.router.add_get("/api/vacancies/mine", handle_my_vacancies)
     app.router.add_post("/api/vacancies", handle_create_vacancy)
+    app.router.add_get("/api/vacancies/{vacancy_id}", handle_get_vacancy)
+    app.router.add_post("/api/vacancies/{vacancy_id}/edit", handle_edit_vacancy)
+    app.router.add_post("/api/vacancies/{vacancy_id}/pause", handle_pause_vacancy)
+    app.router.add_post("/api/vacancies/{vacancy_id}/resume", handle_resume_vacancy)
+    app.router.add_post("/api/vacancies/{vacancy_id}/extend", handle_extend_vacancy)
     app.router.add_post("/api/vacancies/{vacancy_id}/close", handle_close_vacancy)
+    app.router.add_post("/api/vacancies/{vacancy_id}/respond", handle_respond_vacancy)
+    app.router.add_get("/api/vacancies/{vacancy_id}/responses", handle_list_vacancy_responses)
+    app.router.add_get("/api/responses", handle_list_my_responses)
+    app.router.add_post("/api/responses/{response_id}/status", handle_update_response_status)
     if WEBAPP_DIST.exists():
         # add_static не отдаёт index.html на "/" сам по себе (показал бы
         # листинг директории) — раздаём его явным роутом, остальное статикой.

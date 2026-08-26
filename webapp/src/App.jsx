@@ -90,6 +90,11 @@ function AppShell() {
   // из кнопки "Написать" в поиске (см. openMessages ниже), поэтому это
   // обычный state, а не ref с отдельным consumed-флагом, как у ?target=.
   const [messageTargetId, setMessageTargetId] = useState(initialThreadRef.current);
+  // "Подтвердить найм" из отклика на вакансию (26.08.2026, ТЗ "Recruitment —
+  // ВАКАНСИИ", раздел 5.4) — вакансии живут в СВОЕЙ вкладке (не внутри
+  // Профиля), поэтому переход в форму найма кабинета Рекрутер требует
+  // межвкладочной передачи (та же механика, что openMessages/messageTargetId).
+  const [hireConfirmPrefill, setHireConfirmPrefill] = useState(null);
   const [tab, setTab] = useState(initialTargetRef.current ? "search" : "profile");
   // Направление перехода между экранами — вперёд (вправо-налево, как
   // раньше) или назад (зеркально, влево-направо), в зависимости от того,
@@ -116,6 +121,11 @@ function AppShell() {
   // вкладку Профиль и сразу открывает переписку с этим человеком.
   function openMessages(userId) {
     setMessageTargetId(String(userId));
+    handleTabChange("profile");
+  }
+
+  function openHireConfirm(prefill) {
+    setHireConfirmPrefill(prefill || {});
     handleTabChange("profile");
   }
 
@@ -180,6 +190,9 @@ function AppShell() {
                   onOpenMessages={openMessages}
                   messageTargetId={messageTargetId}
                   onConsumeMessageTarget={() => setMessageTargetId(null)}
+                  onOpenHireConfirm={openHireConfirm}
+                  hireConfirmPrefill={hireConfirmPrefill}
+                  onConsumeHireConfirmPrefill={() => setHireConfirmPrefill(null)}
                 />
               </motion.div>
             </AnimatePresence>

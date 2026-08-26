@@ -628,6 +628,42 @@ export function CvReadOnly({ profile }) {
   );
 }
 
+// «Характеристика» (26.08.2026, по прямому запросу владельца — кнопка,
+// доступная в КАЖДОМ профиле, открывает офферы ("Я ищу"/"Я полезен") + CV
+// того, кто просматривается; видна только при полной, разблокированной
+// подписчиком карточке (ResultCard уже гарантирует это условие, см.
+// SearchScreen.jsx) — отдельного платного гейта тут не нужно, сама карточка
+// уже за пейволлом. Тот же компонент используется и в СВОЁМ профиле
+// (ProfileHub) — превью того, что увидит подписанный смотрящий.
+export function CharacteristicButton({ profile }) {
+  const { t } = useLang();
+  const [open, setOpen] = useState(false);
+  const hasOffers = !!(profile.looking_for || profile.offering);
+  return (
+    <div>
+      <button
+        type="button"
+        className="btn secondary"
+        style={{ marginTop: 8 }}
+        onClick={() => setOpen((v) => !v)}
+      >
+        🪪 {open ? t("characteristic.hide") : t("characteristic.button")}
+      </button>
+      {open && (
+        <>
+          <div className="card cv-readonly">
+            <h3>{t("characteristic.offersTitle")}</h3>
+            <CvRow label={t("offers.lookingForLabel")} value={profile.looking_for} />
+            <CvRow label={t("offers.offeringLabel")} value={profile.offering} />
+            {!hasOffers && <div className="partner-meta">{t("characteristic.emptyOffers")}</div>}
+          </div>
+          <CvReadOnly profile={profile} />
+        </>
+      )}
+    </div>
+  );
+}
+
 export function LockedOverlay({ children, onUnlock }) {
   const { t } = useLang();
   return (

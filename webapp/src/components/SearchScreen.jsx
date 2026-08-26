@@ -8,7 +8,7 @@ import {
   IdentityLine,
   WorkStatusBadge,
   Spinner,
-  CvReadOnly,
+  CharacteristicButton,
 } from "./Shared.jsx";
 import { haptic } from "../telegram.js";
 import { useLang } from "../i18n.jsx";
@@ -75,13 +75,12 @@ function ResultCard({ p, onWrite, onViewRecruiter, onViewCompany }) {
             {t("companyViewBtn")}
           </button>
         )}
+        {/* «Характеристика» (26.08.2026, по прямому запросу владельца) —
+            офферы + CV чужого профиля теперь ЗА КНОПКОЙ (было — всегда
+            развёрнуто, см. CvReadOnly ниже по коду до этой правки), любой
+            подписчик может открыть у любого профиля. */}
+        <CharacteristicButton profile={p} />
       </div>
-      {/* CV чужого профиля (16.08.2026) — раньше нигде не отображался при
-          просмотре (бэкенд уже отдавал все поля, фронт их просто не рисовал).
-          Отдельная карточка, не вложенная в основную — CvReadOnly сама
-          решает, рисовать ли себя (пусто, если ни одного поля CV не
-          заполнено/не открыто владельцем через show_cv). */}
-      <CvReadOnly profile={p} />
     </>
   );
 }

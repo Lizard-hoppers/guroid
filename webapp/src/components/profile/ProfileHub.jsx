@@ -1,7 +1,7 @@
 import { addToHomeScreen, canAddToHomeScreen, getAvatarUrl, haptic } from "../../telegram.js";
 import { initialOf, pluralRu } from "../../utils.js";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
-import { RatingPreview, RatingSummaryLine, WorkStatusPicker } from "../Shared.jsx";
+import { CharacteristicButton, RatingPreview, RatingSummaryLine, WorkStatusPicker } from "../Shared.jsx";
 import { useLang } from "../../i18n.jsx";
 
 // Порядок пунктов — по макету владельца ("рейтинг порядок.pdf", 16.08.2026):
@@ -66,6 +66,13 @@ export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, o
           <label>{t("hub.status")}</label>
           <WorkStatusPicker value={profile.work_status} onChange={onWorkStatusChange} />
         </div>
+        {/* «Характеристика» (26.08.2026) — та же кнопка, что видят чужие
+            подписчики на моей карточке в поиске (см. SearchScreen.jsx), тут
+            как превью своих данных. ВАЖНО: /api/me отдаёт свои поля ВСЕГДА
+            полностью, независимо от тумблеров приватности — это НЕ точная
+            копия того, что видит чужой (тот гейтится show_cv/show_offers),
+            а просто "вот что там внутри", если понадобится свериться. */}
+        <CharacteristicButton profile={profile} />
         {canAddToHomeScreen() && (
           <button
             type="button"

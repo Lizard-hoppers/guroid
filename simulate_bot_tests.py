@@ -3764,8 +3764,83 @@ async def _run_guro_id_api_sim():
                 check(resp.status == 200, "кабинет Компания тоже может публиковать вакансии (не только Рекрутер)")
                 body = await resp.json()
                 vacancy_company_id = body["id"]
-                check(body["author_workspace"] == "company" and body["verified_company"] is True,
-                      "вакансия от компании помечена author_workspace=company + верифицирована")
+                check(body["author_workspace"] == "company",
+                      "вакансия от компании помечена author_workspace=company")
+                check(body["verified_company"] is False,
+                      "верификация НЕ автоматическая (ТЗ 'Компания. каб', раздел 2) — по умолчанию False, пока "
+                      "администратор не включил бейдж вручную")
+
+                # Верификация компании (26.08.2026, ТЗ "Компания. каб", раздел 2) —
+                # ручной MVP: заявка только фиксирует момент, статус переключает
+                # админ; видимость/функциональность компании не зависят от статуса.
+                check(app["storage"].is_company_verified(100) is False, "изначально не верифицирована")
+                resp = await client.post("/api/company/verification/request", headers=auth_100)
+                check(resp.status == 200, "POST /api/company/verification/request -> 200")
+                row = app["storage"].get_or_create_company_profile(100)
+                check(row["verification_requested_at"] is not None, "момент заявки зафиксирован")
+
+                pending = app["storage"].list_companies_for_verification()
+                check(any(r["user_id"] == 100 for r in pending),
+                      "компания появилась в админ-списке 'на верификацию' после заявки")
+
+                ok = app["storage"].set_company_verified(100, True)
+                check(ok is True, "админ вручную включает бейдж -> True")
+                check(app["storage"].is_company_verified(100) is True, "бейдж теперь включён")
+
+                resp = await client.get(f"/api/vacancies/{vacancy_company_id}", headers=auth_200)
+                body = await resp.json()
+                check(body["verified_company"] is True,
+                      "после ручной верификации вакансия от той же компании показывает verified_company=True")
+
+                resp = await client.get("/api/search?workspace=company&username=initiator", headers=auth_200)
+                body = await resp.json()
+                check(body["verified"] is True, "бейдж верификации виден и в карточке самого company-кабинета")
+
+                not_ok = app["storage"].set_company_verified(999999, True)
+                check(not_ok is False, "верификация несуществующего company-кабинета -> False")
+
+                # Приоритет верифицированной компании в сортировке доски (раздел 4
+                # ТЗ) — публикуем ЕЩЁ одну, заведомо более свежую вакансию от
+                # рекрутера в той же вертикали и проверяем, что верифицированная
+                # компания всё равно идёт первой, несмотря на то что она СТАРШЕ.
+                resp = await client.post("/api/vacancies", headers=auth_100, json={
+                    "title": "Freshest Recruiter Vacancy", "vertical": "Crypto", "lang": "ru",
+                })
+                check(resp.status == 200, "ещё одна (самая свежая) вакансия рекрутера в Crypto -> 200")
+
+                resp = await client.get("/api/vacancies?vertical=Crypto", headers=auth_200)
+                body = await resp.json()
+                crypto_titles = [v["title"] for v in body["vacancies"]]
+                check(crypto_titles[0] == "Компания-вакансия",
+                      "вакансия верифицированной компании идёт ПЕРВОЙ в вертикали, обгоняя ДАЖЕ более свежую "
+                      "вакансию рекрутера (is_verified_company DESC приоритетнее created_at DESC)")
+                check(crypto_titles[1] == "Freshest Recruiter Vacancy",
+                      "внутри группы 'неверифицированных' сортировка по дате как раньше (сначала новые)")
+
+                # "Тип компании" (раздел 5 ТЗ) — множественный выбор + фильтр доски
+                resp = await client.post("/api/company/profile", headers=auth_100,
+                                          json={"field": "company_types", "value": "hr_agency,cpa_network"})
+                check(resp.status == 200, "сохранение company_types -> 200")
+                body = await resp.json()
+                check(body["company_types"] == "hr_agency,cpa_network", "оба тега сохранены")
+
+                resp = await client.post("/api/company/profile", headers=auth_100,
+                                          json={"field": "company_type_other", "value": "Web3-студия"})
+                check(resp.status == 200, "сохранение 'Другое' -> 200")
+                other_logged = app["storage"]._conn.execute(
+                    "SELECT text FROM guro_company_other_types WHERE company_user_id=100"
+                ).fetchall()
+                check(any(r["text"] == "Web3-студия" for r in other_logged),
+                      "нестандартный 'Тип компании' залогирован для последующего review (не сразу в справочник)")
+
+                resp = await client.get("/api/vacancies?company_type=hr_agency", headers=auth_200)
+                body = await resp.json()
+                check([v["title"] for v in body["vacancies"]] == ["Компания-вакансия"],
+                      "?company_type= фильтрует доску по тегу компании-автора")
+
+                resp = await client.get("/api/vacancies?company_type=bookmaker", headers=auth_200)
+                body = await resp.json()
+                check(body["vacancies"] == [], "фильтр по НЕ выбранному типу компании -> пусто")
 
                 st.save_profile({"user_id": 496, "username": "nosub4", "name": "No Sub 4"})
                 auth_496 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 496, "username": "nosub4"})}
@@ -3821,7 +3896,8 @@ async def _run_guro_id_api_sim():
                 resp = await client.get("/api/vacancies/mine", headers=auth_100)
                 check(resp.status == 200, "GET /api/vacancies/mine -> 200")
                 body = await resp.json()
-                check(len(body["vacancies"]) == 3, "у автора все 3 его вакансии видны в /mine (recruiter + company)")
+                check(len(body["vacancies"]) == 4,
+                      "у автора все 4 его вакансии видны в /mine (recruiter x3 + company x1)")
 
                 # Просмотр чужой карточки увеличивает views_count у владельца
                 resp = await client.get(f"/api/vacancies/{vacancy_ru_id}", headers=auth_200)
@@ -3926,7 +4002,7 @@ async def _run_guro_id_api_sim():
 
                 resp = await client.get("/api/vacancies/mine", headers=auth_100)
                 body = await resp.json()
-                check(len(body["vacancies"]) == 3,
+                check(len(body["vacancies"]) == 4,
                       "но в /mine у автора закрытая вакансия всё ещё видна (для истории/архива)")
                 closed_row = next(v for v in body["vacancies"] if v["id"] == vacancy_ru_id)
                 check(closed_row["closed_reason"] == "Нашли кандидата",

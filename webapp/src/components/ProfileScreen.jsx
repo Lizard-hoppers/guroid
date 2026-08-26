@@ -268,6 +268,7 @@ export function ProfileScreen({
             data={companyState.data}
             onFieldSaved={updateCompanyField}
             onPrivacyChange={updateCompanyPrivacy}
+            onNavigateTab={onNavigate}
             onSubscribed={() =>
               setCompanyState((s) => ({ ...s, data: { ...s.data, is_company_subscribed: true } }))
             }

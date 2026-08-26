@@ -15,6 +15,12 @@ const WORK_FORMATS = ["remote", "office", "hybrid"];
 const EMPLOYMENT_TYPES = ["full", "part", "project"];
 const DURATIONS = [15, 30, 60];
 const RESPONSE_STATUSES = ["new", "reviewing", "interview", "offer", "hired", "rejected"];
+// "Тип компании" (26.08.2026, ТЗ "Компания. каб", раздел 5) — фильтр доски
+// по тегу автора-компании, тот же справочник, что в CompanyHub.jsx/GC.COMPANY_TYPES.
+const COMPANY_TYPES = [
+  "operator_casino", "bookmaker", "cpa_network", "hr_agency",
+  "media_buying", "b2b_platform", "investor_fund",
+];
 
 // Справочник должностей (Приложение к ТЗ "Recruitment — ВАКАНСИИ") — уже
 // есть готовый на бэкенде (professions_data.py, 1:1 совпадает с приложением),
@@ -451,9 +457,23 @@ function VacancyCard({ v, onOpen }) {
       ? `$${v.salary_from ?? "?"} – $${v.salary_to ?? "?"}`
       : null;
   const days = daysAgo(v.created_at);
+  // Премиальное оформление вакансии от лица "Компании" (26.08.2026, ТЗ
+  // "Компания. каб", раздел 4) — логотип-миниатюра + акцентная рамка +
+  // бейдж "Официальная вакансия компании", только у author_workspace=company
+  // (у вакансии рекрутера-одиночки — просто имя, без изображения/рамки).
+  const isCompany = v.author_workspace === "company";
   return (
-    <div className="card vacancy-card" onClick={() => onOpen(v.id)} role="button" tabIndex={0}>
-      <h3>{v.title}</h3>
+    <div
+      className={`card vacancy-card${isCompany ? " vacancy-card-company" : ""}`}
+      onClick={() => onOpen(v.id)}
+      role="button"
+      tabIndex={0}
+    >
+      <h3>
+        {isCompany && v.poster_logo_url && <img className="vacancy-card-poster-logo" src={v.poster_logo_url} alt="" />}
+        {v.title}
+        {isCompany && <span className="vacancy-official-badge">{t("vacancies.officialCompanyBadge")}</span>}
+      </h3>
       <div className="partner-meta">
         {[v.vertical, v.grade].filter(Boolean).join(" · ")}
       </div>
@@ -794,6 +814,9 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
   const [grade, setGrade] = useState("");
   const [position, setPosition] = useState("");
   const [q, setQ] = useState("");
+  // Фильтр по тегу "Тип компании" (26.08.2026, ТЗ "Компания. каб", раздел 5)
+  // — жёсткий структурный фильтр поверх доски, тот же принцип, что грейд.
+  const [companyType, setCompanyType] = useState("");
   const [state, setState] = useState({ loading: true, vacancies: null, truncated: false, error: null });
 
   useEffect(() => {
@@ -805,12 +828,15 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
 
   function loadList() {
     setState({ loading: true, vacancies: null, truncated: false, error: null });
-    getVacancies({ lang: langFilter, vertical: vertical || undefined, grade: grade || undefined, position: position || undefined, q: q || undefined })
+    getVacancies({
+      lang: langFilter, vertical: vertical || undefined, grade: grade || undefined,
+      position: position || undefined, q: q || undefined, companyType: companyType || undefined,
+    })
       .then(({ vacancies, truncated }) => setState({ loading: false, vacancies, truncated, error: null }))
       .catch((error) => setState({ loading: false, vacancies: null, truncated: false, error }));
   }
 
-  useEffect(loadList, [langFilter, vertical, grade, position, q, refreshKey]);
+  useEffect(loadList, [langFilter, vertical, grade, position, q, companyType, refreshKey]);
 
   const canPublish = caps.recruiter || caps.company;
   const subscriptionRequired = state.error instanceof ApiError && state.error.status === 402;
@@ -936,6 +962,12 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
                 ))}
               </select>
             )}
+            <select value={companyType} onChange={(e) => setCompanyType(e.target.value)} style={{ marginTop: 8 }}>
+              <option value="">{t("company.types.filterAll")}</option>
+              {COMPANY_TYPES.map((k) => (
+                <option key={k} value={k}>{t(`company.types.${k}`)}</option>
+              ))}
+            </select>
             <input
               type="text"
               placeholder={t("vacancies.searchPlaceholder")}

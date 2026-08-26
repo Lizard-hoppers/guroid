@@ -799,6 +799,9 @@ def build_admin_cms(admin_ids: tuple[int, ...] = ()) -> ConversationHandler:
         CallbackQueryHandler(GURO.guro_unflag, pattern=r"^guro_unflag:\d+$"),
         CallbackQueryHandler(GURO.nav_guro_addresses, pattern=r"^acms_guro_addr$"),
         CallbackQueryHandler(GURO.guro_addr_review, pattern=r"^guro_addr_(ok|no):\d+$"),
+        # верификация бейджа компании (ТЗ "Компания. каб", раздел 2, 26.08.2026)
+        CallbackQueryHandler(GURO.nav_guro_company_verify, pattern=r"^acms_guro_companyverify$"),
+        CallbackQueryHandler(GURO.guro_company_verify_toggle, pattern=r"^guro_cv_(on|off):\d+$"),
     ]
     media_filter = filters.ANIMATION | filters.PHOTO | filters.VIDEO | filters.Document.ALL
     return ConversationHandler(

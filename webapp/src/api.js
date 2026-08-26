@@ -135,13 +135,14 @@ export function getPositions() {
   return request("/api/positions");
 }
 
-export function getVacancies({ lang, vertical, grade, position, q } = {}) {
+export function getVacancies({ lang, vertical, grade, position, q, companyType } = {}) {
   const params = new URLSearchParams();
   if (lang) params.set("lang", lang);
   if (vertical) params.set("vertical", vertical);
   if (grade) params.set("grade", grade);
   if (position) params.set("position", position);
   if (q) params.set("q", q);
+  if (companyType) params.set("company_type", companyType);
   const qs = params.toString();
   return request(`/api/vacancies${qs ? `?${qs}` : ""}`);
 }
@@ -266,6 +267,12 @@ export function setCompanyPrivacyField(field, value) {
     method: "POST",
     body: JSON.stringify({ field, value }),
   });
+}
+
+// Верификация бейджа компании (26.08.2026, ТЗ "Компания. каб") — ручной MVP,
+// эндпоинт только фиксирует запрос, реальная сверка — админом в /admin.
+export function requestCompanyVerification() {
+  return request("/api/company/verification/request", { method: "POST" });
 }
 
 export function setWorkStatus(status) {

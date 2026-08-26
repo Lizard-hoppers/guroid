@@ -194,6 +194,16 @@ CREATE TABLE IF NOT EXISTS guro_vacancy_other_positions (
     text TEXT,
     created_at TEXT
 );
+
+-- "Тип компании" через "Другое" (ТЗ "Компания. каб", раздел 5, 26.08.2026) —
+-- та же логика логирования нестандартных значений, что у должностей вакансий
+-- выше: не сразу в основной справочник (GC.COMPANY_TYPES), для review.
+CREATE TABLE IF NOT EXISTS guro_company_other_types (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_user_id INTEGER,
+    text TEXT,
+    created_at TEXT
+);
 """
 
 
@@ -257,6 +267,11 @@ class GuroStorage:
             self._ensure_column("guro_company_profiles", field, "TEXT")
         for field in GC.PRIVACY_FIELDS:
             self._ensure_column("guro_company_profiles", field, "INTEGER DEFAULT 0")
+        # Верификация (ТЗ "Компания. каб", раздел 2, 26.08.2026) — ручная,
+        # бейдж включает админ (см. handlers/admin_guro.py), видимость/
+        # функциональность компании НЕ зависят от статуса верификации.
+        self._ensure_column("guro_company_profiles", "verified", "INTEGER DEFAULT 0")
+        self._ensure_column("guro_company_profiles", "verification_requested_at", "TEXT")
         # Расширение "Моё CV" (12.08.2026) — новые поля личного профиля,
         # гейтятся существующим show_cv (см. guro_constants.CV_SIMPLE_FIELDS).
         self._ensure_column("guro_users", "cv_profession", "TEXT")
@@ -728,6 +743,63 @@ class GuroStorage:
         )
         self._conn.commit()
         return self.get_company_privacy(user_id)
+
+    # --- верификация компании (ТЗ "Компания. каб", раздел 2, 26.08.2026) -----
+    # Ручная, MVP: владелец шлёт письмо с доменной почты администратору,
+    # тот вручную сверяет и переключает бейдж тут. Компания видна и полностью
+    # функциональна независимо от статуса — бейдж лишь визуальная отметка.
+
+    def is_company_verified(self, user_id: int) -> bool:
+        row = self._conn.execute(
+            "SELECT verified FROM guro_company_profiles WHERE user_id=?", (user_id,),
+        ).fetchone()
+        return bool(row["verified"]) if row else False
+
+    def request_company_verification(self, user_id: int) -> None:
+        self.get_or_create_company_profile(user_id)
+        self._conn.execute(
+            "UPDATE guro_company_profiles SET verification_requested_at=? WHERE user_id=?",
+            (self._now_str(), user_id),
+        )
+        self._conn.commit()
+
+    def set_company_verified(self, user_id: int, verified: bool) -> bool:
+        """Ручное переключение админом (handlers/admin_guro.py). Возвращает
+        False, если у такого user_id ещё нет строки кабинета компании."""
+        row = self._conn.execute(
+            "SELECT user_id FROM guro_company_profiles WHERE user_id=?", (user_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        self._conn.execute(
+            "UPDATE guro_company_profiles SET verified=?, updated_at=? WHERE user_id=?",
+            (1 if verified else 0, self._now_str(), user_id),
+        )
+        self._conn.commit()
+        return True
+
+    def list_companies_for_verification(self) -> list[sqlite3.Row]:
+        """Для админ-экрана "Компании на верификацию" — только те, у кого
+        реально есть смысл смотреть: активная подписка или уже была подана
+        заявка (иначе список захламляется пустыми созданными-по-факту-захода
+        строками, см. get_or_create_company_profile)."""
+        now_str = self._now_str()
+        return self._conn.execute(
+            "SELECT * FROM guro_company_profiles WHERE verification_requested_at IS NOT NULL "
+            "OR (subscription_status=? AND subscription_expires_at > ?) "
+            "ORDER BY verified ASC, verification_requested_at DESC",
+            (GC.SUBSCRIPTION_ACTIVE, now_str),
+        ).fetchall()
+
+    def log_company_other_type(self, user_id: int, text: str) -> None:
+        """"Другое" в поле "Тип компании" (раздел 5 ТЗ) — та же логика, что
+        у нестандартных должностей вакансий: не сразу в справочник, копится
+        для последующего централизованного review."""
+        self._conn.execute(
+            "INSERT INTO guro_company_other_types (company_user_id, text, created_at) VALUES (?,?,?)",
+            (user_id, text, self._now_str()),
+        )
+        self._conn.commit()
 
     # --- partnerships -------------------------------------------------------
 
@@ -1347,34 +1419,56 @@ class GuroStorage:
         haystack = " ".join(filter(None, [row["title"], row["description"]])).lower()
         return query_lower in haystack
 
+    # Общий SELECT для всех выборок вакансий (26.08.2026, ТЗ "Компания. каб",
+    # раздел 4 — "приоритет верифицированных компаний в сортировке доски") —
+    # JOIN с кабинетом компании-автора даёт is_verified_company/
+    # author_company_types на КАЖДОЙ строке, независимо от того, кто/как
+    # вызывает выборку (доска, "мои вакансии", одна карточка), иначе
+    # sqlite3.Row["is_verified_company"] падал бы KeyError там, где джойна нет.
+    _VACANCY_SELECT = (
+        "SELECT v.*, COALESCE(cp.verified, 0) AS is_verified_company, "
+        "COALESCE(cp.company_types, '') AS author_company_types "
+        "FROM guro_vacancies v "
+        "LEFT JOIN guro_company_profiles cp "
+        "ON v.author_workspace='company' AND cp.user_id = v.author_id"
+    )
+
     def list_vacancies(
         self, *, lang: str | None = None, vertical: str | None = None, grade: str | None = None,
-        position: str | None = None, query: str | None = None, limit: int = GC.VACANCY_LIST_LIMIT,
+        position: str | None = None, query: str | None = None, company_type: str | None = None,
+        limit: int = GC.VACANCY_LIST_LIMIT,
     ) -> tuple[list[sqlite3.Row], bool]:
         """Доска вакансий (раздел 3.2, "устойчивость к неточному
         тегированию") — если задан query (текстовый поиск), запись
         попадает в выдачу при совпадении СТРУКТУРНЫХ фильтров (вертикаль/
         грейд/должность) ИЛИ текста в названии/описании — не строгое AND.
-        Без query — обычные AND-фильтры, как раньше. Возвращает
-        (результаты, truncated)."""
+        Без query — обычные AND-фильтры, как раньше. company_type — фильтр
+        по тегу "Тип компании" автора (ТЗ "Компания. каб", раздел 5),
+        применяется как жёсткий AND независимо от query (структурный тег,
+        не текст для нечёткого поиска). Сортировка: вакансии
+        верифицированных компаний — выше остальных (раздел 4 ТЗ), внутри
+        группы — по дате. Возвращает (результаты, truncated)."""
         now_str = self._now_str()
-        sql = "SELECT * FROM guro_vacancies WHERE status=? AND (expires_at IS NULL OR expires_at > ?)"
+        sql = self._VACANCY_SELECT + " WHERE v.status=? AND (v.expires_at IS NULL OR v.expires_at > ?)"
         params: list = [GC.VACANCY_STATUS_ACTIVE, now_str]
         if lang:
-            sql += " AND lang=?"
+            sql += " AND v.lang=?"
             params.append(lang)
         query_lower = query.strip().lower() if query else None
         if not query_lower:
             if vertical:
-                sql += " AND vertical=?"
+                sql += " AND v.vertical=?"
                 params.append(vertical)
             if grade:
-                sql += " AND grade=?"
+                sql += " AND v.grade=?"
                 params.append(grade)
             if position:
-                sql += " AND position=?"
+                sql += " AND v.position=?"
                 params.append(position)
-        sql += " ORDER BY created_at DESC"
+        # v.id DESC — тай-брейкер (created_at секундной точности, при быстрой
+        # публикации нескольких вакансий подряд в один и тот же timestamp
+        # порядок без него не детерминирован).
+        sql += " ORDER BY is_verified_company DESC, v.created_at DESC, v.id DESC"
         rows = self._conn.execute(sql, params).fetchall()
 
         if query_lower:
@@ -1389,6 +1483,12 @@ class GuroStorage:
 
             rows = [r for r in rows if structured_match(r) or self._vacancy_matches_query(r, query_lower)]
 
+        if company_type:
+            rows = [
+                r for r in rows
+                if company_type in [s.strip() for s in (r["author_company_types"] or "").split(",") if s.strip()]
+            ]
+
         truncated = len(rows) > limit
         return rows[:limit], truncated
 
@@ -1396,11 +1496,11 @@ class GuroStorage:
         """Все свои — включая закрытые/на паузе, для управления (в отличие
         от list_vacancies, которая отдаёт только активные для чужого просмотра)."""
         return self._conn.execute(
-            "SELECT * FROM guro_vacancies WHERE author_id=? ORDER BY created_at DESC", (author_id,)
+            self._VACANCY_SELECT + " WHERE v.author_id=? ORDER BY v.created_at DESC, v.id DESC", (author_id,)
         ).fetchall()
 
     def get_vacancy(self, vacancy_id: int) -> sqlite3.Row | None:
-        return self._conn.execute("SELECT * FROM guro_vacancies WHERE id=?", (vacancy_id,)).fetchone()
+        return self._conn.execute(self._VACANCY_SELECT + " WHERE v.id=?", (vacancy_id,)).fetchone()
 
     def increment_vacancy_views(self, vacancy_id: int, viewer_id: int) -> None:
         """Считает только чужие просмотры (не накручивает счётчик автору,

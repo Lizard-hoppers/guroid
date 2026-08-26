@@ -188,7 +188,22 @@ COMPANY_SUBSCRIPTION_PLANS = {
         "stars_price_full": 9600,
     },
 }
-COMPANY_EXTRA_FIELDS = ("name", "vertical", "website", "description", "logo_url")
+COMPANY_EXTRA_FIELDS = (
+    "name", "vertical", "website", "description", "logo_url",
+    # 26.08.2026, ТЗ "Компания. каб" (визуальная идентичность/верификация):
+    # обложка баннера + тип(ы) компании (множественный выбор + "Другое").
+    "cover_url", "company_types", "company_type_other",
+)
+
+# "Тип компании" (раздел 5 ТЗ) — тег/фильтр, НЕ меняет структуру кабинета.
+# Множественный выбор, хранится comma-join'ом в company_types (тот же приём,
+# что cv_verticals). "Другое" — отдельное поле company_type_other, логируется
+# в guro_company_other_types (см. GuroStorage.log_company_other_type), по
+# аналогии со справочником должностей вакансий.
+COMPANY_TYPES = (
+    "operator_casino", "bookmaker", "cpa_network", "hr_agency",
+    "media_buying", "b2b_platform", "investor_fund",
+)
 
 # Курс Stars -> USD НЕ публикуется Telegram официально как единая ставка —
 # только цена IAP-пакетов (Apple/Google), а она сама плавает по размеру

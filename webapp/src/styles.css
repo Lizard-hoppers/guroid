@@ -1902,3 +1902,128 @@ select {
   padding: 8px 10px;
   margin: -6px 0 12px;
 }
+
+/* Кабинет "Компания" — визуальная идентичность (26.08.2026, ТЗ "Компания.
+   каб"): полноразмерный баннер + квадратный логотип поверх него (не круг,
+   в отличие от личного/рекрутера) + отдельный стиль рейтинга + бейдж
+   верификации — чтобы карточка бренда отличалась от карточки человека "с
+   одного взгляда", не читая текст (см. раздел 3 ТЗ). */
+.company-card {
+  padding-top: 0;
+  overflow: hidden;
+}
+
+.company-cover {
+  height: 96px;
+  margin: 0 -18px;
+  background-color: #123524;
+  background-image: linear-gradient(135deg, #123524, #1e5c3d);
+  background-size: cover;
+  background-position: center;
+}
+
+.company-header {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  margin-top: -30px;
+  padding-bottom: 14px;
+}
+
+.company-logo,
+.company-logo-fallback {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  flex-shrink: 0;
+  border: 3px solid var(--bg-mid);
+}
+
+.company-logo {
+  object-fit: cover;
+}
+
+.company-logo-fallback {
+  background: linear-gradient(135deg, #1e5c3d, #123524);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: Lora, serif;
+  font-weight: 700;
+  font-size: 24px;
+  color: #eafff0;
+}
+
+.company-verified-badge {
+  display: inline-block;
+  margin-left: 6px;
+  color: #4fd17a;
+  font-size: 16px;
+}
+
+.company-vertical-big {
+  font-family: Lora, serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text);
+  margin-top: 2px;
+}
+
+.company-rating-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: linear-gradient(120deg, #1e5c3d, #123524);
+  color: #eafff0;
+  font-family: Lora, serif;
+  font-weight: 700;
+  font-size: 15px;
+  border: 1px solid rgba(79, 209, 122, 0.4);
+}
+
+.company-types-chips {
+  margin-top: 10px;
+}
+
+.company-verify-status {
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.company-verify-status.is-verified {
+  color: #4fd17a;
+}
+
+.company-verify-status.is-pending {
+  color: var(--gold);
+}
+
+/* Вакансия от лица "Компании" — премиальное оформление (раздел 4 ТЗ). */
+.vacancy-card.vacancy-card-company {
+  border-left: 3px solid #4fd17a;
+}
+
+.vacancy-card-poster-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  object-fit: cover;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+.vacancy-official-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 8px;
+  background: rgba(79, 209, 122, 0.16);
+  border: 1px solid rgba(79, 209, 122, 0.5);
+  color: #4fd17a;
+  font-size: 10px;
+  font-weight: 700;
+}

@@ -35,6 +35,7 @@ def _dashboard_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🚩 Подозрительная активность", callback_data="acms_guro_flagged")],
         [InlineKeyboardButton("🏢 Адреса компаний на проверку", callback_data="acms_guro_addr")],
+        [InlineKeyboardButton("✅ Верификация компаний", callback_data="acms_guro_companyverify")],
         [InlineKeyboardButton("‹ Панель управления", callback_data="acms_home")],
     ])
 
@@ -147,3 +148,49 @@ async def guro_addr_review(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     ok = guro.review_company_address(address_id, update.effective_user.id, approve)
     await q.answer("Одобрено" if approve and ok else ("Отклонено" if ok else "Уже обработано"))
     return await nav_guro_addresses(update, context)
+
+
+# --- верификация бейджа компании (ТЗ "Компания. каб", раздел 2, 26.08.2026) -
+# Ручной MVP: владелец шлёт письмо с корпоративного домена на выделенный
+# адрес (см. company.verify.* в i18n.jsx — фронт показывает адрес/формат),
+# админ лично сверяет домен с сайтом/брендом в карточке и тут переключает
+# бейдж. Автоматической проверки на этом этапе нет.
+
+async def nav_guro_company_verify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.callback_query.answer()
+    guro = context.bot_data["guro_storage"]
+    rows = guro.list_companies_for_verification()
+    if not rows:
+        await admin_ui.edit_screen(context, "✅ Компаний на верификацию нет.", _back_kb())
+        return admin_ui.BROWSE
+
+    lines = ["✅ <b>Верификация компаний</b>\n"]
+    kb_rows = []
+    for row in rows[:15]:
+        status = "верифицирована" if row["verified"] else "ожидает"
+        requested = row["verification_requested_at"] or "—"
+        name = row["name"] or "(без названия)"
+        website = row["website"] or "—"
+        lines.append(
+            f"• <code>{row['user_id']}</code> {name} — {website} — {status} "
+            f"(заявка: {requested})"
+        )
+        kb_rows.append([
+            InlineKeyboardButton(
+                f"{'↩️ Снять' if row['verified'] else '✅ Верифицировать'} — {name[:20]}",
+                callback_data=f"guro_cv_{'off' if row['verified'] else 'on'}:{row['user_id']}",
+            ),
+        ])
+    kb_rows.append([InlineKeyboardButton("‹ Назад", callback_data="acms_guro")])
+    await admin_ui.edit_screen(context, "\n".join(lines), InlineKeyboardMarkup(kb_rows))
+    return admin_ui.BROWSE
+
+
+async def guro_company_verify_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    q = update.callback_query
+    verify = q.data.startswith("guro_cv_on:")
+    user_id = int(q.data.split(":")[1])
+    guro = context.bot_data["guro_storage"]
+    ok = guro.set_company_verified(user_id, verify)
+    await q.answer("Верифицировано" if verify and ok else ("Верификация снята" if ok else "Кабинет не найден"))
+    return await nav_guro_company_verify(update, context)

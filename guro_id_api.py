@@ -282,9 +282,15 @@ def _recruiter_summary(storage: GuroStorage, user_id: int) -> dict:
 
 def _company_summary(storage: GuroStorage, user_id: int) -> dict:
     """Кабинет "Компания" (16.08.2026) — зеркало _recruiter_summary выше,
-    третий воркспейс поверх личного профиля."""
+    третий воркспейс поверх личного профиля.
+
+    verified/verification_requested_at (26.08.2026, ТЗ "Компания. каб",
+    раздел 2) — статус ручной верификации, НЕ влияет на видимость/
+    функциональность, только на бейдж."""
     row = storage.get_or_create_company_profile(user_id)
     extra = storage.get_company_extra(user_id)
+    guro_user = storage.get_or_create_guro_user(user_id)
+    is_subscribed = storage.is_subscribed(user_id)
     return {
         "workspace": "company",
         "user_id": user_id,
@@ -292,6 +298,13 @@ def _company_summary(storage: GuroStorage, user_id: int) -> dict:
         "company_subscription_status": row["subscription_status"],
         "company_subscription_expires_at": row["subscription_expires_at"],
         "is_company_subscribed": storage.is_company_subscribed(user_id),
+        "verified": bool(row["verified"]),
+        "verification_requested_at": row["verification_requested_at"],
+        # Общий рейтинг (не отдельный "рейтинг компании" — та же ось, что у
+        # личного/рекрутера, "рейтинг сгорает без подписки" тоже общая).
+        "reputation_score": round(guro_user["reputation_score"], 1) if is_subscribed else None,
+        "reputation_tier": GL.reputation_tier(guro_user["reputation_score"]) if is_subscribed else None,
+        "active_vacancies": storage.count_active_vacancies(user_id),
     }
 
 
@@ -455,7 +468,10 @@ def _company_profile_response(storage: GuroStorage, requester_id: int, target_us
         return None
     extra = storage.get_company_extra(target_user_id)
     privacy = storage.get_company_privacy(target_user_id)
-    summary = {"workspace": "company", "mode": "profile", "user_id": target_user_id, **extra}
+    summary = {
+        "workspace": "company", "mode": "profile", "user_id": target_user_id,
+        "verified": storage.is_company_verified(target_user_id), **extra,
+    }
     summary = _apply_company_privacy(summary, privacy)
 
     if storage.is_subscribed(requester_id):
@@ -467,6 +483,7 @@ def _company_profile_response(storage: GuroStorage, requester_id: int, target_us
         "mode": "profile",
         "user_id": target_user_id,
         "name": summary.get("name"),
+        "verified": summary.get("verified"),
         "locked": True,
     }
 
@@ -1151,7 +1168,22 @@ async def handle_set_company_profile_field(request: web.Request) -> web.Response
         extra = storage.set_company_extra_field(user["id"], field, value)
     except ValueError:
         return web.json_response({"error": "UNKNOWN_FIELD"}, status=400)
+    # "Тип компании" -> "Другое" (26.08.2026, ТЗ "Компания. каб", раздел 5) —
+    # не сразу в справочник, логируется для последующего review, та же
+    # логика, что у нестандартных должностей вакансий.
+    if field == "company_type_other" and value:
+        storage.log_company_other_type(user["id"], value)
     return web.json_response(extra)
+
+
+async def handle_request_company_verification(request: web.Request) -> web.Response:
+    """Кнопка "Подать заявку на верификацию" (раздел 2 ТЗ) — MVP: только
+    фиксирует время запроса, реальная сверка домена/бренда — вручную
+    администратором в /admin (handlers/admin_guro.py, см. раздел 2 ТЗ)."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    storage.request_company_verification(user["id"])
+    return web.json_response({"ok": True})
 
 
 async def handle_set_company_privacy(request: web.Request) -> web.Response:
@@ -1358,7 +1390,12 @@ def _vacancy_poster_summary(storage: GuroStorage, row) -> dict:
     workspace = row["author_workspace"] or "recruiter"
     if workspace == "company":
         extra = storage.get_company_extra(row["author_id"])
-        name, verified = extra["name"], True
+        # 26.08.2026 (ТЗ "Компания. каб", раздел 2): раньше тут ХАРДКОДИЛОСЬ
+        # True для любой вакансии от компании — верификация только что
+        # появилась в ТЗ, до этого не было реального статуса на бэкенде.
+        # Теперь — настоящий ручной статус (см. GuroStorage.is_company_verified,
+        # включается админом через handlers/admin_guro.py).
+        name, verified = extra["name"], storage.is_company_verified(row["author_id"])
     else:
         extra = storage.get_recruiter_extra(row["author_id"])
         name, verified = extra["name"], False
@@ -1368,6 +1405,10 @@ def _vacancy_poster_summary(storage: GuroStorage, row) -> dict:
         "poster_name": name,
         "company": extra.get("company"),
         "verified_company": verified,
+        # Логотип компании в компактной карточке доски (раздел 4 ТЗ
+        # "Компания. каб") — только у вакансий от компании, у рекрутера-
+        # одиночки миниатюры нет по спецификации (просто имя).
+        "poster_logo_url": extra.get("logo_url") if workspace == "company" else None,
         "reputation_score": round(guro_user["reputation_score"], 1),
         "reputation_tier": GL.reputation_tier(guro_user["reputation_score"]),
     }
@@ -1432,8 +1473,9 @@ async def handle_list_vacancies(request: web.Request) -> web.Response:
     grade = request.query.get("grade") or None
     position = request.query.get("position") or None
     query = request.query.get("q") or None
+    company_type = request.query.get("company_type") or None
     rows, truncated = storage.list_vacancies(
-        lang=lang, vertical=vertical, grade=grade, position=position, query=query,
+        lang=lang, vertical=vertical, grade=grade, position=position, query=query, company_type=company_type,
     )
     return web.json_response({
         "vacancies": [_vacancy_public(storage, r, viewer_id=user["id"]) for r in rows],
@@ -1963,6 +2005,7 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/recruiter/privacy", handle_set_recruiter_privacy)
     app.router.add_post("/api/company/profile", handle_set_company_profile_field)
     app.router.add_post("/api/company/privacy", handle_set_company_privacy)
+    app.router.add_post("/api/company/verification/request", handle_request_company_verification)
     app.router.add_post("/api/company/address", handle_submit_company_address)
     app.router.add_get("/api/company/addresses", handle_list_company_addresses)
     app.router.add_post("/api/partnerships/{id}/rate", handle_submit_rating)

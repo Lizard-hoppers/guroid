@@ -96,11 +96,24 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
         />
         {!forcedType && (
           <>
-            <label>{t("confirm.ptypeLabel")}</label>
-            <select value={form.ptype} onChange={(e) => set("ptype", e.target.value)}>
-              <option value="deal">{t("confirm.ptype.deal")}</option>
-              <option value="hire">{t("confirm.ptype.hire")}</option>
-            </select>
+            <label>{t("confirm.ptypeLabel")} *</label>
+            <div className="vertical-chips">
+              <button
+                type="button"
+                className={`vertical-chip${form.ptype === "deal" ? " is-selected" : ""}`}
+                onClick={() => set("ptype", "deal")}
+              >
+                {t("confirm.ptype.deal")}
+              </button>
+              <button
+                type="button"
+                className={`vertical-chip${form.ptype === "hire" ? " is-selected" : ""}`}
+                onClick={() => set("ptype", "hire")}
+              >
+                {t("confirm.ptype.hire")}
+              </button>
+            </div>
+            <p className="partner-meta">{t("confirm.ptypeHint")}</p>
           </>
         )}
         <label>{t("confirm.verticalLabel")}</label>

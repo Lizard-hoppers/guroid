@@ -75,25 +75,39 @@ function PositionCascadeSelect({ positions, vertical, grade, position, positionI
 
   return (
     <>
+      {/* Вертикаль/грейд — чипы, как в макете ("Опубликовать вакансию",
+          п.2-3 ТЗ), а не выпадающий список — только "Должность" ниже
+          остаётся select (в макете это поле "из справочника" с шевроном,
+          не набор чипов). 27.08.2026, фидбек владельца: раньше все три
+          поля были селектами. */}
       <label>{t("vacancies.form.verticalLabel")}</label>
-      <select value={vertical} onChange={(e) => onChange({ vertical: e.target.value, grade: "", position: "", positionIsOther: false })}>
-        <option value="">{t("vacancies.allVerticals")}</option>
+      <div className="vertical-chips">
         {VERTICALS.map((v) => (
-          <option key={v} value={v}>{v}</option>
+          <button
+            key={v}
+            type="button"
+            className={`vertical-chip${vertical === v ? " is-selected" : ""}`}
+            onClick={() => onChange({ vertical: v, grade: "", position: "", positionIsOther: false })}
+          >
+            {v}
+          </button>
         ))}
-      </select>
+      </div>
 
       <label>{t("vacancies.form.gradeLabel")}</label>
-      <select
-        value={grade}
-        disabled={!vertical}
-        onChange={(e) => onChange({ vertical, grade: e.target.value, position: "", positionIsOther: false })}
-      >
-        <option value="">{t("vacancies.form.gradePlaceholder")}</option>
+      <div className="vertical-chips">
         {gradeOptions.map((g) => (
-          <option key={g} value={g}>{g}</option>
+          <button
+            key={g}
+            type="button"
+            disabled={!vertical}
+            className={`vertical-chip${grade === g ? " is-selected" : ""}`}
+            onClick={() => onChange({ vertical, grade: g, position: "", positionIsOther: false })}
+          >
+            {g}
+          </button>
         ))}
-      </select>
+      </div>
 
       <label>{t("vacancies.form.positionLabel")}</label>
       <select

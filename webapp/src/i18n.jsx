@@ -379,6 +379,10 @@ const STRINGS = {
   "confirm.ptypeLabel": { ru: "Тип партнёрства", en: "Partnership type" },
   "confirm.ptype.deal": { ru: "Сделка", en: "Deal" },
   "confirm.ptype.hire": { ru: "Найм", en: "Hire" },
+  "confirm.ptypeHint": {
+    ru: "Сделка — разовое сотрудничество (10 баллов к рейтингу) · Найм — трудоустройство (15 баллов к рейтингу)",
+    en: "Deal — one-off cooperation (10 rating points) · Hire — employment (15 rating points)",
+  },
   "confirm.verticalLabel": { ru: "Вертикаль (необязательно)", en: "Vertical (optional)" },
   "confirm.geoLabel": { ru: "Гео (необязательно)", en: "Geo (optional)" },
   "confirm.geoPlaceholder": { ru: "Одесса, Кипр…", en: "Odesa, Cyprus…" },

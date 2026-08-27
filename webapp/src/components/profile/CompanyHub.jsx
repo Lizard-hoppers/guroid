@@ -3,7 +3,7 @@ import { EditableField, Msg } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import {
   getCompanyAddresses, setCompanyProfileField, setCompanyPrivacyField, submitCompanyAddress,
-  requestCompanyVerification,
+  requestCompanyVerification, createCompany,
 } from "../../api.js";
 import { SubscribeScreen } from "../SubscribeScreen.jsx";
 import { useLang } from "../../i18n.jsx";
@@ -275,13 +275,79 @@ function SettingsPanel({ data, onFieldSaved, onPrivacyChange }) {
   );
 }
 
-export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, onNavigateTab }) {
+// Раздел 1 ТЗ "Роли и управление командой" (27.08.2026) — явное создание
+// компании: основатель сразу становится Владельцем (см. handle_create_
+// company/get_or_create_company_profile). similar_companies (раздел 1.2) —
+// мягкое предупреждение о похожем названии, показывается ПОСЛЕ создания
+// (не блокирует), т.к. ответ приходит вместе с готовой компанией.
+function CreateCompanyCard({ onCreated }) {
+  const { t } = useLang();
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [similar, setSimilar] = useState(null);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const summary = await createCompany({ name: name.trim() });
+      if (summary.similar_companies?.length > 0) {
+        setSimilar(summary.similar_companies.map((c) => c.name));
+      }
+      haptic("success");
+      onCreated(summary);
+    } catch {
+      haptic("error");
+      setError(t("company.create.error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h3>{t("company.create.title")}</h3>
+      <p className="partner-meta">{t("company.create.hint")}</p>
+      <form onSubmit={submit}>
+        <label>{t("company.create.nameLabel")}</label>
+        <input
+          type="text"
+          placeholder={t("company.create.namePlaceholder")}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <button className="btn" type="submit" disabled={busy || !name.trim()} style={{ marginTop: 10 }}>
+          {busy ? t("company.create.submitting") : t("company.create.submit")}
+        </button>
+      </form>
+      {similar && (
+        <div className="mismatch-banner" style={{ marginTop: 10 }}>
+          {t("company.create.similarWarning", { names: similar.join(", ") })}
+        </div>
+      )}
+      <Msg type="error">{error}</Msg>
+      <p className="partner-meta" style={{ marginTop: 14 }}>{t("company.create.joinHint")}</p>
+    </div>
+  );
+}
+
+export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, onNavigateTab, onNavigateSub, onCreated }) {
   const { t } = useLang();
   // Тир выбирается ДО первой оплаты (27.08.2026, ТЗ "Тарифы и лимиты") —
   // Basic/Pro это два РАЗНЫХ product (см. SubscribeScreen.jsx), тут просто
   // переключатель, какой из двух показать. После подписки тир уже
   // зафиксирован на бэкенде (data.company_tier) — переключатель прячется.
   const [tierChoice, setTierChoice] = useState("basic");
+
+  // no_company (27.08.2026, ТЗ "Роли и управление командой") — юзер не
+  // Владелец и не Админ ни в одной компании: либо создаёт свою, либо
+  // находит чужую (доска вакансий/поиск) и подаёт заявку с её карточки.
+  if (data.no_company) {
+    return <CreateCompanyCard onCreated={onCreated} />;
+  }
 
   if (!data.is_company_subscribed) {
     return (
@@ -343,6 +409,10 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
           </div>
         </div>
         <span className="recruiter-role-badge">{t(`company.tier.${data.company_tier || "basic"}`)}</span>
+        {/* Роль в компании (27.08.2026, ТЗ "Роли и управление командой") —
+            Владелец/Админ, НЕ должность по жизни (та отдельным текстом). */}
+        <span className="recruiter-role-badge" style={{ marginLeft: 6 }}>{t(`team.role.${data.my_role}`)}</span>
+        {data.my_position && <div className="partner-meta" style={{ marginTop: 4 }}>{data.my_position}</div>}
         {data.vertical && <div className="company-vertical-big">{data.vertical}</div>}
         {(types.length > 0 || data.company_type_other) && (
           <div className="showcase-stack company-types-chips">
@@ -359,9 +429,19 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
       <div className="card">
         <div className="partner-meta" style={{ marginBottom: 10 }}>
           {t("company.activeVacancies", { n: data.active_vacancies })}
+          {" · "}
+          {t("team.counter", { count: data.member_count, limit: data.member_limit })}
         </div>
-        <button type="button" className="btn" onClick={() => onNavigateTab("vacancies")}>
-          {t("company.quickPublish")}
+        <div className="recruiter-quick-actions">
+          <button type="button" className="btn" onClick={() => onNavigateTab("vacancies")}>
+            {t("company.quickPublish")}
+          </button>
+          <button type="button" className="btn secondary" onClick={() => onNavigateSub("company-confirm")}>
+            {t("company.quickConfirm")}
+          </button>
+        </div>
+        <button type="button" className="btn secondary" style={{ marginTop: 10 }} onClick={() => onNavigateSub("company-team")}>
+          {t("team.title")}
         </button>
       </div>
 

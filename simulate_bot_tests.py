@@ -3610,22 +3610,36 @@ async def _run_guro_id_api_sim():
                 resp = await client.get("/api/me?workspace=company", headers=auth_100)
                 check(resp.status == 200, "GET /api/me?workspace=company -> 200 (не требует своей анкеты)")
                 body = await resp.json()
-                check(body["is_company_subscribed"] is False, "свежий кабинет компании -> подписки ещё нет")
-                check(body["name"] is None, "поля кабинета компании пока не заполнены")
-                check(body["privacy"] == {f: False for f in GC.PRIVACY_FIELDS},
-                      "приватность компании тоже default-False (opt-in, тот же принцип)")
+                check(body["no_company"] is True,
+                      "свежий юзер (27.08.2026, ТЗ 'Роли и команда') — не Владелец и не Админ ни в одной компании")
+                check(body["is_company_subscribed"] is False, "no_company -> подписки нет")
+
+                resp = await client.post("/api/company/profile", headers=auth_100,
+                                          json={"field": "name", "value": "x"})
+                check(resp.status == 403, "правка витрины компании без членства -> 403 NOT_A_COMPANY_MEMBER")
+
+                resp = await client.post("/api/company/create", headers=auth_100, json={"name": ""})
+                check(resp.status == 400, "POST /api/company/create без названия -> 400 NAME_REQUIRED")
+
+                resp = await client.post("/api/company/create", headers=auth_100, json={"name": "GURO Casino Ltd"})
+                check(resp.status == 200, "POST /api/company/create -> 200")
+                body = await resp.json()
+                check(body["name"] == "GURO Casino Ltd", "имя сохранено при создании")
+                check(body["my_role"] == "owner", "основатель сразу становится Владельцем")
+                check(body["company_id"] == 100, "company_id — user_id основателя, стабильный идентификатор компании")
+                check(body["member_count"] == 1 and body["member_limit"] == 5,
+                      "1 участник (сам Владелец), лимит Basic по умолчанию = 5 (раздел 3.4 ТЗ)")
+
+                resp = await client.post("/api/company/create", headers=auth_100, json={"name": "Ещё одна"})
+                check(resp.status == 409, "повторное создание компании тем же юзером -> 409 ALREADY_IN_COMPANY")
 
                 resp = await client.post("/api/company/profile", headers=auth_100,
                                           json={"field": "unknown_field", "value": "x"})
                 check(resp.status == 400, "POST /api/company/profile с неизвестным полем -> 400")
 
                 resp = await client.post("/api/company/profile", headers=auth_100,
-                                          json={"field": "name", "value": "GURO Casino Ltd"})
-                check(resp.status == 200, "POST /api/company/profile name -> 200")
-                body = await resp.json()
-                check(body["name"] == "GURO Casino Ltd", "/api/company/profile возвращает обновлённое значение")
-                await client.post("/api/company/profile", headers=auth_100,
-                                   json={"field": "vertical", "value": "iGaming"})
+                                          json={"field": "vertical", "value": "iGaming"})
+                check(resp.status == 200, "POST /api/company/profile vertical (теперь есть членство) -> 200")
 
                 resp = await client.post("/api/company/privacy", headers=auth_100,
                                           json={"field": "unknown_field", "value": True})
@@ -3652,6 +3666,8 @@ async def _run_guro_id_api_sim():
                 check(body["name"] == "GURO Casino Ltd", "show_name включён -> имя компании видно")
                 check(body["vertical"] is None,
                       "show_vertical НЕ включали -> vertical скрыт (opt-in по каждому полю независимо)")
+                check(body["can_join"] is True, "auth_200 не состоит ни в одной компании -> может подать заявку")
+                check(body["is_member"] is False, "auth_200 не участник ЭТОЙ компании")
 
                 resp = await client.get("/api/search?workspace=company&username=initiator", headers=auth_495)
                 check(resp.status == 200, "company-кабинет виден даже без подписки СМОТРЯЩЕГО, но как тизер")
@@ -4195,6 +4211,214 @@ async def _run_guro_id_api_sim():
                 check(resp.status == 200, "закрыть A1 -> 200 (освобождает место при потолке=1)")
                 resp = await client.post(f"/api/vacancies/{vac_a2_id}/resume", headers=auth_950)
                 check(resp.status == 200, "теперь возобновление проходит (0 активных < потолка 1)")
+
+                # --- Роли и команда компании (27.08.2026, ТЗ "Роли и управление
+                # командой в кабинете 'Компания'") -----------------------------
+                st.save_profile({"user_id": 960, "username": "masha_owner", "name": "Masha"})
+                auth_960 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 960, "username": "masha_owner"})}
+                st.save_profile({"user_id": 965, "username": "dima_am", "name": "Dima"})
+                auth_965 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 965, "username": "dima_am"})}
+
+                resp = await client.post("/api/company/join_request", headers=auth_965,
+                                          json={"company_id": 999999, "position_text": "Affiliate Manager"})
+                check(resp.status == 404, "заявка на несуществующую компанию -> 404 COMPANY_NOT_FOUND")
+
+                resp = await client.post("/api/company/create", headers=auth_960, json={"name": "1xBet"})
+                check(resp.status == 200, "Маша создаёт компанию '1xBet' -> 200")
+                app["storage"].activate_company_subscription(960, 30)
+
+                resp = await client.get("/api/company/team", headers=auth_960)
+                check(resp.status == 200, "GET /api/company/team владельцем -> 200")
+                body = await resp.json()
+                check(body["member_count"] == 1 and len(body["members"]) == 1, "пока только сама Маша")
+                check(body["members"][0]["role"] == "owner", "Маша — Владелец")
+                check(body["requests"] == [], "заявок пока нет")
+
+                resp = await client.get("/api/company/team", headers=auth_965)
+                check(resp.status == 403, "просмотр 'Команды' НЕ-участником -> 403 NOT_A_COMPANY_MEMBER")
+
+                resp = await client.post("/api/company/profile", headers=auth_965,
+                                          json={"field": "description", "value": "hack"})
+                check(resp.status == 403, "правка витрины НЕ-участником -> 403")
+
+                resp = await client.post("/api/company/join_request", headers=auth_965,
+                                          json={"company_id": 960, "position_text": "Affiliate Manager"})
+                check(resp.status == 200, "Дима подаёт заявку на присоединение к 1xBet -> 200")
+                body = await resp.json()
+                dima_request_id = body["id"]
+                check(body["status"] == "pending", "заявка сразу в статусе pending")
+
+                resp = await client.post("/api/company/join_request", headers=auth_965,
+                                          json={"company_id": 960, "position_text": "Affiliate Manager"})
+                check(resp.status == 409, "повторная заявка -> 409 ALREADY_REQUESTED")
+
+                resp = await client.post(f"/api/company/team/requests/{dima_request_id}/approve", headers=auth_965)
+                check(resp.status == 403, "одобрить заявку может только Владелец -> 403 NOT_OWNER (Дима не Владелец)")
+
+                resp = await client.get("/api/company/team", headers=auth_960)
+                body = await resp.json()
+                check(len(body["requests"]) == 1 and body["requests"][0]["username"] == "dima_am",
+                      "заявка Димы видна Владельцу с должностью")
+                check(body["approvals_left_today"] == GC.LIMIT_COMPANY_APPROVALS_PER_DAY,
+                      "одобрений сегодня ещё не тратили — полный лимит (5, раздел 3.5 ТЗ)")
+
+                resp = await client.post(f"/api/company/team/requests/{dima_request_id}/approve", headers=auth_960)
+                check(resp.status == 200, "Владелец одобряет заявку Димы -> 200")
+
+                resp = await client.get("/api/company/team", headers=auth_965)
+                check(resp.status == 200, "Дима теперь участник -> видит 'Команду'")
+                body = await resp.json()
+                check(body["my_role"] == "admin", "Дима получил роль Админ/Рекрутер")
+                check("requests" not in body, "Админ НЕ видит заявки (раздел 2 ТЗ — не управляет составом команды)")
+                check(body["member_count"] == 2, "счётчик обновился: 2 из 5")
+
+                resp = await client.post("/api/company/profile", headers=auth_965,
+                                          json={"field": "description", "value": "1xBet — казино-оператор"})
+                check(resp.status == 200,
+                      "Админ/Рекрутер редактирует бренд-страницу НАРАВНЕ с Владельцем (раздел 2 ТЗ)")
+
+                # Раздел 6 ТЗ — вакансия от лица компании атрибутирована на
+                # company_id, а НЕ на личный id того, кто реально нажал "Опубликовать".
+                resp = await client.post("/api/vacancies", headers=auth_965,
+                                          json={"title": "Affiliate Manager", "author_workspace": "company"})
+                check(resp.status == 200, "Дима (Админ) публикует вакансию от лица 1xBet -> 200")
+                body = await resp.json()
+                check(body["author_id"] == 960, "вакансия принадлежит КОМПАНИИ (960), не личному id Димы (965)")
+                check(body["published_by_user_id"] == 965,
+                      "но известно, КТО конкретно её опубликовал (раздел 6 ТЗ, внутренняя аналитика)")
+
+                resp = await client.get("/api/vacancies/mine", headers=auth_965)
+                check(resp.status == 200, "GET /api/vacancies/mine у Димы -> 200")
+                body = await resp.json()
+                check(any(v["title"] == "Affiliate Manager" for v in body["vacancies"]),
+                      "Дима видит ОБЩИЕ вакансии компании в 'Мои вакансии', хотя они не 'его личные'")
+
+                # Повторная заявка от ДРУГОГО человека, ещё не одобренная —
+                # ALREADY_REQUESTED специфичен именно этому заявителю, у Олега
+                # своя, независимая.
+                st.save_profile({"user_id": 966, "username": "oleg_am", "name": "Oleg"})
+                auth_966 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 966, "username": "oleg_am"})}
+                resp = await client.post("/api/company/join_request", headers=auth_966,
+                                          json={"company_id": 960, "position_text": "Affiliate Manager"})
+                check(resp.status == 200, "Олег тоже подаёт заявку -> 200")
+                oleg_request_id = (await resp.json())["id"]
+
+                resp = await client.post(f"/api/company/team/requests/{oleg_request_id}/reject", headers=auth_960)
+                check(resp.status == 200, "Владелец отклоняет заявку Олега -> 200")
+                resp = await client.post(f"/api/company/team/requests/{oleg_request_id}/reject", headers=auth_960)
+                check(resp.status == 404, "повторное отклонение уже решённой заявки -> 404")
+
+                resp = await client.post("/api/company/join_request", headers=auth_966,
+                                          json={"company_id": 960, "position_text": "Affiliate Manager"})
+                check(resp.status == 200, "после отклонения Олег МОЖЕТ подать заявку заново -> 200")
+                oleg_request_id = (await resp.json())["id"]  # НОВАЯ заявка, старая (rejected) уже не годится
+
+                # Потолок участников по тарифу (раздел 3.4 ТЗ) — Basic = 5,
+                # у 1xBet уже 2 (Маша+Дима), нужно ещё 3 одобрения, чтобы упереться.
+                for uid, uname in ((967, "u967"), (968, "u968"), (969, "u969")):
+                    st.save_profile({"user_id": uid, "username": uname, "name": uname})
+                    auth_u = {"Authorization": "tma " + _guro_make_init_data(token, {"id": uid, "username": uname})}
+                    resp = await client.post("/api/company/join_request", headers=auth_u, json={"company_id": 960})
+                    check(resp.status == 200, f"{uname} подаёт заявку -> 200")
+                    req_id = (await resp.json())["id"]
+                    resp = await client.post(f"/api/company/team/requests/{req_id}/approve", headers=auth_960)
+                    check(resp.status == 200, f"{uname} одобрен -> 200")
+
+                resp = await client.get("/api/company/team", headers=auth_960)
+                body = await resp.json()
+                check(body["member_count"] == 5, "теперь ровно 5 из 5 (потолок Basic исчерпан)")
+
+                resp = await client.post(f"/api/company/team/requests/{oleg_request_id}/approve", headers=auth_960)
+                check(resp.status == 409, "6-е одобрение при потолке 5/5 -> 409 MEMBER_LIMIT_REACHED")
+                body = await resp.json()
+                check(body["error"] == "MEMBER_LIMIT_REACHED" and body.get("limit") == 5, "код + limit понятны")
+
+                # Лимит одобрений/день (раздел 3.5 ТЗ, "не более 5 в день") —
+                # отдельная свежая компания с оверрайдом=1, чтобы не городить
+                # 5 реальных одобрений ради одной проверки.
+                st.save_profile({"user_id": 1050, "username": "owner1050", "name": "Owner1050"})
+                auth_1050 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 1050, "username": "owner1050"})}
+                resp = await client.post("/api/company/create", headers=auth_1050, json={"name": "DailyLimitCo"})
+                check(resp.status == 200, "владелец 2-й тестовой компании (для лимита одобрений/день) создан -> 200")
+                app["storage"].set_user_limit_override(1050, GC.LIMIT_KEY_COMPANY_APPROVALS_PER_DAY, 1)
+
+                for uid, uname in ((1051, "d1051"), (1052, "d1052")):
+                    st.save_profile({"user_id": uid, "username": uname, "name": uname})
+                    auth_u = {"Authorization": "tma " + _guro_make_init_data(token, {"id": uid, "username": uname})}
+                    resp = await client.post("/api/company/join_request", headers=auth_u, json={"company_id": 1050})
+                    req_id = (await resp.json())["id"]
+                    resp = await client.post(f"/api/company/team/requests/{req_id}/approve", headers=auth_1050)
+                    if uid == 1051:
+                        check(resp.status == 200, "1-е одобрение сегодня (оверрайд=1) -> 200")
+                    else:
+                        check(resp.status == 429, "2-е одобрение в тот же день -> 429 DAILY_APPROVAL_LIMIT_REACHED")
+                        body = await resp.json()
+                        check(body["error"] == "DAILY_APPROVAL_LIMIT_REACHED" and body.get("resets_at"),
+                              "код + resets_at понятны")
+
+                # Удаление участника (раздел 4 ТЗ) — прошлая вакансия Димы
+                # остаётся нетронутой (снимок на момент события).
+                resp = await client.post("/api/company/team/members/965/remove", headers=auth_965)
+                check(resp.status == 403, "участник не может удалить сам себя (не Владелец) -> 403")
+
+                resp = await client.post("/api/company/team/members/960/remove", headers=auth_960)
+                check(resp.status == 403, "Владелец не может удалить сам себя -> 403 (target_user_id == owner)")
+
+                resp = await client.post("/api/company/team/members/965/remove", headers=auth_960)
+                check(resp.status == 200, "Владелец удаляет Диму из команды -> 200")
+
+                resp = await client.post("/api/company/profile", headers=auth_965,
+                                          json={"field": "description", "value": "после увольнения"})
+                check(resp.status == 403, "Дима больше не может править бренд-страницу после удаления")
+
+                resp = await client.get("/api/vacancies/mine", headers=auth_960)
+                body = await resp.json()
+                check(any(v["title"] == "Affiliate Manager" for v in body["vacancies"]),
+                      "вакансия, опубликованная Димой ДО удаления, осталась у компании как ни в чём не бывало")
+
+                # Передача владения (раздел 5 ТЗ).
+                resp = await client.post("/api/company/team/members/967/transfer", headers=auth_965)
+                check(resp.status == 403, "передать владение может только ТЕКУЩИЙ Владелец -> 403 (Дима уже не в команде)")
+
+                resp = await client.post("/api/company/team/members/960/transfer", headers=auth_960)
+                check(resp.status == 403, "нельзя передать владение самому себе")
+
+                resp = await client.post("/api/company/team/members/967/transfer", headers=auth_960)
+                check(resp.status == 200, "Маша передаёт владение участнику 967 -> 200")
+
+                resp = await client.get("/api/company/team", headers=auth_960)
+                body = await resp.json()
+                check(body["my_role"] == "admin", "Маша теперь Админ/Рекрутер (не потеряла доступ к компании)")
+                check("requests" not in body, "и больше не видит заявки — та же логика, что и у любого Админа")
+
+                resp = await client.post("/api/company/create", headers=auth_960, json={"name": "Should Fail"})
+                check(resp.status == 409,
+                      "Маша всё ещё СОСТОИТ в 1xBet (теперь как Админ) -> создать вторую компанию нельзя")
+
+                # Раздел 6 ТЗ — сделка "от лица компании" (as_company), любой
+                # участник (не только Владелец) может её подтвердить.
+                st.save_profile({"user_id": 1060, "username": "counterparty1060", "name": "CP"})
+                resp = await client.post("/api/partnerships", headers=auth_960, json={
+                    "confirmer_username": "counterparty1060", "ptype": "deal", "as_company": True,
+                })
+                check(resp.status == 200, "сделка 'от лица компании' (as_company), инициатор — Админ (Маша) -> 200")
+                partnership_id_company = (await resp.json())["id"]
+                prow = app["storage"].get_partnership(partnership_id_company)
+                check(prow["company_id"] == 960, "партнёрство атрибутировано на company_id (раздел 6 ТЗ)")
+                check(prow["initiator_id"] == 960, "но initiator_id — конкретный человек, который её вёл")
+                company_history = app["storage"].list_company_partnerships(960)
+                check(len(company_history) == 1 and company_history[0]["id"] == partnership_id_company,
+                      "list_company_partnerships видит сделку как часть единой истории компании")
+
+                # Раздел 1.2 ТЗ — мягкое предупреждение о похожем названии,
+                # НЕ блокирует создание.
+                st.save_profile({"user_id": 1070, "username": "similar_test", "name": "SimilarTest"})
+                auth_1070 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 1070, "username": "similar_test"})}
+                resp = await client.post("/api/company/create", headers=auth_1070, json={"name": "1xBet Casino"})
+                check(resp.status == 200, "создание компании с похожим на существующее именем -> 200 (не блокирует)")
+                body = await resp.json()
+                check(body.get("similar_companies") and any("1xBet" in c["name"] for c in body["similar_companies"]),
+                      "мягкое предупреждение о похожем названии в ответе")
 
                 # --- личные сообщения внутри прилы (Фаза 1, 11.08.2026) -------
                 # ВАЖНО: auth_300 к этому моменту УЖЕ подписан (см. тест

@@ -223,6 +223,33 @@ CREATE TABLE IF NOT EXISTS guro_user_limit_overrides (
     updated_at TEXT,
     PRIMARY KEY (user_id, limit_key)
 );
+
+-- Роли и команда компании (ТЗ "Роли и управление командой в кабинете
+-- 'Компания'", 27.08.2026). company_id — это user_id ОСНОВАТЕЛЯ компании
+-- (см. guro_company_profiles) — стабильный идентификатор компании как
+-- сущности, даже после передачи владения (роли меняются, company_id — нет).
+-- Человек состоит максимум в ОДНОЙ компании одновременно (проверяется на
+-- уровне приложения в create_join_request/approve_join_request).
+CREATE TABLE IF NOT EXISTS guro_company_members (
+    company_id INTEGER,
+    user_id INTEGER,
+    role TEXT DEFAULT 'admin',
+    position_text TEXT,
+    joined_at TEXT,
+    PRIMARY KEY (company_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_guro_company_members_user ON guro_company_members(user_id);
+
+CREATE TABLE IF NOT EXISTS guro_company_join_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id INTEGER,
+    user_id INTEGER,
+    position_text TEXT,
+    status TEXT DEFAULT 'pending',
+    created_at TEXT,
+    decided_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_guro_join_requests_company ON guro_company_join_requests(company_id, status);
 """
 
 
@@ -295,6 +322,23 @@ class GuroStorage:
         # подписчики компании (до этого раунда — единственный тир) считаются
         # Basic по умолчанию, пока не оплатят Pro явно.
         self._ensure_column("guro_company_profiles", "company_tier", f"TEXT DEFAULT '{GC.COMPANY_TIER_BASIC}'")
+        # Роли и команда (27.08.2026, ТЗ "Роли и управление командой") —
+        # кто реально нажал "Опубликовать" (для внутренней аналитики
+        # компании, раздел 6 ТЗ) + чья это сделка/найм от лица компании
+        # (для истории компании как единого целого, тот же раздел).
+        self._ensure_column("guro_vacancies", "published_by_user_id", "INTEGER")
+        self._ensure_column("partnerships", "company_id", "INTEGER")
+        # Бэк-филл: КАЖДАЯ существующая компания (single-owner до этого
+        # раунда) должна иметь строку "Владелец" в guro_company_members
+        # СРАЗУ на старте, а не лениво при следующем заходе в /api/me — иначе
+        # реальный уже оплативший владелец на секунду увидел бы "нет
+        # компании" и получил бы кнопку "Создать" вместо своей существующей.
+        self._conn.execute(
+            "INSERT OR IGNORE INTO guro_company_members (company_id, user_id, role, joined_at) "
+            "SELECT user_id, user_id, ?, COALESCE(created_at, ?) FROM guro_company_profiles",
+            (GC.COMPANY_ROLE_OWNER, self._now_str()),
+        )
+        self._conn.commit()
         # Расширение "Моё CV" (12.08.2026) — новые поля личного профиля,
         # гейтятся существующим show_cv (см. guro_constants.CV_SIMPLE_FIELDS).
         self._ensure_column("guro_users", "cv_profession", "TEXT")
@@ -711,19 +755,217 @@ class GuroStorage:
     # --- кабинет "Компания" (16.08.2026) — зеркало кабинета рекрутера ---
 
     def get_or_create_company_profile(self, user_id: int) -> sqlite3.Row:
+        """user_id тут — company_id (ОСНОВАТЕЛЬ компании, см. раздел 0 схемы
+        выше). НЕ вызывать напрямую для произвольного актора — сначала
+        проверить get_company_membership(user_id), иначе участник команды,
+        никогда не создававший СВОЮ компанию, получит тут пустой новый
+        профиль вместо компании, в которой он состоит (см. resolve_company_id
+        в guro_id_api.py)."""
         row = self._conn.execute(
             "SELECT * FROM guro_company_profiles WHERE user_id=?", (user_id,)
         ).fetchone()
-        if row is not None:
-            return row
+        if row is None:
+            self._conn.execute(
+                "INSERT INTO guro_company_profiles (user_id, created_at, updated_at) VALUES (?,?,?)",
+                (user_id, self._now_str(), self._now_str()),
+            )
+        # Владелец = участник команды (27.08.2026, ТЗ "Роли и команда") —
+        # чинит заодно и старые компании (single-owner до этого раунда).
         self._conn.execute(
-            "INSERT INTO guro_company_profiles (user_id, created_at, updated_at) VALUES (?,?,?)",
-            (user_id, self._now_str(), self._now_str()),
+            "INSERT OR IGNORE INTO guro_company_members (company_id, user_id, role, joined_at) VALUES (?,?,?,?)",
+            (user_id, user_id, GC.COMPANY_ROLE_OWNER, self._now_str()),
         )
         self._conn.commit()
         return self._conn.execute(
             "SELECT * FROM guro_company_profiles WHERE user_id=?", (user_id,)
         ).fetchone()
+
+    # --- роли и команда (ТЗ "Роли и управление командой", 27.08.2026) ------
+
+    def get_company_membership(self, user_id: int) -> sqlite3.Row | None:
+        """Компания, в которой user_id состоит (Владелец ИЛИ Админ) — человек
+        состоит максимум в одной. None — ни своей, ни чужой компании нет."""
+        return self._conn.execute(
+            "SELECT * FROM guro_company_members WHERE user_id=?", (user_id,)
+        ).fetchone()
+
+    def get_company_role(self, company_id: int, user_id: int) -> str | None:
+        row = self._conn.execute(
+            "SELECT role FROM guro_company_members WHERE company_id=? AND user_id=?", (company_id, user_id),
+        ).fetchone()
+        return row["role"] if row else None
+
+    def company_member_limit(self, company_id: int) -> int:
+        tier = self.get_company_tier(company_id)
+        return GC.COMPANY_MEMBER_LIMIT_PRO if tier == GC.COMPANY_TIER_PRO else GC.COMPANY_MEMBER_LIMIT_BASIC
+
+    def count_company_members(self, company_id: int) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM guro_company_members WHERE company_id=?", (company_id,),
+        ).fetchone()
+        return row["n"]
+
+    def list_company_members(self, company_id: int) -> list[sqlite3.Row]:
+        """Владелец первым, затем по дате вступления (раздел 3.2 ТЗ, "аватар
+        + имя + должность + роль-бейдж")."""
+        return self._conn.execute(
+            "SELECT * FROM guro_company_members WHERE company_id=? "
+            "ORDER BY (role=?) DESC, joined_at ASC",
+            (company_id, GC.COMPANY_ROLE_OWNER),
+        ).fetchall()
+
+    def find_similar_companies(self, name: str, *, exclude_company_id: int | None = None) -> list[sqlite3.Row]:
+        """Раздел 1.2 ТЗ — "нестрогое сравнение, с учётом похожих написаний".
+        MVP: нормализация (нижний регистр, только буквы/цифры) + подстрока в
+        любую сторону — без внешней библиотеки нечёткого сравнения. Не
+        блокирует создание/переименование — вызывающий код показывает как
+        мягкое предупреждение (см. handle_set_company_profile_field)."""
+        normalized = "".join(ch for ch in name.lower() if ch.isalnum())
+        if not normalized:
+            return []
+        rows = self._conn.execute(
+            "SELECT user_id, name FROM guro_company_profiles WHERE name IS NOT NULL AND name != ''"
+        ).fetchall()
+        out = []
+        for row in rows:
+            if exclude_company_id is not None and row["user_id"] == exclude_company_id:
+                continue
+            candidate = "".join(ch for ch in (row["name"] or "").lower() if ch.isalnum())
+            if candidate and (candidate == normalized or normalized in candidate or candidate in normalized):
+                out.append(row)
+        return out
+
+    def create_join_request(self, company_id: int, user_id: int, position_text: str | None) -> sqlite3.Row:
+        """Поднимает ValueError: COMPANY_NOT_FOUND / ALREADY_IN_COMPANY /
+        ALREADY_REQUESTED (уже есть pending-заявка от этого же человека —
+        неважно, в эту же или другую компанию, раз в компании максимум одна
+        заявка/членство одновременно)."""
+        company_row = self._conn.execute(
+            "SELECT user_id FROM guro_company_profiles WHERE user_id=?", (company_id,),
+        ).fetchone()
+        if company_row is None:
+            raise ValueError("COMPANY_NOT_FOUND")
+        if self.get_company_membership(user_id) is not None:
+            raise ValueError("ALREADY_IN_COMPANY")
+        existing = self._conn.execute(
+            "SELECT id FROM guro_company_join_requests WHERE user_id=? AND status=?",
+            (user_id, GC.JOIN_REQUEST_PENDING),
+        ).fetchone()
+        if existing is not None:
+            raise ValueError("ALREADY_REQUESTED")
+        now_str = self._now_str()
+        cur = self._conn.execute(
+            "INSERT INTO guro_company_join_requests (company_id, user_id, position_text, status, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (company_id, user_id, position_text, GC.JOIN_REQUEST_PENDING, now_str),
+        )
+        self._conn.commit()
+        return self._conn.execute(
+            "SELECT * FROM guro_company_join_requests WHERE id=?", (cur.lastrowid,),
+        ).fetchone()
+
+    def get_join_request(self, request_id: int) -> sqlite3.Row | None:
+        return self._conn.execute(
+            "SELECT * FROM guro_company_join_requests WHERE id=?", (request_id,),
+        ).fetchone()
+
+    def list_join_requests(self, company_id: int, *, status: str = GC.JOIN_REQUEST_PENDING) -> list[sqlite3.Row]:
+        return self._conn.execute(
+            "SELECT * FROM guro_company_join_requests WHERE company_id=? AND status=? ORDER BY created_at ASC",
+            (company_id, status),
+        ).fetchall()
+
+    def count_new_company_approvals_today(self, company_id: int) -> int:
+        today = self._now().strftime("%Y-%m-%d")
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM guro_company_join_requests "
+            "WHERE company_id=? AND status=? AND substr(decided_at,1,10)=?",
+            (company_id, GC.JOIN_REQUEST_APPROVED, today),
+        ).fetchone()
+        return row["n"]
+
+    def approve_join_request(self, request_id: int, approver_user_id: int) -> sqlite3.Row:
+        """Поднимает ValueError: NOT_FOUND / NOT_OWNER / APPLICANT_ALREADY_IN_COMPANY
+        (заявитель успел вступить куда-то ещё, пока заявка висела) /
+        MEMBER_LIMIT_REACHED (раздел 3.4 ТЗ) / DAILY_APPROVAL_LIMIT_REACHED
+        (раздел 3.5 ТЗ, не более 5/день)."""
+        req = self.get_join_request(request_id)
+        if req is None or req["status"] != GC.JOIN_REQUEST_PENDING:
+            raise ValueError("NOT_FOUND")
+        if self.get_company_role(req["company_id"], approver_user_id) != GC.COMPANY_ROLE_OWNER:
+            raise ValueError("NOT_OWNER")
+        if self.get_company_membership(req["user_id"]) is not None:
+            raise ValueError("APPLICANT_ALREADY_IN_COMPANY")
+        if self.count_company_members(req["company_id"]) >= self.company_member_limit(req["company_id"]):
+            raise ValueError("MEMBER_LIMIT_REACHED")
+        daily_limit = self.get_effective_limit(
+            req["company_id"], GC.LIMIT_KEY_COMPANY_APPROVALS_PER_DAY, GC.LIMIT_COMPANY_APPROVALS_PER_DAY,
+        )
+        if self.count_new_company_approvals_today(req["company_id"]) >= daily_limit:
+            raise ValueError("DAILY_APPROVAL_LIMIT_REACHED")
+        now_str = self._now_str()
+        self._conn.execute(
+            "UPDATE guro_company_join_requests SET status=?, decided_at=? WHERE id=?",
+            (GC.JOIN_REQUEST_APPROVED, now_str, request_id),
+        )
+        self._conn.execute(
+            "INSERT INTO guro_company_members (company_id, user_id, role, position_text, joined_at) "
+            "VALUES (?,?,?,?,?)",
+            (req["company_id"], req["user_id"], GC.COMPANY_ROLE_ADMIN, req["position_text"], now_str),
+        )
+        self._conn.commit()
+        return self.get_join_request(request_id)
+
+    def reject_join_request(self, request_id: int, approver_user_id: int) -> bool:
+        req = self.get_join_request(request_id)
+        if req is None or req["status"] != GC.JOIN_REQUEST_PENDING:
+            return False
+        if self.get_company_role(req["company_id"], approver_user_id) != GC.COMPANY_ROLE_OWNER:
+            return False
+        self._conn.execute(
+            "UPDATE guro_company_join_requests SET status=?, decided_at=? WHERE id=?",
+            (GC.JOIN_REQUEST_REJECTED, self._now_str(), request_id),
+        )
+        self._conn.commit()
+        return True
+
+    def remove_company_member(self, company_id: int, owner_user_id: int, target_user_id: int) -> bool:
+        """Раздел 4 ТЗ — прошлые сделки/вакансии участника НЕ трогаем (они
+        уже физически записаны на company_id/published_by_user_id, снимок
+        на момент события), просто убираем строку членства."""
+        if self.get_company_role(company_id, owner_user_id) != GC.COMPANY_ROLE_OWNER:
+            return False
+        if target_user_id == owner_user_id:
+            return False
+        if self.get_company_role(company_id, target_user_id) is None:
+            return False
+        self._conn.execute(
+            "DELETE FROM guro_company_members WHERE company_id=? AND user_id=?", (company_id, target_user_id),
+        )
+        self._conn.commit()
+        return True
+
+    def transfer_company_ownership(self, company_id: int, owner_user_id: int, target_user_id: int) -> bool:
+        """Раздел 5 ТЗ — company_id (PK guro_company_profiles) НЕ меняется,
+        меняются только роли двух строк в guro_company_members. Подписка/
+        тир остаются привязаны к company_id — новый Владелец сразу может
+        ей управлять, ничего мигрировать не нужно."""
+        if self.get_company_role(company_id, owner_user_id) != GC.COMPANY_ROLE_OWNER:
+            return False
+        if target_user_id == owner_user_id:
+            return False
+        if self.get_company_role(company_id, target_user_id) is None:
+            return False
+        self._conn.execute(
+            "UPDATE guro_company_members SET role=? WHERE company_id=? AND user_id=?",
+            (GC.COMPANY_ROLE_ADMIN, company_id, owner_user_id),
+        )
+        self._conn.execute(
+            "UPDATE guro_company_members SET role=? WHERE company_id=? AND user_id=?",
+            (GC.COMPANY_ROLE_OWNER, company_id, target_user_id),
+        )
+        self._conn.commit()
+        return True
 
     def is_company_subscribed(self, user_id: int) -> bool:
         row = self._conn.execute(
@@ -909,8 +1151,21 @@ class GuroStorage:
         не лимитируются, ограничивать реальный бизнес нельзя)."""
         today = self._now().strftime("%Y-%m-%d")
         row = self._conn.execute(
-            "SELECT COUNT(*) AS n FROM partnerships WHERE initiator_id=? AND substr(created_at,1,10)=?",
+            "SELECT COUNT(*) AS n FROM partnerships WHERE initiator_id=? AND company_id IS NULL "
+            "AND substr(created_at,1,10)=?",
             (initiator_id, today),
+        ).fetchone()
+        return row["n"]
+
+    def count_new_company_partnerships_today(self, company_id: int) -> int:
+        """Тот же лимит (2.2 ТЗ "Тарифы и лимиты"), но "на аккаунт компании
+        в целом" (раздел 2.2, "не на участника") — считается по company_id,
+        общий на всю команду, независимо от того, кто из участников вёл
+        сделку (см. as_company в handle_create_partnership)."""
+        today = self._now().strftime("%Y-%m-%d")
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM partnerships WHERE company_id=? AND substr(created_at,1,10)=?",
+            (company_id, today),
         ).fetchone()
         return row["n"]
 
@@ -955,11 +1210,15 @@ class GuroStorage:
         amount_paid: float | None = None, review: str | None = None, amount_visible: bool = False,
         tx_hash: str | None = None, ptype: str = GC.PARTNERSHIP_TYPE_DEAL,
         tx_network: str | None = None, tx_verified: bool = False, tx_company_match: bool = False,
-        tx_verify_error: str | None = None,
+        tx_verify_error: str | None = None, company_id: int | None = None,
     ) -> sqlite3.Row:
         """Поднимает ValueError с понятным кодом-строкой при нарушении правил
         (see ТЗ п.4/п.8): NO_CONFIRMER_PROFILE / SELF_PARTNERSHIP / RATE_LIMITED /
-        INVALID_TYPE. offer/amount_*/review/amount_visible (Фаза 2, 11.08.2026) —
+        INVALID_TYPE. company_id (27.08.2026, ТЗ "Роли и команда", раздел 6) —
+        если инициатор действовал "от лица компании", сделка попадает в
+        историю КОМПАНИИ как единое целое; initiator_id остаётся конкретным
+        человеком команды, который её вёл ("какой участник это сделал").
+        offer/amount_*/review/amount_visible (Фаза 2, 11.08.2026) —
         заполняет ТОЛЬКО инициатор в момент создания заявки; confirmer лишь
         подтверждает/отклоняет кнопкой, отдельной формы у него нет (см. план).
         ptype/tx_* (25.08.2026, ТЗ "формула рейтинга") — тип сделки и
@@ -986,17 +1245,25 @@ class GuroStorage:
             "INSERT INTO partnerships (initiator_id, confirmer_id, status, vertical, geo, "
             "counts_toward_rating, created_at, offer, amount_received, amount_paid, review, "
             "amount_visible, tx_hash, ptype, tx_network, tx_verified, tx_company_match, "
-            "tx_verify_error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "tx_verify_error, company_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (initiator_id, confirmer_id, GC.PARTNERSHIP_STATUS_PENDING, vertical, geo,
              0, GL.format_db_datetime(now), offer, amount_received, amount_paid,
              review, 1 if amount_visible else 0, tx_hash, ptype, tx_network,
-             1 if tx_verified else 0, 1 if tx_company_match else 0, tx_verify_error),
+             1 if tx_verified else 0, 1 if tx_company_match else 0, tx_verify_error, company_id),
         )
         self._conn.commit()
         return self._conn.execute("SELECT * FROM partnerships WHERE id=?", (cur.lastrowid,)).fetchone()
 
     def get_partnership(self, partnership_id: int) -> sqlite3.Row | None:
         return self._conn.execute("SELECT * FROM partnerships WHERE id=?", (partnership_id,)).fetchone()
+
+    def list_company_partnerships(self, company_id: int, *, limit: int = 100) -> list[sqlite3.Row]:
+        """Раздел 6 ТЗ "Роли и команда" — история компании как единое целое,
+        независимо от того, какой конкретно участник вёл каждую сделку."""
+        return self._conn.execute(
+            "SELECT * FROM partnerships WHERE company_id=? ORDER BY created_at DESC LIMIT ?",
+            (company_id, limit),
+        ).fetchall()
 
     def _confirmed_count_between(self, user_a: int, user_b: int) -> int:
         """5.2 — сколько раз этот же контрагент УЖЕ был подтверждён ДО этого
@@ -1509,19 +1776,25 @@ class GuroStorage:
         salary_negotiable: bool = False, salary_visible: bool = False, description: str | None = None,
         contact_method: str = GC.VACANCY_CONTACT_GURO_ID, contact_url: str | None = None,
         duration_days: int = GC.VACANCY_DURATION_DEFAULT, lang: str = "ru",
+        published_by_user_id: int | None = None,
     ) -> sqlite3.Row:
+        """author_id — владелец лимитов/показа (для author_workspace="company"
+        это id компании, НЕ обязательно тот же человек, что реально нажал
+        "Опубликовать" — см. published_by_user_id, ТЗ "Роли и команда",
+        раздел 6, "какой конкретно участник команды это сделал")."""
         now = self._now()
         expires_at = GL.format_db_datetime(now + timedelta(days=duration_days))
         cur = self._conn.execute(
             "INSERT INTO guro_vacancies (author_id, author_workspace, title, vertical, grade, position, "
             "position_is_other, location, work_format, employment_type, salary_from, salary_to, "
             "salary_negotiable, salary_visible, description, contact_method, contact_url, "
-            "duration_days, expires_at, lang, status, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "duration_days, expires_at, lang, status, created_at, published_by_user_id) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (author_id, author_workspace, title, vertical, grade, position,
              1 if position_is_other else 0, location, work_format, employment_type, salary_from, salary_to,
              1 if salary_negotiable else 0, 1 if salary_visible else 0, description, contact_method, contact_url,
-             duration_days, expires_at, lang, GC.VACANCY_STATUS_ACTIVE, GL.format_db_datetime(now)),
+             duration_days, expires_at, lang, GC.VACANCY_STATUS_ACTIVE, GL.format_db_datetime(now),
+             published_by_user_id or author_id),
         )
         self._conn.commit()
         vacancy = self._conn.execute("SELECT * FROM guro_vacancies WHERE id=?", (cur.lastrowid,)).fetchone()
@@ -1618,10 +1891,30 @@ class GuroStorage:
 
     def list_my_vacancies(self, author_id: int) -> list[sqlite3.Row]:
         """Все свои — включая закрытые/на паузе, для управления (в отличие
-        от list_vacancies, которая отдаёт только активные для чужого просмотра)."""
+        от list_vacancies, которая отдаёт только активные для чужого просмотра).
+        Участник команды компании (27.08.2026, ТЗ "Роли и команда") видит
+        ОБЩИЕ вакансии компании (author_id=company_id) в ДОПОЛНЕНИЕ к своим
+        личным/рекрутерским — не два разных экрана, один общий список."""
+        membership = self.get_company_membership(author_id)
+        if membership:
+            return self._conn.execute(
+                self._VACANCY_SELECT + " WHERE v.author_id IN (?, ?) ORDER BY v.created_at DESC, v.id DESC",
+                (author_id, membership["company_id"]),
+            ).fetchall()
         return self._conn.execute(
             self._VACANCY_SELECT + " WHERE v.author_id=? ORDER BY v.created_at DESC, v.id DESC", (author_id,)
         ).fetchall()
+
+    def vacancy_access_allowed(self, row, acting_user_id: int) -> bool:
+        """Раздел 2 ТЗ "Роли и команда" — вакансия от лица компании доступна
+        для управления ЛЮБОМУ участнику команды (Владелец и Админ/Рекрутер
+        имеют одинаковые права на общие вакансии), не только тому, кто её
+        опубликовал."""
+        if row["author_id"] == acting_user_id:
+            return True
+        if row["author_workspace"] == "company":
+            return self.get_company_role(row["author_id"], acting_user_id) is not None
+        return False
 
     def get_vacancy(self, vacancy_id: int) -> sqlite3.Row | None:
         return self._conn.execute(self._VACANCY_SELECT + " WHERE v.id=?", (vacancy_id,)).fetchone()
@@ -1639,9 +1932,10 @@ class GuroStorage:
 
     def edit_vacancy(self, vacancy_id: int, author_id: int, fields: dict) -> sqlite3.Row | None:
         """Поднимает ValueError('UNKNOWN_FIELD') на неразрешённое поле.
-        None — вакансии нет или редактирует не автор."""
+        None — вакансии нет или редактировать нельзя (не автор и не участник
+        той же компании, см. vacancy_access_allowed)."""
         row = self.get_vacancy(vacancy_id)
-        if row is None or row["author_id"] != author_id:
+        if row is None or not self.vacancy_access_allowed(row, author_id):
             return None
         unknown = set(fields) - set(self._VACANCY_EDITABLE_FIELDS)
         if unknown:
@@ -1658,7 +1952,7 @@ class GuroStorage:
 
     def _set_vacancy_status(self, vacancy_id: int, author_id: int, status: str, *, reason: str | None = None) -> bool:
         row = self.get_vacancy(vacancy_id)
-        if row is None or row["author_id"] != author_id:
+        if row is None or not self.vacancy_access_allowed(row, author_id):
             return False
         self._conn.execute(
             "UPDATE guro_vacancies SET status=?, closed_reason=? WHERE id=?",
@@ -1682,7 +1976,7 @@ class GuroStorage:
         """Продлить — срок считается ЗАНОВО от текущего момента (не
         накопительно к старому expires_at)."""
         row = self.get_vacancy(vacancy_id)
-        if row is None or row["author_id"] != author_id:
+        if row is None or not self.vacancy_access_allowed(row, author_id):
             return False
         expires_at = GL.format_db_datetime(self._now() + timedelta(days=duration_days))
         self._conn.execute(
@@ -1702,7 +1996,7 @@ class GuroStorage:
             raise ValueError("NOT_FOUND")
         if row["status"] != GC.VACANCY_STATUS_ACTIVE:
             raise ValueError("NOT_ACTIVE")
-        if row["author_id"] == candidate_id:
+        if self.vacancy_access_allowed(row, candidate_id):
             raise ValueError("SELF_RESPONSE")
         try:
             cur = self._conn.execute(
@@ -1741,12 +2035,16 @@ class GuroStorage:
         """Агрегированные отклики по ВСЕМ вакансиям рекрутера/компании
         (раздел 5.5, "Отклики" на главном экране кабинета) — с полями самой
         вакансии подмешанными через JOIN, чтобы фронт мог показать метку
-        вакансии на каждой карточке без отдельных запросов."""
+        вакансии на каждой карточке без отдельных запросов. Участник команды
+        компании (27.08.2026, ТЗ "Роли и команда") видит отклики ОБЩИХ
+        вакансий компании в дополнение к своим личным/рекрутерским."""
+        membership = self.get_company_membership(author_id)
+        author_ids = (author_id, membership["company_id"]) if membership else (author_id, author_id)
         sql = (
             "SELECT r.*, v.title AS vacancy_title FROM guro_vacancy_responses r "
-            "JOIN guro_vacancies v ON v.id = r.vacancy_id WHERE v.author_id=?"
+            "JOIN guro_vacancies v ON v.id = r.vacancy_id WHERE v.author_id IN (?, ?)"
         )
-        params: list = [author_id]
+        params: list = list(author_ids)
         if status:
             sql += " AND r.status=?"
             params.append(status)
@@ -1755,15 +2053,18 @@ class GuroStorage:
 
     def update_vacancy_response_status(self, response_id: int, author_id: int, status: str) -> sqlite3.Row | None:
         """Поднимает ValueError('INVALID_STATUS'). None — отклика нет или
-        статус меняет не владелец вакансии (проверка через JOIN)."""
+        статус меняет тот, у кого нет доступа к вакансии (владелец/участник
+        той же компании, см. vacancy_access_allowed)."""
         if status not in GC.RESPONSE_STATUSES:
             raise ValueError("INVALID_STATUS")
         row = self._conn.execute(
-            "SELECT r.* FROM guro_vacancy_responses r JOIN guro_vacancies v ON v.id=r.vacancy_id "
-            "WHERE r.id=? AND v.author_id=?",
-            (response_id, author_id),
+            "SELECT r.*, v.author_id AS v_author_id, v.author_workspace AS v_author_workspace "
+            "FROM guro_vacancy_responses r JOIN guro_vacancies v ON v.id=r.vacancy_id WHERE r.id=?",
+            (response_id,),
         ).fetchone()
-        if row is None:
+        if row is None or not self.vacancy_access_allowed(
+            {"author_id": row["v_author_id"], "author_workspace": row["v_author_workspace"]}, author_id,
+        ):
             return None
         self._conn.execute(
             "UPDATE guro_vacancy_responses SET status=?, updated_at=? WHERE id=?",

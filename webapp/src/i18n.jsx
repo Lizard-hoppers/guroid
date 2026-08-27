@@ -366,6 +366,10 @@ const STRINGS = {
   // Кабинет "Рекрутер" (26.08.2026, ТЗ раздел 4) — переименование экрана,
   // тип партнёрства тут жёстко "Найм", переключатель скрыт.
   "confirm.title.hire": { ru: "Подтвердить найм", en: "Confirm a hire" },
+  "confirm.asCompanyHint": {
+    ru: "✓ Вы действуете от лица компании — сделка попадёт в общую историю бренда.",
+    en: "✓ You're acting on behalf of the company — the deal will go into the brand's shared history.",
+  },
   "confirm.hint": {
     ru: "Укажите юзернейм человека, с которым уже состоялось сотрудничество. Ему придёт запрос на подтверждение от бота — запись появится в профилях обоих только после его ответа. Офер и отзыв видны всем чужим (в этом и смысл — проверить репутацию контакта), суммы — только если включите показ ниже.",
     en: "Enter the username of someone you've already worked with. They'll get a confirmation request from the bot — the record appears in both profiles only after they respond. The offer and review are visible to everyone (that's the point — checking a contact's reputation), amounts only if you enable showing them below.",
@@ -563,7 +567,27 @@ const STRINGS = {
   "company.field.coverUrlPlaceholder": { ru: "https://…/cover.png", en: "https://…/cover.png" },
   "company.settingsBtn": { ru: "Настройки кабинета", en: "Cabinet settings" },
   "company.quickPublish": { ru: "➕ Опубликовать вакансию", en: "➕ Post a vacancy" },
+  "company.quickConfirm": { ru: "🤝 Подтвердить сделку/найм", en: "🤝 Confirm deal/hire" },
   "company.activeVacancies": { ru: "Активных вакансий: {n}", en: "Active vacancies: {n}" },
+  // Создание компании (27.08.2026, ТЗ "Роли и управление командой", раздел 1)
+  "company.create.title": { ru: "Создать компанию", en: "Create a company" },
+  "company.create.hint": {
+    ru: "Вы станете Владельцем — сможете пригласить команду, публиковать вакансии и подтверждать сделки от лица бренда.",
+    en: "You'll become the Owner — you can invite a team, post vacancies, and confirm deals on behalf of the brand.",
+  },
+  "company.create.nameLabel": { ru: "Название компании", en: "Company name" },
+  "company.create.namePlaceholder": { ru: "Например: 1xBet", en: "E.g.: 1xBet" },
+  "company.create.submit": { ru: "Создать", en: "Create" },
+  "company.create.submitting": { ru: "Создаём…", en: "Creating…" },
+  "company.create.error": { ru: "Не получилось создать компанию.", en: "Couldn't create the company." },
+  "company.create.similarWarning": {
+    ru: "Похожие названия уже есть в GURO ID: {names}. Если это не вы — возможно, стоит выбрать другое название.",
+    en: "Similar names already exist in GURO ID: {names}. If that's not you, consider a different name.",
+  },
+  "company.create.joinHint": {
+    ru: "Хотите присоединиться к уже существующей компании? Найдите её карточку через доску вакансий или поиск и нажмите «Запросить присоединение».",
+    en: "Want to join an existing company instead? Find its card via the vacancy board or search and tap \"Request to join\".",
+  },
   "company.types.title": { ru: "Тип компании", en: "Company type" },
   "company.types.hint": {
     ru: "Можно выбрать несколько — используется как фильтр в поиске и на доске вакансий.",
@@ -609,6 +633,45 @@ const STRINGS = {
   "company.addressStatus.pending": { ru: "на проверке", en: "pending review" },
   "company.addressStatus.approved": { ru: "подтверждён", en: "approved" },
   "company.addressStatus.rejected": { ru: "отклонён", en: "rejected" },
+
+  // --- Роли и команда (27.08.2026, ТЗ "Роли и управление командой") ---
+  "team.title": { ru: "Команда", en: "Team" },
+  "team.counter": { ru: "{count} из {limit} участников", en: "{count} of {limit} members" },
+  "team.tabRequests": { ru: "Запросы", en: "Requests" },
+  "team.tabMembers": { ru: "Участники", en: "Members" },
+  "team.approvalsLeftToday": { ru: "Одобрений сегодня осталось: {n}", en: "{n} approvals left today" },
+  "team.requestsEmpty": { ru: "Пока нет заявок на присоединение.", en: "No join requests yet." },
+  "team.approveBtn": { ru: "Принять", en: "Accept" },
+  "team.rejectBtn": { ru: "Отклонить", en: "Reject" },
+  "team.removeBtn": { ru: "Удалить из команды", en: "Remove from team" },
+  "team.transferBtn": { ru: "Передать владение", en: "Transfer ownership" },
+  "team.removeConfirm": { ru: "Удалить {name} из команды?", en: "Remove {name} from the team?" },
+  "team.transferConfirm": {
+    ru: "Передать роль владельца {name}? Вы станете Админом, {name} получит полный контроль над компанией, включая управление подпиской.",
+    en: "Transfer the Owner role to {name}? You'll become an Admin, {name} will get full control of the company, including subscription management.",
+  },
+  "team.loadError": { ru: "Не удалось загрузить команду.", en: "Couldn't load the team." },
+  "team.role.owner": { ru: "Владелец", en: "Owner" },
+  "team.role.admin": { ru: "Админ/Рекрутер", en: "Admin/Recruiter" },
+  "team.errors.generic": { ru: "Не получилось выполнить действие.", en: "Couldn't complete the action." },
+  "team.errors.memberLimitReached": {
+    ru: "Достигнут лимит участников по тарифу ({limit}). Удалите неактивного участника или перейдите на тариф Компания Pro.",
+    en: "Reached the tariff's member limit ({limit}). Remove an inactive member or upgrade to Company Pro.",
+  },
+  "team.errors.dailyApprovalLimitReached": {
+    ru: "Лимит одобрений на сегодня исчерпан. Следующие можно одобрить {date}.",
+    en: "Today's approval limit is used up. You can approve more on {date}.",
+  },
+  "team.join.requestBtn": { ru: "Запросить присоединение", en: "Request to join" },
+  "team.join.positionLabel": { ru: "Ваша должность в компании", en: "Your position at the company" },
+  "team.join.positionPlaceholder": { ru: "Например: Affiliate Manager", en: "E.g.: Affiliate Manager" },
+  "team.join.submitBtn": { ru: "Отправить запрос", en: "Send request" },
+  "team.join.submitting": { ru: "Отправляем…", en: "Sending…" },
+  "team.join.sentOk": { ru: "Запрос отправлен — ждите одобрения от владельца компании.", en: "Request sent — wait for the company owner to approve it." },
+  "team.join.alreadyRequested": { ru: "Вы уже подали заявку на присоединение.", en: "You've already sent a join request." },
+  "team.join.alreadyInCompany": { ru: "Вы уже состоите в другой компании.", en: "You're already a member of another company." },
+  "team.join.alreadyMember": { ru: "Вы уже участник этой компании.", en: "You're already a member of this company." },
+  "team.join.error": { ru: "Не получилось отправить запрос.", en: "Couldn't send the request." },
 
   // --- Вакансии (Фаза 4, 12.08.2026; переписано 26.08.2026 под ТЗ
   // "Recruitment — ВАКАНСИИ") ---

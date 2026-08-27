@@ -169,6 +169,35 @@ COMPANY_TIER_BASIC = "basic"
 COMPANY_TIER_PRO = "pro"
 COMPANY_TIERS = (COMPANY_TIER_BASIC, COMPANY_TIER_PRO)
 
+# --- Роли и команда компании (27.08.2026, ТЗ "Роли и управление командой в
+# кабинете 'Компания'") — ровно ДВЕ роли, без градации прав по функциям
+# (раздел 2 ТЗ: должность человека — описательное поле, не ACL). Владелец
+# может всё, что Админ/Рекрутер, плюс управляет составом команды/передаёт
+# владение. "Компания" как сущность технически — тот же guro_company_profiles
+# (PK user_id основателя ПРОДОЛЖАЕТ служить стабильным company_id даже после
+# передачи владения другому человеку), поверх неё guro_company_members даёт
+# многие-ко-многим людей и ролей.
+COMPANY_ROLE_OWNER = "owner"
+COMPANY_ROLE_ADMIN = "admin"
+COMPANY_ROLES = (COMPANY_ROLE_OWNER, COMPANY_ROLE_ADMIN)
+
+JOIN_REQUEST_PENDING = "pending"
+JOIN_REQUEST_APPROVED = "approved"
+JOIN_REQUEST_REJECTED = "rejected"
+JOIN_REQUEST_STATUSES = (JOIN_REQUEST_PENDING, JOIN_REQUEST_APPROVED, JOIN_REQUEST_REJECTED)
+
+# Раздел 3.4 ТЗ — потолок участников по тарифу ("до 5"/"до 20", это
+# конкретное число ТЗ "Роли и команда", не "15-20" из общего прайсинга).
+COMPANY_MEMBER_LIMIT_BASIC = 5
+COMPANY_MEMBER_LIMIT_PRO = 20
+
+# Раздел 3.5 ТЗ — не более 5 одобрений новых участников/день, независимо от
+# тарифа (закрывает раздел 2.4 ТЗ "Тарифы и лимиты", сознательно отложенный
+# в прошлом раунде до появления самой механики команды).
+LIMIT_KEY_COMPANY_APPROVALS_PER_DAY = "company_approvals_per_day"
+LIMIT_COMPANY_APPROVALS_PER_DAY = 5
+LIMIT_KEYS = LIMIT_KEYS + (LIMIT_KEY_COMPANY_APPROVALS_PER_DAY,)
+
 # Анти-фрод (ТЗ п.4, исходный план 04.08): не больше 1 новой заявки в сутки
 # на пару, и подтверждения между свежими (<14 дней в комьюнити) аккаунтами
 # не учитываются в рейтинге (видны, но помечены).

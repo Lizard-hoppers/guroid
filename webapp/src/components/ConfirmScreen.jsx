@@ -35,7 +35,13 @@ const EMPTY_FORM = {
 // + вертикаль вакансии; грейд/должность своих полей тут не имеют — вместо
 // расширения схемы партнёрства сложены в свободный "offer" (минимально
 // инвазивная интерпретация, ТЗ этого явно не описывает).
-export function ConfirmScreen({ forcedType, prefill, onBack }) {
+// asCompany (27.08.2026, ТЗ "Роли и команда", раздел 6) — эта форма
+// открыта ИЗ кабинета "Компания" ("действую как <бренд>"): сделка попадает
+// в общую историю компании, лимит новых заявок — на компанию в целом.
+// Фиксированный контекст всей сессии формы, не отдельный переключатель на
+// каждую заявку — раз уж ты внутри кабинета компании, ты действуешь от
+// её лица (та же логика, что уже принята для сообщений via_workspace).
+export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
   const { t } = useLang();
   const [form, setForm] = useState(() => ({
     ...EMPTY_FORM,
@@ -54,7 +60,7 @@ export function ConfirmScreen({ forcedType, prefill, onBack }) {
     if (!q) return;
     setState({ loading: true, ok: false, error: null });
     try {
-      await createPartnership({ ...form, confirmerUsername: q });
+      await createPartnership({ ...form, confirmerUsername: q, asCompany });
       setState({ loading: false, ok: true, error: null });
       setForm(forcedType ? { ...EMPTY_FORM, ptype: forcedType } : EMPTY_FORM);
       haptic("success");
@@ -78,6 +84,7 @@ export function ConfirmScreen({ forcedType, prefill, onBack }) {
         </button>
       )}
       <h3>{t(forcedType === "hire" ? "confirm.title.hire" : "confirm.title")}</h3>
+      {asCompany && <div className="company-verify-status is-verified">{t("confirm.asCompanyHint")}</div>}
       <div className="privacy-hint">{t("confirm.hint")}</div>
       <form onSubmit={onSubmit}>
         <label>{t("confirm.usernameLabel")}</label>

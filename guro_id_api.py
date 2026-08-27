@@ -284,27 +284,49 @@ def _company_summary(storage: GuroStorage, user_id: int) -> dict:
     """Кабинет "Компания" (16.08.2026) — зеркало _recruiter_summary выше,
     третий воркспейс поверх личного профиля.
 
+    27.08.2026 (ТЗ "Роли и управление командой") — компания теперь МНОГИХ
+    людей, не 1:1 с user_id: company_id резолвится через членство
+    (get_company_membership), НЕ через сам user_id напрямую — иначе участник
+    команды, никогда не создававший СВОЮ компанию, получил бы тут пустой
+    новый профиль вместо той, в которой он состоит. no_company=True — юзер
+    не Владелец и не Админ ни в одной компании (фронт предлагает создать
+    свою ЛИБО подать заявку на присоединение к чужой).
+
     verified/verification_requested_at (26.08.2026, ТЗ "Компания. каб",
     раздел 2) — статус ручной верификации, НЕ влияет на видимость/
     функциональность, только на бейдж."""
-    row = storage.get_or_create_company_profile(user_id)
-    extra = storage.get_company_extra(user_id)
+    membership = storage.get_company_membership(user_id)
+    if membership is None:
+        return {"workspace": "company", "user_id": user_id, "no_company": True, "is_company_subscribed": False}
+    company_id = membership["company_id"]
+    row = storage.get_or_create_company_profile(company_id)
+    extra = storage.get_company_extra(company_id)
     guro_user = storage.get_or_create_guro_user(user_id)
     is_subscribed = storage.is_subscribed(user_id)
     return {
         "workspace": "company",
         "user_id": user_id,
+        "company_id": company_id,
+        "my_role": membership["role"],
+        "my_position": membership["position_text"],
+        "member_count": storage.count_company_members(company_id),
+        "member_limit": storage.company_member_limit(company_id),
         **extra,
         "company_subscription_status": row["subscription_status"],
         "company_subscription_expires_at": row["subscription_expires_at"],
-        "is_company_subscribed": storage.is_company_subscribed(user_id),
+        "is_company_subscribed": storage.is_company_subscribed(company_id),
         "verified": bool(row["verified"]),
         "verification_requested_at": row["verification_requested_at"],
-        # Общий рейтинг (не отдельный "рейтинг компании" — та же ось, что у
-        # личного/рекрутера, "рейтинг сгорает без подписки" тоже общая).
+        # Общий рейтинг — ЛИЧНЫЙ рейтинг СМОТРЯЩЕГО (см. докстринг выше:
+        # "рейтинг сгорает без подписки" — это подписка САМОГО человека, не
+        # компании), каждый участник качает СВОЙ личный профиль (раздел 0 ТЗ
+        # "Роли и команда": "все получают баллы за сделки, прокачивают
+        # личные профили") — карточка компании исторически показывала
+        # рейтинг единственного владельца, теперь это рейтинг того, кто
+        # сейчас смотрит на СВОЙ кабинет компании.
         "reputation_score": round(guro_user["reputation_score"], 1) if is_subscribed else None,
         "reputation_tier": GL.reputation_tier(guro_user["reputation_score"]) if is_subscribed else None,
-        "active_vacancies": storage.count_active_vacancies(user_id, workspace="company"),
+        "active_vacancies": storage.count_active_vacancies(company_id, workspace="company"),
     }
 
 
@@ -319,7 +341,8 @@ async def handle_me(request: web.Request) -> web.Response:
 
     if request.query.get("workspace") == "company":
         summary = _company_summary(storage, user["id"])
-        summary["privacy"] = storage.get_company_privacy(user["id"])
+        if not summary.get("no_company"):
+            summary["privacy"] = storage.get_company_privacy(summary["company_id"])
         return web.json_response(summary)
 
     summary = _profile_summary(storage, user["id"])
@@ -463,14 +486,24 @@ def _apply_company_privacy(summary: dict, privacy: dict) -> dict:
 
 def _company_profile_response(storage: GuroStorage, requester_id: int, target_user_id: int) -> dict | None:
     """Карточка ЧУЖОГО кабинета "Компания" — зеркало _recruiter_profile_
-    response выше."""
-    if not storage.is_company_subscribed(target_user_id):
+    response выше. 27.08.2026 (ТЗ "Роли и команда") — target_user_id ищется
+    как ЛЮБОЙ участник (Владелец или Админ) компании, не только основатель;
+    is_member/can_join (раздел 3.1 ТЗ, кнопка "Запросить присоединение") —
+    показывает requester_id, куда он смотрит относительно ЭТОЙ компании."""
+    membership = storage.get_company_membership(target_user_id)
+    if membership is None:
         return None
-    extra = storage.get_company_extra(target_user_id)
-    privacy = storage.get_company_privacy(target_user_id)
+    company_id = membership["company_id"]
+    if not storage.is_company_subscribed(company_id):
+        return None
+    extra = storage.get_company_extra(company_id)
+    privacy = storage.get_company_privacy(company_id)
+    requester_membership = storage.get_company_membership(requester_id)
     summary = {
-        "workspace": "company", "mode": "profile", "user_id": target_user_id,
-        "verified": storage.is_company_verified(target_user_id), **extra,
+        "workspace": "company", "mode": "profile", "user_id": target_user_id, "company_id": company_id,
+        "verified": storage.is_company_verified(company_id), **extra,
+        "is_member": requester_membership is not None and requester_membership["company_id"] == company_id,
+        "can_join": requester_membership is None and requester_id != company_id,
     }
     summary = _apply_company_privacy(summary, privacy)
 
@@ -482,6 +515,7 @@ def _company_profile_response(storage: GuroStorage, requester_id: int, target_us
         "workspace": "company",
         "mode": "profile",
         "user_id": target_user_id,
+        "company_id": company_id,
         "name": summary.get("name"),
         "verified": summary.get("verified"),
         "locked": True,
@@ -823,10 +857,28 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
     if tx_hash and tx_network not in GC.TX_NETWORKS:
         return web.json_response({"error": "INVALID_NETWORK"}, status=400)
 
+    # as_company (27.08.2026, ТЗ "Роли и команда", раздел 6) — "действую как
+    # <бренд>": сделка попадает в общую историю компании, лимит новых заявок
+    # (раздел 2.2 ТЗ "Тарифы и лимиты", "30 на аккаунт компании в целом")
+    # считается на компанию, а не персонально на участника.
+    company_id = None
+    if body.get("as_company"):
+        membership = storage.get_company_membership(user["id"])
+        if membership is None or not storage.is_company_subscribed(membership["company_id"]):
+            return web.json_response({"error": "COMPANY_SUBSCRIPTION_REQUIRED"}, status=402)
+        company_id = membership["company_id"]
+
     # Раздел 2.2 ТЗ "Тарифы и лимиты" — лимит НОВЫХ заявок/день (не путать с
     # RATE_LIMIT_HOURS в create_partnership — тот про повтор ОДНОЙ пары).
-    daily_limit = _new_requests_per_day_limit(storage, user["id"])
-    if storage.count_new_partnerships_today(user["id"]) >= daily_limit:
+    if company_id is not None:
+        daily_limit = storage.get_effective_limit(
+            company_id, GC.LIMIT_KEY_REQUESTS_COMPANY, GC.LIMIT_NEW_REQUESTS_PER_DAY_COMPANY,
+        )
+        today_count = storage.count_new_company_partnerships_today(company_id)
+    else:
+        daily_limit = _new_requests_per_day_limit(storage, user["id"])
+        today_count = storage.count_new_partnerships_today(user["id"])
+    if today_count >= daily_limit:
         return web.json_response(
             {"error": "DAILY_REQUEST_LIMIT_REACHED", "resets_at": _next_utc_midnight_iso()}, status=429,
         )
@@ -863,6 +915,7 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
             review=review, amount_visible=amount_visible, tx_hash=tx_hash,
             ptype=ptype, tx_network=tx_network, tx_verified=tx_verified,
             tx_company_match=tx_company_match, tx_verify_error=tx_verify_error,
+            company_id=company_id,
         )
     except ValueError as e:
         return web.json_response({"error": str(e)}, status=409)
@@ -1205,21 +1258,37 @@ async def handle_set_recruiter_privacy(request: web.Request) -> web.Response:
 
 async def handle_set_company_profile_field(request: web.Request) -> web.Response:
     """Редактирование витрины кабинета "Компания" (16.08.2026) — зеркало
-    handle_set_recruiter_profile_field выше."""
+    handle_set_recruiter_profile_field выше. 27.08.2026 (ТЗ "Роли и команда",
+    раздел 2) — Владелец И Админ/Рекрутер редактируют НАРАВНЕ, требуется
+    только членство в компании (любая роль), не конкретно владение."""
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
+    membership = storage.get_company_membership(user["id"])
+    if membership is None:
+        return web.json_response({"error": "NOT_A_COMPANY_MEMBER"}, status=403)
+    company_id = membership["company_id"]
     body = await request.json()
     field = str(body.get("field", ""))
     value = str(body.get("value", "")).strip()[:2000] or None
     try:
-        extra = storage.set_company_extra_field(user["id"], field, value)
+        extra = storage.set_company_extra_field(company_id, field, value)
     except ValueError:
         return web.json_response({"error": "UNKNOWN_FIELD"}, status=400)
     # "Тип компании" -> "Другое" (26.08.2026, ТЗ "Компания. каб", раздел 5) —
     # не сразу в справочник, логируется для последующего review, та же
     # логика, что у нестандартных должностей вакансий.
     if field == "company_type_other" and value:
-        storage.log_company_other_type(user["id"], value)
+        storage.log_company_other_type(company_id, value)
+    # Раздел 1.2 ТЗ "Роли и команда" — "система проверяет на совпадение по
+    # названию, нестрогое сравнение". Мягкое предупреждение, НЕ блокирует
+    # сохранение (см. GuroStorage.find_similar_companies) — в ТЗ не описан
+    # явный блокирующий сценарий, а не давать сохранить уже введённое имя
+    # было бы хуже пустого предупреждения.
+    if field == "name" and value:
+        similar = storage.find_similar_companies(value, exclude_company_id=company_id)
+        if similar:
+            extra = dict(extra)
+            extra["similar_companies"] = [{"name": r["name"]} for r in similar[:5]]
     return web.json_response(extra)
 
 
@@ -1229,21 +1298,243 @@ async def handle_request_company_verification(request: web.Request) -> web.Respo
     администратором в /admin (handlers/admin_guro.py, см. раздел 2 ТЗ)."""
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
-    storage.request_company_verification(user["id"])
+    membership = storage.get_company_membership(user["id"])
+    if membership is None:
+        return web.json_response({"error": "NOT_A_COMPANY_MEMBER"}, status=403)
+    storage.request_company_verification(membership["company_id"])
     return web.json_response({"ok": True})
 
 
 async def handle_set_company_privacy(request: web.Request) -> web.Response:
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
+    membership = storage.get_company_membership(user["id"])
+    if membership is None:
+        return web.json_response({"error": "NOT_A_COMPANY_MEMBER"}, status=403)
     body = await request.json()
     field = str(body.get("field", ""))
     value = bool(body.get("value"))
     try:
-        privacy = storage.set_company_privacy_field(user["id"], field, value)
+        privacy = storage.set_company_privacy_field(membership["company_id"], field, value)
     except ValueError:
         return web.json_response({"error": "UNKNOWN_FIELD"}, status=400)
     return web.json_response(privacy)
+
+
+async def handle_create_company(request: web.Request) -> web.Response:
+    """Явное создание компании (раздел 1 ТЗ "Роли и управление командой") —
+    основатель сразу становится Владельцем (см. GuroStorage.
+    get_or_create_company_profile — заводит и профиль, и membership-строку
+    role=owner одним вызовом). similar_companies — раздел 1.2 ТЗ, мягкое
+    предупреждение о похожем названии, НЕ блокирует создание."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    if storage.get_company_membership(user["id"]) is not None:
+        return web.json_response({"error": "ALREADY_IN_COMPANY"}, status=409)
+    body = await request.json()
+    name = str(body.get("name", "")).strip()[:200]
+    if not name:
+        return web.json_response({"error": "NAME_REQUIRED"}, status=400)
+    similar = storage.find_similar_companies(name)
+    storage.get_or_create_company_profile(user["id"])
+    storage.set_company_extra_field(user["id"], "name", name)
+    for field in ("vertical", "website", "description", "logo_url", "cover_url", "company_types", "company_type_other"):
+        if field in body:
+            value = str(body.get(field, "")).strip()[:2000] or None
+            try:
+                storage.set_company_extra_field(user["id"], field, value)
+            except ValueError:
+                pass
+    summary = _company_summary(storage, user["id"])
+    if similar:
+        summary["similar_companies"] = [{"name": r["name"]} for r in similar[:5]]
+    return web.json_response(summary)
+
+
+async def _notify_user(bot_token: str, user_id: int, text: str) -> None:
+    bot = Bot(token=bot_token)
+    async with bot:
+        await bot.send_message(user_id, text)
+
+
+async def handle_company_join_request(request: web.Request) -> web.Response:
+    """Раздел 3.1 ТЗ "Роли и команда" — кнопка "Запросить присоединение" на
+    карточке чужой компании; company_id берётся с той же карточки (см.
+    _company_profile_response). Уведомление уходит Владельцу — по аналогии
+    с уже существующим _notify_confirmer (см. раздел 3.1, п.4 ТЗ)."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    try:
+        company_id = int(body.get("company_id"))
+    except (TypeError, ValueError):
+        return web.json_response({"error": "COMPANY_NOT_FOUND"}, status=404)
+    position_text = str(body.get("position_text", "")).strip()[:200] or None
+    try:
+        req = storage.create_join_request(company_id, user["id"], position_text)
+    except ValueError as e:
+        code = str(e)
+        status = 404 if code == "COMPANY_NOT_FOUND" else 409
+        return web.json_response({"error": code}, status=status)
+
+    owner_row = next(
+        (m for m in storage.list_company_members(company_id) if m["role"] == GC.COMPANY_ROLE_OWNER), None,
+    )
+    if owner_row is not None:
+        requester_profile = storage.get_profile(user["id"])
+        requester_name = (requester_profile["username"] if requester_profile else None) or f"id{user['id']}"
+        company_extra = storage.get_company_extra(company_id)
+        text = f"📥 Новый запрос на присоединение к команде «{company_extra.get('name') or 'вашей компании'}»: @{requester_name}"
+        if position_text:
+            text += f" — {position_text}"
+        text += "."
+        try:
+            await _notify_user(settings.bot_token, owner_row["user_id"], text)
+        except Exception:  # noqa: BLE001
+            logger.exception("guro_id: не удалось уведомить владельца компании %s о заявке", company_id)
+    return web.json_response({"id": req["id"], "status": req["status"]})
+
+
+async def handle_get_company_team(request: web.Request) -> web.Response:
+    """Экран "Команда" (раздел 3.2 ТЗ) — участники видны всем участникам,
+    заявки на присоединение — только Владельцу (Админ их не видит)."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    membership = storage.get_company_membership(user["id"])
+    if membership is None:
+        return web.json_response({"error": "NOT_A_COMPANY_MEMBER"}, status=403)
+    company_id = membership["company_id"]
+    members = storage.list_company_members(company_id)
+    out_members = []
+    for m in members:
+        profile = storage.get_profile(m["user_id"])
+        out_members.append({
+            "user_id": m["user_id"],
+            "role": m["role"],
+            "position_text": m["position_text"],
+            "name": profile["name"] if profile else None,
+            "username": profile["username"] if profile else None,
+            "joined_at": m["joined_at"],
+        })
+    data = {
+        "company_id": company_id,
+        "my_role": membership["role"],
+        "member_count": len(members),
+        "member_limit": storage.company_member_limit(company_id),
+        "members": out_members,
+    }
+    if membership["role"] == GC.COMPANY_ROLE_OWNER:
+        requests_rows = storage.list_join_requests(company_id, status=GC.JOIN_REQUEST_PENDING)
+        out_requests = []
+        for r in requests_rows:
+            profile = storage.get_profile(r["user_id"])
+            out_requests.append({
+                "id": r["id"],
+                "user_id": r["user_id"],
+                "position_text": r["position_text"],
+                "name": profile["name"] if profile else None,
+                "username": profile["username"] if profile else None,
+                "created_at": r["created_at"],
+            })
+        data["requests"] = out_requests
+        approvals_limit = storage.get_effective_limit(
+            company_id, GC.LIMIT_KEY_COMPANY_APPROVALS_PER_DAY, GC.LIMIT_COMPANY_APPROVALS_PER_DAY,
+        )
+        data["approvals_left_today"] = max(0, approvals_limit - storage.count_new_company_approvals_today(company_id))
+    return web.json_response(data)
+
+
+_TEAM_ERROR_STATUS = {
+    "NOT_FOUND": 404, "NOT_OWNER": 403, "APPLICANT_ALREADY_IN_COMPANY": 409,
+    "MEMBER_LIMIT_REACHED": 409, "DAILY_APPROVAL_LIMIT_REACHED": 429,
+}
+
+
+async def handle_approve_join_request(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        request_id = int(request.match_info["request_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    req_before = storage.get_join_request(request_id)
+    try:
+        req = storage.approve_join_request(request_id, user["id"])
+    except ValueError as e:
+        code = str(e)
+        error_body = {"error": code}
+        if code == "DAILY_APPROVAL_LIMIT_REACHED":
+            error_body["resets_at"] = _next_utc_midnight_iso()
+        if code == "MEMBER_LIMIT_REACHED" and req_before is not None:
+            error_body["limit"] = storage.company_member_limit(req_before["company_id"])
+        return web.json_response(error_body, status=_TEAM_ERROR_STATUS.get(code, 400))
+    try:
+        company_extra = storage.get_company_extra(req["company_id"])
+        await _notify_user(
+            settings.bot_token, req["user_id"],
+            f"✅ «{company_extra.get('name') or 'Компания'}» подтвердил(а) ваше присоединение к команде в GURO ID.",
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("guro_id: не удалось уведомить %s об одобрении заявки", req["user_id"])
+    return web.json_response({"id": req["id"], "status": req["status"]})
+
+
+async def handle_reject_join_request(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        request_id = int(request.match_info["request_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    if not storage.reject_join_request(request_id, user["id"]):
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    return web.json_response({"status": "rejected"})
+
+
+async def handle_remove_company_member(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    membership = storage.get_company_membership(user["id"])
+    if membership is None:
+        return web.json_response({"error": "NOT_A_COMPANY_MEMBER"}, status=403)
+    try:
+        target_id = int(request.match_info["user_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    if not storage.remove_company_member(membership["company_id"], user["id"], target_id):
+        return web.json_response({"error": "NOT_ALLOWED"}, status=403)
+    try:
+        company_extra = storage.get_company_extra(membership["company_id"])
+        await _notify_user(
+            settings.bot_token, target_id,
+            f"👋 Вас удалили из команды «{company_extra.get('name') or 'компании'}» в GURO ID. "
+            "История ваших подтверждённых сделок сохранена в вашем профиле.",
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("guro_id: не удалось уведомить %s об удалении из команды", target_id)
+    return web.json_response({"ok": True})
+
+
+async def handle_transfer_company_ownership(request: web.Request) -> web.Response:
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    membership = storage.get_company_membership(user["id"])
+    if membership is None:
+        return web.json_response({"error": "NOT_A_COMPANY_MEMBER"}, status=403)
+    try:
+        target_id = int(request.match_info["user_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    if not storage.transfer_company_ownership(membership["company_id"], user["id"], target_id):
+        return web.json_response({"error": "NOT_ALLOWED"}, status=403)
+    try:
+        company_extra = storage.get_company_extra(membership["company_id"])
+        name = company_extra.get("name") or "компании"
+        await _notify_user(settings.bot_token, target_id, f"👑 Вы стали Владельцем «{name}» в GURO ID.")
+        await _notify_user(settings.bot_token, user["id"], f"ℹ️ Вы передали роль Владельца «{name}» другому участнику.")
+    except Exception:  # noqa: BLE001
+        logger.exception("guro_id: не удалось уведомить о передаче владения компанией %s", membership["company_id"])
+    return web.json_response({"ok": True})
 
 
 async def handle_set_work_status(request: web.Request) -> web.Response:
@@ -1462,11 +1753,12 @@ def _vacancy_poster_summary(storage: GuroStorage, row) -> dict:
 
 
 def _vacancy_public(storage: GuroStorage, row, *, viewer_id: int | None = None) -> dict:
-    """viewer_id (26.08.2026) — если передан и равен author_id, подмешивает
+    """viewer_id (26.08.2026) — если передан и равен author_id (или, с
+    27.08.2026, ТЗ "Роли и команда" — участник той же компании), подмешивает
     "владельческие" поля (счётчики просмотров/откликов, closed_reason) —
     та же карточка, публичная и "моя", просто с доп. полями для владельца
     (раздел 4/7, "Три состояния карточки")."""
-    is_owner = viewer_id is not None and viewer_id == row["author_id"]
+    is_owner = viewer_id is not None and storage.vacancy_access_allowed(row, viewer_id)
     data = {
         "id": row["id"],
         "author_id": row["author_id"],
@@ -1496,6 +1788,10 @@ def _vacancy_public(storage: GuroStorage, row, *, viewer_id: int | None = None) 
         data["views_count"] = row["views_count"]
         data["responses_count"] = storage.count_vacancy_responses(row["id"])
         data["closed_reason"] = row["closed_reason"]
+        # published_by_user_id (27.08.2026, ТЗ "Роли и команда", раздел 6) —
+        # "какой конкретно участник команды это сделал", для внутренней
+        # аналитики компании; для recruiter-вакансий совпадает с author_id.
+        data["published_by_user_id"] = row["published_by_user_id"] or row["author_id"]
     return data
 
 
@@ -1621,27 +1917,31 @@ def _active_vacancies_limit(storage: GuroStorage, user_id: int, workspace: str) 
 async def handle_create_vacancy(request: web.Request) -> web.Response:
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
-    # Публикует подписчик Рекрутер ИЛИ Компания (раздел 1 ТЗ) — воркспейс
-    # выбирает фронт явно (кнопка "Опубликовать вакансию" живёт внутри
-    # конкретного кабинета), тут только сверяем, что подписка НА НЕГО реальна.
+    # Публикует подписчик Рекрутер ИЛИ УЧАСТНИК компании (раздел 1 ТЗ;
+    # 27.08.2026, ТЗ "Роли и команда" — Владелец и Админ/Рекрутер публикуют
+    # наравне, см. vacancy_access_allowed). Воркспейс выбирает фронт явно.
     body = await request.json()
     author_workspace = str(body.get("author_workspace", "recruiter"))
     if author_workspace == "company":
-        if not storage.is_company_subscribed(user["id"]):
+        membership = storage.get_company_membership(user["id"])
+        if membership is None or not storage.is_company_subscribed(membership["company_id"]):
             return web.json_response({"error": "COMPANY_SUBSCRIPTION_REQUIRED"}, status=402)
+        limit_owner_id = membership["company_id"]
     else:
         author_workspace = "recruiter"
         if not storage.is_recruiter_subscribed(user["id"]):
             return web.json_response({"error": "RECRUITER_SUBSCRIPTION_REQUIRED"}, status=402)
+        limit_owner_id = user["id"]
 
-    # Раздел 2.3 ТЗ "Тарифы и лимиты" — два независимых лимита разом.
-    new_per_day = storage.get_effective_limit(user["id"], GC.LIMIT_KEY_NEW_VACANCIES, GC.LIMIT_NEW_VACANCIES_PER_DAY)
-    if storage.count_new_vacancies_today(user["id"]) >= new_per_day:
+    # Раздел 2.3 ТЗ "Тарифы и лимиты" — два независимых лимита разом,
+    # общих на ВСЮ команду компании (не персональных на участника).
+    new_per_day = storage.get_effective_limit(limit_owner_id, GC.LIMIT_KEY_NEW_VACANCIES, GC.LIMIT_NEW_VACANCIES_PER_DAY)
+    if storage.count_new_vacancies_today(limit_owner_id) >= new_per_day:
         return web.json_response(
             {"error": "DAILY_VACANCY_LIMIT_REACHED", "resets_at": _next_utc_midnight_iso()}, status=429,
         )
-    active_limit = _active_vacancies_limit(storage, user["id"], author_workspace)
-    if storage.count_active_vacancies(user["id"], workspace=author_workspace) >= active_limit:
+    active_limit = _active_vacancies_limit(storage, limit_owner_id, author_workspace)
+    if storage.count_active_vacancies(limit_owner_id, workspace=author_workspace) >= active_limit:
         return web.json_response({"error": "ACTIVE_VACANCY_LIMIT_REACHED", "limit": active_limit}, status=429)
 
     fields = _parse_vacancy_fields(body)
@@ -1656,7 +1956,8 @@ async def handle_create_vacancy(request: web.Request) -> web.Response:
         duration_days = GC.VACANCY_DURATION_DEFAULT
 
     vacancy = storage.create_vacancy(
-        user["id"], author_workspace=author_workspace, duration_days=duration_days,
+        limit_owner_id, author_workspace=author_workspace, duration_days=duration_days,
+        published_by_user_id=user["id"],
         title=fields.get("title", ""), vertical=fields.get("vertical"), grade=fields.get("grade"),
         position=fields.get("position"), position_is_other=fields.get("position_is_other", False),
         location=fields.get("location"), work_format=fields.get("work_format"),
@@ -1719,11 +2020,14 @@ async def handle_resume_vacancy(request: web.Request) -> web.Response:
     except ValueError:
         return web.json_response({"error": "NOT_FOUND"}, status=404)
     row = storage.get_vacancy(vacancy_id)
-    if row is None or row["author_id"] != user["id"]:
+    if row is None or not storage.vacancy_access_allowed(row, user["id"]):
         return web.json_response({"error": "NOT_FOUND"}, status=404)
     workspace = row["author_workspace"] or "recruiter"
-    active_limit = _active_vacancies_limit(storage, user["id"], workspace)
-    if storage.count_active_vacancies(user["id"], workspace=workspace) >= active_limit:
+    # row["author_id"] — уже правильный "владелец лимита" в обоих случаях:
+    # для recruiter-вакансии это сам человек, для company-вакансии — id
+    # компании (лимит общий на всю команду, см. ТЗ "Роли и команда").
+    active_limit = _active_vacancies_limit(storage, row["author_id"], workspace)
+    if storage.count_active_vacancies(row["author_id"], workspace=workspace) >= active_limit:
         return web.json_response({"error": "ACTIVE_VACANCY_LIMIT_REACHED", "limit": active_limit}, status=429)
     if not storage.resume_vacancy(vacancy_id, user["id"]):
         return web.json_response({"error": "NOT_FOUND"}, status=404)
@@ -1820,7 +2124,8 @@ def _response_public(storage: GuroStorage, row) -> dict:
 
 
 async def handle_list_vacancy_responses(request: web.Request) -> web.Response:
-    """Отклики ПО ОДНОЙ вакансии (раздел 5.2) — только владелец."""
+    """Отклики ПО ОДНОЙ вакансии (раздел 5.2) — владелец или (27.08.2026,
+    ТЗ "Роли и команда") любой участник той же компании."""
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
     try:
@@ -1828,7 +2133,7 @@ async def handle_list_vacancy_responses(request: web.Request) -> web.Response:
     except ValueError:
         return web.json_response({"error": "NOT_FOUND"}, status=404)
     vacancy = storage.get_vacancy(vacancy_id)
-    if vacancy is None or vacancy["author_id"] != user["id"]:
+    if vacancy is None or not storage.vacancy_access_allowed(vacancy, user["id"]):
         return web.json_response({"error": "NOT_FOUND"}, status=404)
     status = request.query.get("status") or None
     rows = storage.list_vacancy_responses(vacancy_id, status=status)
@@ -2107,6 +2412,14 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/company/profile", handle_set_company_profile_field)
     app.router.add_post("/api/company/privacy", handle_set_company_privacy)
     app.router.add_post("/api/company/verification/request", handle_request_company_verification)
+    # Роли и команда (ТЗ "Роли и управление командой", 27.08.2026).
+    app.router.add_post("/api/company/create", handle_create_company)
+    app.router.add_post("/api/company/join_request", handle_company_join_request)
+    app.router.add_get("/api/company/team", handle_get_company_team)
+    app.router.add_post("/api/company/team/requests/{request_id}/approve", handle_approve_join_request)
+    app.router.add_post("/api/company/team/requests/{request_id}/reject", handle_reject_join_request)
+    app.router.add_post("/api/company/team/members/{user_id}/remove", handle_remove_company_member)
+    app.router.add_post("/api/company/team/members/{user_id}/transfer", handle_transfer_company_ownership)
     app.router.add_post("/api/company/address", handle_submit_company_address)
     app.router.add_get("/api/company/addresses", handle_list_company_addresses)
     app.router.add_post("/api/partnerships/{id}/rate", handle_submit_rating)

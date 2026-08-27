@@ -60,7 +60,7 @@ export function searchByUserId(userId, { workspace } = {}) {
 
 export function createPartnership({
   confirmerUsername, vertical, geo, offer, amountReceived, amountPaid, review, amountVisible, txHash,
-  ptype, txNetwork,
+  ptype, txNetwork, asCompany,
 }) {
   return request("/api/partnerships", {
     method: "POST",
@@ -76,6 +76,10 @@ export function createPartnership({
       tx_hash: txHash || null,
       ptype,
       tx_network: txHash ? txNetwork : null,
+      // as_company (27.08.2026, ТЗ "Роли и команда") — "действую как
+      // компания": сделка попадает в общую историю компании (см. company_id
+      // в partnerships), лимит новых заявок считается на компанию.
+      as_company: !!asCompany,
     }),
   });
 }
@@ -277,6 +281,40 @@ export function setCompanyPrivacyField(field, value) {
 // эндпоинт только фиксирует запрос, реальная сверка — админом в /admin.
 export function requestCompanyVerification() {
   return request("/api/company/verification/request", { method: "POST" });
+}
+
+// Роли и команда (27.08.2026, ТЗ "Роли и управление командой") — компания
+// теперь МНОГИХ людей: создание, запрос на присоединение, экран "Команда"
+// (участники + заявки), одобрение/отклонение/удаление/передача владения.
+export function createCompany(fields) {
+  return request("/api/company/create", { method: "POST", body: JSON.stringify(fields) });
+}
+
+export function requestJoinCompany(companyId, positionText) {
+  return request("/api/company/join_request", {
+    method: "POST",
+    body: JSON.stringify({ company_id: companyId, position_text: positionText || null }),
+  });
+}
+
+export function getCompanyTeam() {
+  return request("/api/company/team");
+}
+
+export function approveJoinRequest(requestId) {
+  return request(`/api/company/team/requests/${encodeURIComponent(requestId)}/approve`, { method: "POST" });
+}
+
+export function rejectJoinRequest(requestId) {
+  return request(`/api/company/team/requests/${encodeURIComponent(requestId)}/reject`, { method: "POST" });
+}
+
+export function removeCompanyMember(userId) {
+  return request(`/api/company/team/members/${encodeURIComponent(userId)}/remove`, { method: "POST" });
+}
+
+export function transferCompanyOwnership(userId) {
+  return request(`/api/company/team/members/${encodeURIComponent(userId)}/transfer`, { method: "POST" });
 }
 
 export function setWorkStatus(status) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { search, searchByUserId, browseVertical, browseResumes, ApiError } from "../api.js";
+import { search, searchByUserId, browseVertical, browseResumes, requestJoinCompany, ApiError } from "../api.js";
 import {
   Msg,
   MetricsRow,
@@ -132,6 +132,64 @@ function RecruiterResultCard({ p, onBackToPersonal, onWrite }) {
 
 // Карточка кабинета "Компания" контрагента (Фаза 5, 17.08.2026) — зеркало
 // RecruiterResultCard: бренд-страница работодателя, без рейтинга/партнёрств.
+// "Запросить присоединение" (27.08.2026, ТЗ "Роли и управление командой",
+// раздел 3.1) — с карточки ЧУЖОЙ компании, если смотрящий пока не Владелец
+// и не Админ ни в одной компании (can_join, см. _company_profile_response).
+function JoinCompanyForm({ companyId }) {
+  const { t } = useLang();
+  const [position, setPosition] = useState("");
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState({ busy: false, done: false, error: null });
+
+  async function submit(e) {
+    e.preventDefault();
+    setState({ busy: true, done: false, error: null });
+    try {
+      await requestJoinCompany(companyId, position.trim() || null);
+      setState({ busy: false, done: true, error: null });
+      haptic("success");
+    } catch (error) {
+      haptic("error");
+      setState({
+        busy: false, done: false,
+        error: error instanceof ApiError && error.code === "ALREADY_REQUESTED"
+          ? t("team.join.alreadyRequested")
+          : error instanceof ApiError && error.code === "ALREADY_IN_COMPANY"
+            ? t("team.join.alreadyInCompany")
+            : t("team.join.error"),
+      });
+    }
+  }
+
+  if (state.done) {
+    return <div className="partner-meta" style={{ marginTop: 10 }}>{t("team.join.sentOk")}</div>;
+  }
+
+  if (!open) {
+    return (
+      <button type="button" className="btn secondary" style={{ marginTop: 10 }} onClick={() => setOpen(true)}>
+        {t("team.join.requestBtn")}
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} style={{ marginTop: 10 }}>
+      <label>{t("team.join.positionLabel")}</label>
+      <input
+        type="text"
+        placeholder={t("team.join.positionPlaceholder")}
+        value={position}
+        onChange={(e) => setPosition(e.target.value)}
+      />
+      <button className="btn" type="submit" disabled={state.busy}>
+        {state.busy ? t("team.join.submitting") : t("team.join.submitBtn")}
+      </button>
+      <Msg type="error">{state.error}</Msg>
+    </form>
+  );
+}
+
 function CompanyResultCard({ p, onBackToPersonal }) {
   const { t } = useLang();
   const heading = p.name || (p.username ? `@${p.username}` : t("common.noName"));
@@ -147,7 +205,10 @@ function CompanyResultCard({ p, onBackToPersonal }) {
           <div className="profile-avatar-fallback">{initialOf(p.name)}</div>
         )}
         <div className="profile-header-info">
-          <h2 className={p.name === null ? "hidden-value" : ""}>{heading}</h2>
+          <h2 className={p.name === null ? "hidden-value" : ""}>
+            {heading}
+            {p.verified && <span className="company-verified-badge" title={t("company.verify.verified")}>✓</span>}
+          </h2>
         </div>
       </div>
       <IdentityLine label={t("companyCard.vertical")} value={p.vertical} />
@@ -158,6 +219,8 @@ function CompanyResultCard({ p, onBackToPersonal }) {
           <a href={ensureHttpUrl(p.website)} target="_blank" rel="noopener noreferrer">{p.website}</a>
         </div>
       )}
+      {p.can_join && <JoinCompanyForm companyId={p.company_id} />}
+      {p.is_member && <div className="partner-meta" style={{ marginTop: 10 }}>{t("team.join.alreadyMember")}</div>}
     </div>
   );
 }

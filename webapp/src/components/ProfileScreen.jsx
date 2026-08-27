@@ -15,6 +15,7 @@ import { RecruiterHistorySubscreen } from "./profile/RecruiterHistorySubscreen.j
 import { RecruiterCandidatesScreen } from "./profile/RecruiterCandidatesScreen.jsx";
 import { RecruiterResponsesSubscreen } from "./profile/RecruiterResponsesSubscreen.jsx";
 import { CompanyHub } from "./profile/CompanyHub.jsx";
+import { TeamScreen } from "./profile/TeamScreen.jsx";
 import { ConfirmScreen } from "./ConfirmScreen.jsx";
 import { useLang } from "../i18n.jsx";
 
@@ -258,6 +259,12 @@ export function ProfileScreen({
   }
 
   if (workspace === "company") {
+    if (sub === "company-confirm") {
+      return <ConfirmScreen asCompany onBack={() => setSub(null)} />;
+    }
+    if (sub === "company-team") {
+      return <TeamScreen onBack={() => setSub(null)} />;
+    }
     return (
       <div>
         <WorkspaceSwitch workspace={workspace} onChange={switchWorkspace} />
@@ -269,6 +276,8 @@ export function ProfileScreen({
             onFieldSaved={updateCompanyField}
             onPrivacyChange={updateCompanyPrivacy}
             onNavigateTab={onNavigate}
+            onNavigateSub={setSub}
+            onCreated={(summary) => setCompanyState({ loading: false, data: summary, error: null })}
             onSubscribed={() =>
               setCompanyState((s) => ({ ...s, data: { ...s.data, is_company_subscribed: true } }))
             }

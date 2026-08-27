@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+import re
+from pathlib import Path
 
 from telegram import MenuButtonWebApp, Update, WebAppInfo
 from telegram.ext import Application, ContextTypes, PersistenceInput, PicklePersistence
@@ -39,13 +41,32 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.exception("Unhandled error", exc_info=context.error)
 
 
+def _webapp_asset_version() -> str:
+    """Cache-busting версия Menu Button (27.08.2026, багрепорт "не вижу новый
+    дизайн") — Telegram WebView привязывает свой кеш к ТОЧНОЙ строке URL
+    Menu Button, а она регистрируется один раз через set_chat_menu_button и
+    после этого не меняется сама по себе между рестартами бота, даже если
+    задеплоен новый webapp/dist — юзер видел старую версию, пока не менялся
+    сам URL. Версия — хеш из имени собранного JS-файла (Vite меняет его при
+    каждой пересборке), поэтому сама синхронизируется с тем, что реально
+    задеплоено, без ручного бампа номера при каждом деплое фронтенда."""
+    try:
+        html = (Path(__file__).resolve().parent / "webapp" / "dist" / "index.html").read_text()
+        m = re.search(r"assets/index-([A-Za-z0-9_-]+)\.js", html)
+        return m.group(1) if m else "0"
+    except OSError:
+        return "0"
+
+
 async def _post_init(app: Application) -> None:
     """Menu Button (кнопка слева от поля ввода в личке) открывает GURO ID
-    Mini App напрямую — идемпотентно, безопасно вызывать при каждом старте."""
+    Mini App напрямую — идемпотентно, безопасно вызывать при каждом старте.
+    ?v=<hash> — см. _webapp_asset_version."""
     settings: Settings = app.bot_data["settings"]
+    webapp_url = f"{settings.guro_id_webapp_url.rstrip('/')}/?v={_webapp_asset_version()}"
     try:
         await app.bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(text="GURO ID", web_app=WebAppInfo(url=settings.guro_id_webapp_url))
+            menu_button=MenuButtonWebApp(text="GURO ID", web_app=WebAppInfo(url=webapp_url))
         )
     except Exception:  # noqa: BLE001
         logger.exception("guro_id: не удалось установить Menu Button")

@@ -53,12 +53,24 @@ const PRODUCT_CONFIG = {
     hintKey: "subscribe.hintRecruiter",
     compareRows: RECRUITER_COMPARE_ROWS,
   },
-  company: {
+  // company_basic/company_pro (27.08.2026, ТЗ "Тарифы и лимиты") — ДВА тира
+  // одного кабинета "Компания", каждый свой "product" (см. _PRODUCT_PLANS в
+  // guro_id_api.py) — просто разные цены/лимиты, витрина и is_company_subscribed
+  // те же самые (см. CompanyHub.jsx — тир выбирается ДО первой оплаты).
+  company_basic: {
     workspace: "company",
     subscribedKey: "is_company_subscribed",
     expiresKey: "company_subscription_expires_at",
-    titleKey: "subscribe.titleCompany",
-    hintKey: "subscribe.hintCompany",
+    titleKey: "subscribe.titleCompanyBasic",
+    hintKey: "subscribe.hintCompanyBasic",
+    compareRows: COMPANY_COMPARE_ROWS,
+  },
+  company_pro: {
+    workspace: "company",
+    subscribedKey: "is_company_subscribed",
+    expiresKey: "company_subscription_expires_at",
+    titleKey: "subscribe.titleCompanyPro",
+    hintKey: "subscribe.hintCompanyPro",
     compareRows: COMPANY_COMPARE_ROWS,
   },
 };

@@ -3423,11 +3423,11 @@ async def _run_guro_id_api_sim():
                 check(resp.status == 200, "GET /api/plans -> 200 (публичный эндпойнт, без авторизации)")
                 body = await resp.json()
                 check(set(body["plans"].keys()) == {"monthly", "yearly"}, "/api/plans содержит оба тарифа")
-                check(body["plans"]["monthly"]["stars_price"] == 650, "месячный тариф = 650 звёзд (~$10)")
-                check(body["plans"]["yearly"]["stars_price"] == 6600, "годовой тариф = 6600 звёзд (~$99)")
-                check(body["plans"]["yearly"]["stars_price_full"] == 7800,
-                      "у годового тарифа есть 'полная' цена для скидочной плашки (650*12)")
-                check(body["plans"]["yearly"]["crypto_price_usd"] == round(6600 * GC.STARS_TO_USD_RATE, 2),
+                check(body["plans"]["monthly"]["stars_price"] == 400, "месячный тариф = 400 звёзд (~$6, ТЗ 'Тарифы и лимиты')")
+                check(body["plans"]["yearly"]["stars_price"] == 3350, "годовой тариф = 3350 звёзд (~$50)")
+                check(body["plans"]["yearly"]["stars_price_full"] == 4800,
+                      "у годового тарифа есть 'полная' цена для скидочной плашки (400*12)")
+                check(body["plans"]["yearly"]["crypto_price_usd"] == round(3350 * GC.STARS_TO_USD_RATE, 2),
                       "крипто-цена годового тарифа считается по STARS_TO_USD_RATE")
                 check(body["crypto_enabled"] is False, "crypto_enabled=False, пока не задан CRYPTOBOT_API_TOKEN")
 
@@ -3571,10 +3571,10 @@ async def _run_guro_id_api_sim():
                 resp = await client.get("/api/plans?product=recruiter")
                 check(resp.status == 200, "GET /api/plans?product=recruiter -> 200")
                 body = await resp.json()
-                check(body["plans"]["monthly"]["stars_price"] == 800, "кабинет рекрутера: месяц = 800⭐ (задано владельцем)")
-                check(body["plans"]["yearly"]["stars_price"] == 7000, "кабинет рекрутера: год = 7000⭐")
-                check(body["plans"]["yearly"]["stars_price_full"] == 9600,
-                      "кабинет рекрутера: 'полная' цена года = 800*12, для скидочной плашки")
+                check(body["plans"]["monthly"]["stars_price"] == 1250, "кабинет рекрутера: месяц = 1250⭐ (~$19, ТЗ 'Тарифы и лимиты')")
+                check(body["plans"]["yearly"]["stars_price"] == 11350, "кабинет рекрутера: год = 11350⭐ (~$170)")
+                check(body["plans"]["yearly"]["stars_price_full"] == 15000,
+                      "кабинет рекрутера: 'полная' цена года = 1250*12, для скидочной плашки")
 
                 resp = await client.post("/api/subscribe", headers=auth_100,
                                           json={"product": "recruiter", "plan": "monthly"})
@@ -3605,8 +3605,8 @@ async def _run_guro_id_api_sim():
                 # личного профиля, бренд-страница работодателя отдельно от
                 # конкретного рекрутера внутри неё (см. AskUserQuestion от
                 # 16.08.2026: "Компания — бренд-страница, Рекрутер — человек
-                # внутри неё"). Своя подписка, тот же price/механизм, что и
-                # у рекрутера (800⭐/мес, 7000⭐/год).
+                # внутри неё"). Своя подписка; с 27.08.2026 (ТЗ "Тарифы и
+                # лимиты") — два тира Basic/Pro вместо единой цены рекрутера.
                 resp = await client.get("/api/me?workspace=company", headers=auth_100)
                 check(resp.status == 200, "GET /api/me?workspace=company -> 200 (не требует своей анкеты)")
                 body = await resp.json()
@@ -3658,37 +3658,61 @@ async def _run_guro_id_api_sim():
                 body = await resp.json()
                 check(body["locked"] is True, "495 без базовой подписки -> locked=True и для company-карточки")
 
-                # тарифы/подписка/крипто-вебхук кабинета компании — та же
-                # цепочка, что у кабинета рекрутера, через product=company,
-                # та же цена (согласовано с владельцем 16.08.2026)
-                resp = await client.get("/api/plans?product=company")
-                check(resp.status == 200, "GET /api/plans?product=company -> 200")
+                # тарифы/подписка/крипто-вебхук кабинета компании — 27.08.2026
+                # (ТЗ "Тарифы и лимиты"): ТЕПЕРЬ два отдельных product/тира
+                # вместо одного (были 800⭐/7000⭐ на оба).
+                resp = await client.get("/api/plans?product=company_basic")
+                check(resp.status == 200, "GET /api/plans?product=company_basic -> 200")
                 body = await resp.json()
-                check(body["plans"]["monthly"]["stars_price"] == 800,
-                      "кабинет компании: месяц = 800⭐ (та же цена, что у рекрутера)")
-                check(body["plans"]["yearly"]["stars_price"] == 7000, "кабинет компании: год = 7000⭐")
-                check(body["plans"]["yearly"]["stars_price_full"] == 9600,
-                      "кабинет компании: 'полная' цена года = 800*12, для скидочной плашки")
+                check(body["plans"]["monthly"]["stars_price"] == 3250, "компания Basic: месяц = 3250⭐ (~$49)")
+                check(body["plans"]["yearly"]["stars_price"] == 28000, "компания Basic: год = 28000⭐ (~$420)")
+                check(body["plans"]["yearly"]["stars_price_full"] == 39000,
+                      "компания Basic: 'полная' цена года = 3250*12, для скидочной плашки")
+
+                resp = await client.get("/api/plans?product=company_pro")
+                check(resp.status == 200, "GET /api/plans?product=company_pro -> 200")
+                body = await resp.json()
+                check(body["plans"]["monthly"]["stars_price"] == 6600, "компания Pro: месяц = 6600⭐ (~$99)")
+                check(body["plans"]["yearly"]["stars_price"] == 56650, "компания Pro: год = 56650⭐ (~$850)")
+                check(body["plans"]["yearly"]["stars_price_full"] == 79200,
+                      "компания Pro: 'полная' цена года = 6600*12, для скидочной плашки")
 
                 resp = await client.post("/api/subscribe", headers=auth_100,
-                                          json={"product": "company", "plan": "monthly"})
-                check(resp.status == 200, "POST /api/subscribe product=company -> 200")
+                                          json={"product": "company_basic", "plan": "monthly"})
+                check(resp.status == 200, "POST /api/subscribe product=company_basic -> 200")
                 body = await resp.json()
                 check(body["invoice_link"] == "https://t.me/fake_invoice_link",
-                      "company subscribe тоже отдаёт invoice_link (общая платёжная цепочка)")
+                      "company_basic subscribe тоже отдаёт invoice_link (общая платёжная цепочка)")
+
+                resp = await client.post("/api/subscribe", headers=auth_100,
+                                          json={"product": "company_pro", "plan": "monthly"})
+                check(resp.status == 200, "POST /api/subscribe product=company_pro -> 200")
 
                 webhook_body_c = _json.dumps({
                     "update_type": "invoice_paid",
-                    "payload": {"payload": "guro_id_company_subscription:yearly:356"},
+                    "payload": {"payload": "guro_id_company_basic_subscription:yearly:356"},
                 }).encode()
                 good_sig_c = hmac.new(secret, webhook_body_c, hashlib.sha256).hexdigest()
                 resp = await client.post("/api/crypto/webhook", data=webhook_body_c,
                                           headers={"crypto-pay-api-signature": good_sig_c})
-                check(resp.status == 200, "crypto webhook company с верной подписью -> 200")
+                check(resp.status == 200, "crypto webhook company_basic с верной подписью -> 200")
                 check(app["storage"].is_company_subscribed(356),
-                      "crypto webhook company -> подписка компании активирована")
+                      "crypto webhook company_basic -> подписка компании активирована")
                 check(not app["storage"].is_subscribed(356),
                       "crypto webhook company НЕ активирует базовую GURO ID подписку (разные продукты)")
+                check(app["storage"].get_company_tier(356) == "basic",
+                      "crypto webhook company_basic проставляет company_tier='basic'")
+
+                webhook_body_c2 = _json.dumps({
+                    "update_type": "invoice_paid",
+                    "payload": {"payload": "guro_id_company_pro_subscription:yearly:357"},
+                }).encode()
+                good_sig_c2 = hmac.new(secret, webhook_body_c2, hashlib.sha256).hexdigest()
+                resp = await client.post("/api/crypto/webhook", data=webhook_body_c2,
+                                          headers={"crypto-pay-api-signature": good_sig_c2})
+                check(resp.status == 200, "crypto webhook company_pro с верной подписью -> 200")
+                check(app["storage"].get_company_tier(357) == "pro",
+                      "crypto webhook company_pro проставляет company_tier='pro'")
 
                 # has_recruiter_profile/has_company_profile на личном профиле
                 # (флаги для кнопок "Посмотреть как рекрутера/компанию" в
@@ -3704,6 +3728,14 @@ async def _run_guro_id_api_sim():
 
                 # --- Фаза 4 (12.08.2026, переписано 26.08.2026 под новую схему
                 # вакансий из ТЗ "Recruitment — ВАКАНСИИ") -----------------------
+                # auth_100 публикует НЕСКОЛЬКО вакансий подряд в этом тестовом
+                # блоке (проверяются разные аспекты доски/CRUD) — оверрайд
+                # дневного лимита новых публикаций (раздел 2.3 ТЗ "Тарифы и
+                # лимиты", по умолчанию 3/день), чтобы не смешивать это с
+                # целевыми тестами лимитов ниже (см. "Фаза 5"). Заодно первая
+                # проверка самого механизма оверрайда на живом аккаунте.
+                app["storage"].set_user_limit_override(100, GC.LIMIT_KEY_NEW_VACANCIES, 100)
+
                 resp = await client.get("/api/positions", headers=auth_200)
                 check(resp.status == 200, "GET /api/positions -> 200")
                 body = await resp.json()
@@ -4038,6 +4070,132 @@ async def _run_guro_id_api_sim():
                 check(497 not in [r["user_id"] for r in body["results"]],
                       "resumes=1 + vertical= сужает выдачу (resumeuser1 в Gambling, не Crypto)")
 
+                # --- Тарифы и лимиты (27.08.2026, ТЗ "Тарифы и лимиты") -------
+                # Конфиг/оверрайд (раздел 3 ТЗ) — глобальный слой + точечный
+                # оверрайд на аккаунт, оба уровня поверх дефолт-констант.
+                check(app["storage"].get_config("test.some.key", 42) == 42, "get_config без записи -> дефолт")
+                app["storage"].set_config("test.some.key", 99)
+                check(app["storage"].get_config("test.some.key", 42) == 99, "set_config переопределяет дефолт")
+                check(app["storage"].get_effective_limit(999999, "test.some.key", 42) == 99,
+                      "get_effective_limit без оверрайда на аккаунт -> глобальный конфиг")
+                app["storage"].set_user_limit_override(999999, "test.some.key", 5)
+                check(app["storage"].get_effective_limit(999999, "test.some.key", 42) == 5,
+                      "оверрайд на аккаунт побеждает глобальный конфиг")
+                check(app["storage"].list_user_limit_overrides(999999)[0]["value"] == "5",
+                      "list_user_limit_overrides видит запись")
+                check(app["storage"].clear_user_limit_override(999999, "test.some.key") is True,
+                      "clear_user_limit_override -> True (запись была)")
+                check(app["storage"].clear_user_limit_override(999999, "test.some.key") is False,
+                      "повторный clear -> False (уже нечего снимать)")
+                check(app["storage"].get_effective_limit(999999, "test.some.key", 42) == 99,
+                      "после clear снова действует глобальный конфиг")
+                check(app["storage"].count_new_partnerships_today(999999) == 0, "0 партнёрств у свежего аккаунта")
+                check(app["storage"].count_new_vacancies_today(999999) == 0, "0 вакансий у свежего аккаунта")
+
+                # Приоритет тира при выборе лимита (раздел 2.1/2.2 ТЗ) — если
+                # оплачены и Рекрутер, и Компания, действует более щедрый
+                # лимит Компании; активные вакансии считаются отдельно на
+                # каждый воркспейс, тир Компании тут ни при чём для Рекрутера.
+                st.save_profile({"user_id": 930, "username": "both_subs", "name": "Both"})
+                app["storage"].activate_recruiter_subscription(930, 30)
+                app["storage"].activate_company_subscription(930, 30, tier="pro")
+                check(guro_id_api._views_per_day_limit(app["storage"], 930) == GC.LIMIT_VIEWS_PER_DAY_COMPANY_PRO,
+                      "Рекрутер+Компания(Pro) разом -> действует лимит просмотров Компании Pro (более щедрый)")
+                check(guro_id_api._new_requests_per_day_limit(app["storage"], 930) == GC.LIMIT_NEW_REQUESTS_PER_DAY_COMPANY,
+                      "то же самое для лимита новых заявок")
+                check(guro_id_api._active_vacancies_limit(app["storage"], 930, "company") == GC.LIMIT_ACTIVE_VACANCIES_COMPANY_PRO,
+                      "потолок активных вакансий company-воркспейса — по тиру Pro")
+                check(guro_id_api._active_vacancies_limit(app["storage"], 930, "recruiter") == GC.LIMIT_ACTIVE_VACANCIES_RECRUITER,
+                      "потолок активных вакансий recruiter-воркспейса свой, не зависит от тира Компании")
+
+                # Лимит просмотров/день (раздел 2.1 ТЗ) — тестируем через
+                # оверрайд, чтобы не создавать десятки профилей.
+                st.save_profile({"user_id": 910, "username": "viewer_recruiter", "name": "Viewer R"})
+                app["storage"].activate_recruiter_subscription(910, 30)
+                app["storage"].set_user_limit_override(910, GC.LIMIT_KEY_VIEWS_RECRUITER, 2)
+                auth_910 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 910, "username": "viewer_recruiter"})}
+                st.save_profile({"user_id": 911, "username": "target_a", "name": "A"})
+                st.save_profile({"user_id": 912, "username": "target_b", "name": "B"})
+                st.save_profile({"user_id": 913, "username": "target_c", "name": "C"})
+
+                resp = await client.get("/api/search?username=target_a", headers=auth_910)
+                check(resp.status == 200, "1-й просмотр в пределах оверрайда (2) -> 200")
+                resp = await client.get("/api/search?username=target_b", headers=auth_910)
+                check(resp.status == 200, "2-й просмотр -> 200 (лимит на сегодня теперь исчерпан)")
+                resp = await client.get("/api/search?username=target_c", headers=auth_910)
+                check(resp.status == 429, "3-й просмотр в тот же день -> 429 VIEW_LIMIT_REACHED")
+                body = await resp.json()
+                check(body["error"] == "VIEW_LIMIT_REACHED", "код ошибки понятен")
+                check(body.get("resets_at"), "тело содержит resets_at (раздел 3 ТЗ, 'когда обновится')")
+
+                resp = await client.get("/api/search?username=viewer_recruiter", headers=auth_910)
+                check(resp.status == 200, "self-view никогда не считается и не лимитируется")
+
+                # Лимит новых заявок/день (раздел 2.2 ТЗ).
+                st.save_profile({"user_id": 920, "username": "req_tester", "name": "Req"})
+                auth_920 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 920, "username": "req_tester"})}
+                app["storage"].set_user_limit_override(920, GC.LIMIT_KEY_REQUESTS_PERSONAL, 1)
+                st.save_profile({"user_id": 921, "username": "req_target1", "name": "T1"})
+                st.save_profile({"user_id": 922, "username": "req_target2", "name": "T2"})
+
+                resp = await client.post("/api/partnerships", headers=auth_920,
+                                          json={"confirmer_username": "req_target1", "ptype": "deal"})
+                check(resp.status == 200, "1-я новая заявка в пределах оверрайда (1) -> 200")
+                resp = await client.post("/api/partnerships", headers=auth_920,
+                                          json={"confirmer_username": "req_target2", "ptype": "deal"})
+                check(resp.status == 429, "2-я заявка в тот же день (лимит=1) -> 429 DAILY_REQUEST_LIMIT_REACHED")
+                body = await resp.json()
+                check(body["error"] == "DAILY_REQUEST_LIMIT_REACHED" and body.get("resets_at"),
+                      "код + resets_at понятны")
+
+                # Лимиты вакансий (раздел 2.3 ТЗ): дневной лимит новых
+                # публикаций + потолок одновременно активных, независимо.
+                st.save_profile({"user_id": 940, "username": "vac_tester", "name": "VacT"})
+                auth_940 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 940, "username": "vac_tester"})}
+                app["storage"].activate_recruiter_subscription(940, 30)
+                app["storage"].set_user_limit_override(940, GC.LIMIT_KEY_NEW_VACANCIES, 2)
+
+                resp = await client.post("/api/vacancies", headers=auth_940, json={"title": "V1"})
+                check(resp.status == 200, "1-я вакансия в пределах оверрайда дневного лимита (2) -> 200")
+                resp = await client.post("/api/vacancies", headers=auth_940, json={"title": "V2"})
+                check(resp.status == 200, "2-я вакансия -> 200 (дневной лимит теперь исчерпан)")
+                resp = await client.post("/api/vacancies", headers=auth_940, json={"title": "V3"})
+                check(resp.status == 429, "3-я вакансия в тот же день -> 429 DAILY_VACANCY_LIMIT_REACHED")
+                body = await resp.json()
+                check(body["error"] == "DAILY_VACANCY_LIMIT_REACHED" and body.get("resets_at"),
+                      "код + resets_at понятны")
+
+                # Потолок ОДНОВРЕМЕННО активных — отдельный аккаунт, чтобы не
+                # смешивать с дневным лимитом публикаций выше.
+                st.save_profile({"user_id": 950, "username": "vac_active_tester", "name": "VacActive"})
+                auth_950 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 950, "username": "vac_active_tester"})}
+                app["storage"].activate_recruiter_subscription(950, 30)
+                app["storage"].set_user_limit_override(950, GC.LIMIT_KEY_NEW_VACANCIES, 10)
+                app["storage"].set_user_limit_override(950, GC.LIMIT_KEY_ACTIVE_VACANCIES_RECRUITER, 2)
+
+                resp = await client.post("/api/vacancies", headers=auth_950, json={"title": "A1"})
+                check(resp.status == 200, "1-я активная вакансия в пределах потолка (2) -> 200")
+                vac_a1_id = (await resp.json())["id"]
+                resp = await client.post("/api/vacancies", headers=auth_950, json={"title": "A2"})
+                check(resp.status == 200, "2-я активная вакансия -> 200 (потолок теперь исчерпан)")
+                vac_a2_id = (await resp.json())["id"]
+                resp = await client.post("/api/vacancies", headers=auth_950, json={"title": "A3"})
+                check(resp.status == 429, "3-я вакансия при потолке активных=2 -> 429 ACTIVE_VACANCY_LIMIT_REACHED")
+                body = await resp.json()
+                check(body["error"] == "ACTIVE_VACANCY_LIMIT_REACHED" and body.get("limit") == 2,
+                      "код + limit в теле понятны")
+
+                resp = await client.post(f"/api/vacancies/{vac_a2_id}/pause", headers=auth_950)
+                check(resp.status == 200, "пауза одной из активных -> 200 (освобождает место)")
+                app["storage"].set_user_limit_override(950, GC.LIMIT_KEY_ACTIVE_VACANCIES_RECRUITER, 1)
+                resp = await client.post(f"/api/vacancies/{vac_a2_id}/resume", headers=auth_950)
+                check(resp.status == 429,
+                      "возобновление ТОЖЕ сверяется с потолком активных — A1 один уже заполняет ужатый потолок (1)")
+                resp = await client.post(f"/api/vacancies/{vac_a1_id}/close", headers=auth_950)
+                check(resp.status == 200, "закрыть A1 -> 200 (освобождает место при потолке=1)")
+                resp = await client.post(f"/api/vacancies/{vac_a2_id}/resume", headers=auth_950)
+                check(resp.status == 200, "теперь возобновление проходит (0 активных < потолка 1)")
+
                 # --- личные сообщения внутри прилы (Фаза 1, 11.08.2026) -------
                 # ВАЖНО: auth_300 к этому моменту УЖЕ подписан (см. тест
                 # crypto-вебхука выше, user_id=300 получил подписку через него) —
@@ -4296,10 +4454,11 @@ async def _run_guro_partnerships_sim():
         check(not any(c[1] == 2 for c in context.bot.set_tag_calls),
               "recruiter-подписка не трогает статус-тег в чате (тот привязан только к базовой подписке)")
 
-        # Кабинет "Компания" (Фаза 5, 17.08.2026) — та же bot-side цепочка,
-        # ещё один product-префикс payload, своя таблица.
+        # Кабинет "Компания" (Фаза 5, 17.08.2026; 27.08.2026 — payload-префикс
+        # разделён на company_basic/company_pro, ТЗ "Тарифы и лимиты") — та
+        # же bot-side цепочка, оба тира пишут в ОДНУ таблицу company_profiles.
         msg3 = FakeMessage("", chat_id=3)
-        msg3.successful_payment = _FakeSuccessfulPayment("guro_id_company_subscription:yearly:3")
+        msg3.successful_payment = _FakeSuccessfulPayment("guro_id_company_basic_subscription:yearly:3")
         replies3 = []
 
         async def _capture_reply3(text, **kw):
@@ -4310,12 +4469,28 @@ async def _run_guro_partnerships_sim():
         u_payment3.message = msg3
         u_payment3.effective_user = FakeUser(3, "carol")
         await on_guro_successful_payment(u_payment3, context)
-        check(gstorage.is_company_subscribed(3), "successful_payment company -> подписка компании активирована")
+        check(gstorage.is_company_subscribed(3), "successful_payment company_basic -> подписка компании активирована")
         check(not gstorage.is_subscribed(3),
               "company-подписка НЕ активирует базовую GURO ID подписку (разные продукты/таблицы)")
-        check(any("компании" in t for t in replies3), "successful_payment company -> подтверждение про кабинет")
+        check(any("компании" in t for t in replies3), "successful_payment company_basic -> подтверждение про кабинет")
+        check(gstorage.get_company_tier(3) == "basic", "successful_payment company_basic -> тир 'basic'")
         check(not any(c[1] == 3 for c in context.bot.set_tag_calls),
               "company-подписка не трогает статус-тег в чате (тот привязан только к базовой подписке)")
+
+        msg4 = FakeMessage("", chat_id=4)
+        msg4.successful_payment = _FakeSuccessfulPayment("guro_id_company_pro_subscription:yearly:4")
+        replies4 = []
+
+        async def _capture_reply4(text, **kw):
+            replies4.append(text)
+
+        msg4.reply_text = _capture_reply4
+        u_payment4 = _Ns()
+        u_payment4.message = msg4
+        u_payment4.effective_user = FakeUser(4, "dave")
+        await on_guro_successful_payment(u_payment4, context)
+        check(gstorage.is_company_subscribed(4), "successful_payment company_pro -> подписка компании активирована")
+        check(gstorage.get_company_tier(4) == "pro", "successful_payment company_pro -> тир 'pro'")
 
 
 async def _run_guro_tags_sim():
@@ -4393,6 +4568,8 @@ async def _run_admin_guro_sim():
     print("== guro_id: admin dashboard (acms_guro) ==")
     import tempfile
     from pathlib import Path
+
+    import guro_constants as GC
     from handlers import admin_guro
 
     with tempfile.TemporaryDirectory() as d:
@@ -4415,6 +4592,81 @@ async def _run_admin_guro_sim():
         check("GURO ID" in (ctx.bot.last_text or ""), "дашборд содержит заголовок GURO ID")
         check("Партнёрств всего" in (ctx.bot.last_text or ""), "дашборд содержит блок партнёрств")
         check("1" in (ctx.bot.last_text or ""), "дашборд отражает 1 партнёрство (свежие аккаунты — не в рейтинге, но в счётчике)")
+        check("/guro_limit" in (ctx.bot.last_text or ""), "дашборд подсказывает команду /guro_limit")
+
+        # --- /guro_limit — оверрайд лимитов на аккаунт (ТЗ "Тарифы и
+        # лимиты", раздел 3, 27.08.2026) --------------------------------
+        def _cmd(args):
+            replies = []
+            msg = FakeMessage("/guro_limit", chat_id=555)
+
+            async def _capture(text, **kw):
+                replies.append(text)
+
+            msg.reply_text = _capture
+            ctx2 = FakeContext(bot_data)
+            ctx2.args = args
+            upd = FakeUpdate(message=msg, user=FakeUser(1417059280, "owner"))
+            return upd, ctx2, replies
+
+        upd, ctx2, replies = _cmd([])
+        await admin_guro.guro_limit_command(upd, ctx2)
+        check(any("Тарифы и лимиты" in r for r in replies), "/guro_limit без аргументов -> список текущих значений")
+        check(any(GC.LIMIT_KEY_VIEWS_RECRUITER in r for r in replies), "листинг включает все известные ключи")
+
+        upd, ctx2, replies = _cmd(["777"])
+        await admin_guro.guro_limit_command(upd, ctx2)
+        check(any("нет персональных оверрайдов" in r for r in replies), "/guro_limit <user_id> без оверрайдов -> честный ответ")
+
+        upd, ctx2, replies = _cmd(["777", "not_a_key", "5"])
+        await admin_guro.guro_limit_command(upd, ctx2)
+        check(any("Формат" in r for r in replies), "неизвестный ключ -> подсказка формата, не падение")
+        check(gstorage.get_user_limit_override(777, "not_a_key") is None, "невалидный ключ не записался")
+
+        upd, ctx2, replies = _cmd(["777", GC.LIMIT_KEY_VIEWS_RECRUITER, "7"])
+        await admin_guro.guro_limit_command(upd, ctx2)
+        check(any("✅" in r for r in replies), "/guro_limit <id> <key> <value> -> подтверждение")
+        check(gstorage.get_user_limit_override(777, GC.LIMIT_KEY_VIEWS_RECRUITER) == 7,
+              "оверрайд реально записан в guro_user_limit_overrides")
+
+        upd, ctx2, replies = _cmd(["777"])
+        await admin_guro.guro_limit_command(upd, ctx2)
+        check(any(f"{GC.LIMIT_KEY_VIEWS_RECRUITER} = 7" in r for r in replies),
+              "/guro_limit <user_id> теперь показывает записанный оверрайд")
+
+        upd, ctx2, replies = _cmd(["777", GC.LIMIT_KEY_VIEWS_RECRUITER, "reset"])
+        await admin_guro.guro_limit_command(upd, ctx2)
+        check(any("снят" in r for r in replies), "reset -> снимает оверрайд")
+        check(gstorage.get_user_limit_override(777, GC.LIMIT_KEY_VIEWS_RECRUITER) is None,
+              "после reset оверрайда больше нет")
+
+        upd, ctx2, replies = _cmd(["global", GC.LIMIT_KEY_NEW_VACANCIES, "9"])
+        await admin_guro.guro_limit_command(upd, ctx2)
+        check(gstorage.get_config(GC.LIMIT_KEY_NEW_VACANCIES, -1) == 9,
+              "/guro_limit global <key> <value> -> меняет глобальный дефолт")
+
+        upd, ctx2, replies = _cmd(["not_a_number"])
+        await admin_guro.guro_limit_command(upd, ctx2)
+        check(any("числом" in r for r in replies), "нечисловой user_id -> понятная ошибка, не падение")
+
+        # --- верификация компании из /admin (ТЗ "Компания. каб", раздел 2) -
+        gstorage.get_or_create_company_profile(500)
+        gstorage.set_company_extra_field(500, "name", "Verify Me Ltd")
+        gstorage.request_company_verification(500)
+        q2 = FakeQuery("acms_guro_companyverify", chat_id=555)
+        q2.from_user = FakeUser(1417059280, "owner")
+        update2 = FakeUpdate(query=q2, user=q2.from_user)
+        state2 = await admin_guro.nav_guro_company_verify(update2, ctx)
+        check(state2 == 0, "nav_guro_company_verify возвращает BROWSE")
+        check("Verify Me Ltd" in (ctx.bot.last_text or ""), "компания, подавшая заявку, видна в списке на верификацию")
+
+        q3 = FakeQuery("guro_cv_on:500", chat_id=555)
+        q3.from_user = FakeUser(1417059280, "owner")
+        update3 = FakeUpdate(query=q3, user=q3.from_user)
+        await admin_guro.guro_company_verify_toggle(update3, ctx)
+        check(gstorage.is_company_verified(500), "guro_cv_on:<id> -> бейдж верификации включён")
+        check(q3.answered, "callback отвечен (второй, безаргументный .answer() внутри nav_guro_company_verify "
+              "перетирает last_answer_text — тот же паттерн, что у guro_addr_review, не баг)")
 
 
 def main():

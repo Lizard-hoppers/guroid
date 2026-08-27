@@ -7,6 +7,7 @@ import {
 import { Msg, Spinner } from "./Shared.jsx";
 import { useLang } from "../i18n.jsx";
 import { haptic } from "../telegram.js";
+import { formatDate } from "../utils.js";
 
 // Те же канонические вертикали, что в SearchScreen.jsx (constants.VERTICALS
 // в боте) — намеренно не вынесены в общий модуль ради одного переиспользования.
@@ -224,7 +225,11 @@ function VacancyForm({ editingId, initial, authorWorkspace, canRecruiter, canCom
           ? t("vacancies.form.companySubRequired")
           : error instanceof ApiError && error.code === "RECRUITER_SUBSCRIPTION_REQUIRED"
             ? t("vacancies.form.recruiterSubRequired")
-            : t("vacancies.form.error"),
+            : error instanceof ApiError && error.code === "DAILY_VACANCY_LIMIT_REACHED"
+              ? t("vacancies.form.dailyLimitReached", { date: formatDate(error.details?.resets_at) })
+              : error instanceof ApiError && error.code === "ACTIVE_VACANCY_LIMIT_REACHED"
+                ? t("vacancies.form.activeLimitReached", { limit: error.details?.limit })
+                : t("vacancies.form.error"),
       });
       haptic("error");
     }
@@ -495,7 +500,7 @@ function VacancyCard({ v, onOpen }) {
 
 // Полная карточка (раздел 2.1 ТЗ) — описание скрыто за кнопкой, кнопки
 // действий разные для владельца и для остальных.
-function VacancyDetail({ id, onBack, onOpenMessages, onManage, onOpenResponses }) {
+function VacancyDetail({ id, onBack, onOpenMessages, onManage, onOpenResponses, manageError }) {
   const { t } = useLang();
   const [state, setState] = useState({ loading: true, v: null, error: null });
   const [descOpen, setDescOpen] = useState(false);
@@ -600,6 +605,7 @@ function VacancyDetail({ id, onBack, onOpenMessages, onManage, onOpenResponses }
                 </button>
               )}
             </div>
+            <Msg type="error">{manageError}</Msg>
           </>
         ) : (
           <>
@@ -808,6 +814,7 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
   const [view, setView] = useState({ name: "board" });
   const [caps, setCaps] = useState({ loading: true, recruiter: false, company: false });
   const [refreshKey, setRefreshKey] = useState(0);
+  const [manageError, setManageError] = useState(null);
 
   const [langFilter, setLangFilter] = useState(lang === "en" ? "en" : "ru");
   const [vertical, setVertical] = useState("");
@@ -845,6 +852,7 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
   // прямо со строки "Мои вакансии" не должны уводить на полную карточку,
   // остаёмся в списке (в отличие от тех же действий с экрана детали).
   async function onManage(action, v, { stay } = {}) {
+    setManageError(null);
     try {
       if (action === "edit") {
         setView({ name: "edit", id: v.id, initial: vacancyToForm(v) });
@@ -857,8 +865,13 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
       haptic("light");
       if (!stay) setView({ name: "detail", id: v.id });
       setRefreshKey((k) => k + 1);
-    } catch {
+    } catch (error) {
       haptic("error");
+      setManageError(
+        error instanceof ApiError && error.code === "ACTIVE_VACANCY_LIMIT_REACHED"
+          ? t("vacancies.form.activeLimitReached", { limit: error.details?.limit })
+          : t("vacancies.loadError"),
+      );
     }
   }
 
@@ -873,6 +886,7 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
         onOpenMessages={onOpenMessages}
         onManage={onManage}
         onOpenResponses={(id) => setView({ name: "responses", id })}
+        manageError={manageError}
       />
     );
   }
@@ -990,7 +1004,10 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
       </div>
 
       {tab === "mine" && (
-        <MyVacancies onOpen={(id) => setView({ name: "detail", id })} onManage={onManage} refreshKey={refreshKey} />
+        <>
+          <Msg type="error">{manageError}</Msg>
+          <MyVacancies onOpen={(id) => setView({ name: "detail", id })} onManage={onManage} refreshKey={refreshKey} />
+        </>
       )}
 
       {tab === "board" && (

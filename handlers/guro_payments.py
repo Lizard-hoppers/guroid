@@ -16,11 +16,15 @@ logger = logging.getLogger(__name__)
 # product -> (payload-префикс, тарифная сетка). Кабинет рекрутера (Фаза 3,
 # 12.08.2026) добавлен рядом с базовой подпиской — тот же payload-формат
 # '<префикс>:<plan>:<user_id>', просто другой продукт/таблица активации.
+# company_basic/company_pro (27.08.2026, ТЗ "Тарифы и лимиты") — два тира
+# ОДНОГО кабинета "Компания", см. GC.COMPANY_TIER_*/_PRODUCT_COMPANY_TIER.
 _PRODUCTS = {
     "guro_id": ("guro_id_subscription", GC.SUBSCRIPTION_PLANS),
     "recruiter": ("guro_id_recruiter_subscription", GC.RECRUITER_SUBSCRIPTION_PLANS),
-    "company": ("guro_id_company_subscription", GC.COMPANY_SUBSCRIPTION_PLANS),
+    "company_basic": ("guro_id_company_basic_subscription", GC.COMPANY_BASIC_SUBSCRIPTION_PLANS),
+    "company_pro": ("guro_id_company_pro_subscription", GC.COMPANY_PRO_SUBSCRIPTION_PLANS),
 }
+_PRODUCT_COMPANY_TIER = {"company_basic": GC.COMPANY_TIER_BASIC, "company_pro": GC.COMPANY_TIER_PRO}
 
 
 def _match_payload(invoice_payload: str) -> tuple[str, dict] | None:
@@ -65,10 +69,11 @@ async def on_guro_successful_payment(update: Update, context: ContextTypes.DEFAU
         )
         return
 
-    if product == "company":
-        expires_at = storage.activate_company_subscription(update.effective_user.id, cfg["duration_days"])
+    if product in _PRODUCT_COMPANY_TIER:
+        tier = _PRODUCT_COMPANY_TIER[product]
+        expires_at = storage.activate_company_subscription(update.effective_user.id, cfg["duration_days"], tier=tier)
         await update.message.reply_text(
-            f"✅ Кабинет компании GURO ID активирован до {expires_at[:10]} — "
+            f"✅ Кабинет компании GURO ID ({tier}) активирован до {expires_at[:10]} — "
             "бренд-страница работодателя открыта."
         )
         return

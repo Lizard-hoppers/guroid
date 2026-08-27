@@ -18,6 +18,7 @@ from handlers import (
     build_conversation,
     build_gossip_handlers,
     build_group_captcha,
+    build_guro_limits_handlers,
     build_guro_partnerships_handlers,
     build_guro_payments_handlers,
     build_news_handlers,
@@ -100,6 +101,11 @@ def main() -> None:
     # группы -> сразу открывается карточка (мут/бан), без захода в /admin.
     # group=1 — не конкурирует с ConversationHandler-ами (те же соображения).
     for h in build_admin_users_handlers():
+        app.add_handler(h, group=1)
+    # /guro_limit — оверрайд лимитов на аккаунт (ТЗ "Тарифы и лимиты",
+    # раздел 3, 27.08.2026), тот же приём: обычный CommandHandler вне
+    # ConversationHandler-состояний, group=1.
+    for h in build_guro_limits_handlers(settings.admin_ids):
         app.add_handler(h, group=1)
     # Кнопки карточки анкеты (contact/unmute) — тоже вне ConversationHandler,
     # чтобы работали при открытии карточки по deep-link (?start=p_<id>).

@@ -5,10 +5,14 @@ import { getInitData } from "./telegram.js";
 // (см. guro_id_api.create_app).
 
 class ApiError extends Error {
-  constructor(status, code) {
+  // details (27.08.2026, ТЗ "Тарифы и лимиты") — полное тело ответа об
+  // ошибке (например resets_at/limit у лимитов), не только code — раньше
+  // терялось, экраны могли показать только общий текст без "когда обновится".
+  constructor(status, code, details) {
     super(code);
     this.status = status;
     this.code = code;
+    this.details = details || null;
   }
 }
 
@@ -28,7 +32,7 @@ async function request(path, options = {}) {
     // пустое/не-JSON тело — оставляем null
   }
   if (!res.ok) {
-    throw new ApiError(res.status, body?.error || "UNKNOWN");
+    throw new ApiError(res.status, body?.error || "UNKNOWN", body);
   }
   return body;
 }

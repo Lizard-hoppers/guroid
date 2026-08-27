@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from aiohttp import web
@@ -265,7 +265,7 @@ def _recruiter_summary(storage: GuroStorage, user_id: int) -> dict:
         "reputation_tier": GL.reputation_tier(guro_user["reputation_score"]) if is_subscribed else None,
         # Панель "Характеристика" (2.3).
         "successful_hires": storage.count_confirmed_partnerships_by_type(user_id, GC.PARTNERSHIP_TYPE_HIRE),
-        "active_vacancies": storage.count_active_vacancies(user_id),
+        "active_vacancies": storage.count_active_vacancies(user_id, workspace="recruiter"),
         # "Откликов за 7 дней" — заглушка 0: структурированной механики
         # "Отклики" ещё нет (см. ТЗ, раздел 5, "вне рамок" — прорабатывается
         # отдельно вместе с разделом "Вакансии"), считать пока не из чего.
@@ -304,7 +304,7 @@ def _company_summary(storage: GuroStorage, user_id: int) -> dict:
         # личного/рекрутера, "рейтинг сгорает без подписки" тоже общая).
         "reputation_score": round(guro_user["reputation_score"], 1) if is_subscribed else None,
         "reputation_tier": GL.reputation_tier(guro_user["reputation_score"]) if is_subscribed else None,
-        "active_vacancies": storage.count_active_vacancies(user_id),
+        "active_vacancies": storage.count_active_vacancies(user_id, workspace="company"),
     }
 
 
@@ -716,7 +716,7 @@ async def handle_search(request: web.Request) -> web.Response:
         if target_profile is None:
             return web.json_response({"error": "NOT_FOUND"}, status=404)
         if not _check_profile_view_limit(storage, requester["id"], target_profile["user_id"]):
-            return web.json_response({"error": "VIEW_LIMIT_REACHED"}, status=429)
+            return web.json_response({"error": "VIEW_LIMIT_REACHED", "resets_at": _next_utc_midnight_iso()}, status=429)
         return web.json_response(
             _profile_response(storage, requester["id"], target_profile, bypass_paywall=True)
         )
@@ -726,7 +726,7 @@ async def handle_search(request: web.Request) -> web.Response:
         if target_profile is None:
             return web.json_response({"error": "NOT_FOUND"}, status=404)
         if not _check_profile_view_limit(storage, requester["id"], target_profile["user_id"]):
-            return web.json_response({"error": "VIEW_LIMIT_REACHED"}, status=429)
+            return web.json_response({"error": "VIEW_LIMIT_REACHED", "resets_at": _next_utc_midnight_iso()}, status=429)
         return web.json_response(_profile_response(storage, requester["id"], target_profile))
 
     # any_subscription_active (26.08.2026, ТЗ "Гуро рекрутер каб", "Найти
@@ -749,7 +749,7 @@ async def handle_search(request: web.Request) -> web.Response:
     target_profile = storage.find_profile_by_username(q)
     if target_profile is not None:
         if not _check_profile_view_limit(storage, requester["id"], target_profile["user_id"]):
-            return web.json_response({"error": "VIEW_LIMIT_REACHED"}, status=429)
+            return web.json_response({"error": "VIEW_LIMIT_REACHED", "resets_at": _next_utc_midnight_iso()}, status=429)
         return web.json_response(_profile_response(storage, requester["id"], target_profile))
 
     # 25.08.2026 (фидбек владельца, "Правки.pdf", раздел "Поиск"): поиск по
@@ -822,6 +822,14 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
         return web.json_response({"error": "INVALID_TYPE"}, status=400)
     if tx_hash and tx_network not in GC.TX_NETWORKS:
         return web.json_response({"error": "INVALID_NETWORK"}, status=400)
+
+    # Раздел 2.2 ТЗ "Тарифы и лимиты" — лимит НОВЫХ заявок/день (не путать с
+    # RATE_LIMIT_HOURS в create_partnership — тот про повтор ОДНОЙ пары).
+    daily_limit = _new_requests_per_day_limit(storage, user["id"])
+    if storage.count_new_partnerships_today(user["id"]) >= daily_limit:
+        return web.json_response(
+            {"error": "DAILY_REQUEST_LIMIT_REACHED", "resets_at": _next_utc_midnight_iso()}, status=429,
+        )
 
     target_profile = storage.find_profile_by_username(confirmer_username)
     if target_profile is None:
@@ -982,16 +990,55 @@ async def handle_list_company_addresses(request: web.Request) -> web.Response:
     ]})
 
 
+def _next_utc_midnight_iso() -> str:
+    """Раздел 3 ТЗ "Тарифы и лимиты" — "понятное сообщение, что именно
+    исчерпано и когда обновится, не просто 'ошибка'". Все дневные лимиты
+    сбрасываются по UTC 00:00 (та же граница, что уже использует
+    profile_views_today)."""
+    now = datetime.now(timezone.utc)
+    tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return GL.format_db_datetime(tomorrow)
+
+
+def _views_per_day_limit(storage: GuroStorage, user_id: int) -> int | None:
+    """Раздел 2.1 ТЗ "Тарифы и лимиты" — тарифо-зависимый дневной лимит
+    просмотров: Компания приоритетнее Рекрутера (если оплачены оба —
+    действует более щедрый), тир Компании решает, какое число. None —
+    лимита нет вообще (Личный Pro/бесплатный — раздел 2.1, "не
+    ограничивается отдельно")."""
+    if storage.is_company_subscribed(user_id):
+        tier = storage.get_company_tier(user_id)
+        if tier == GC.COMPANY_TIER_PRO:
+            return storage.get_effective_limit(user_id, GC.LIMIT_KEY_VIEWS_COMPANY_PRO, GC.LIMIT_VIEWS_PER_DAY_COMPANY_PRO)
+        return storage.get_effective_limit(user_id, GC.LIMIT_KEY_VIEWS_COMPANY_BASIC, GC.LIMIT_VIEWS_PER_DAY_COMPANY_BASIC)
+    if storage.is_recruiter_subscribed(user_id):
+        return storage.get_effective_limit(user_id, GC.LIMIT_KEY_VIEWS_RECRUITER, GC.LIMIT_VIEWS_PER_DAY_RECRUITER)
+    return None
+
+
+def _new_requests_per_day_limit(storage: GuroStorage, user_id: int) -> int:
+    """Раздел 2.2 ТЗ "Тарифы и лимиты" — Компания приоритетнее Рекрутера
+    (см. _views_per_day_limit — тот же принцип "более щедрый выигрывает"),
+    но тут БЕЗ разницы Basic/Pro (ТЗ: "30 на аккаунт компании в целом",
+    одно число для обоих тиров). База (Личный Pro/бесплатный) — 10."""
+    if storage.is_company_subscribed(user_id):
+        return storage.get_effective_limit(user_id, GC.LIMIT_KEY_REQUESTS_COMPANY, GC.LIMIT_NEW_REQUESTS_PER_DAY_COMPANY)
+    if storage.is_recruiter_subscribed(user_id):
+        return storage.get_effective_limit(user_id, GC.LIMIT_KEY_REQUESTS_RECRUITER, GC.LIMIT_NEW_REQUESTS_PER_DAY_RECRUITER)
+    return storage.get_effective_limit(user_id, GC.LIMIT_KEY_REQUESTS_PERSONAL, GC.LIMIT_NEW_REQUESTS_PER_DAY_PERSONAL)
+
+
 def _check_profile_view_limit(storage: GuroStorage, viewer_id: int, target_id: int) -> bool:
-    """ТЗ 7 — рейт-лимит просмотра ЧУЖИХ полных карточек, только для
-    подписчиков Рекрутер/Компания (обычные пользователи не лимитируются).
-    True — можно смотреть (и просмотр залогирован); False — лимит исчерпан,
-    вызывающий код должен вернуть 429."""
+    """ТЗ 7 / ТЗ "Тарифы и лимиты" раздел 2.1 — рейт-лимит просмотра ЧУЖИХ
+    полных карточек, только для подписчиков Рекрутер/Компания (обычные
+    пользователи не лимитируются). True — можно смотреть (и просмотр
+    залогирован); False — лимит исчерпан, вызывающий код должен вернуть 429."""
     if viewer_id == target_id:
         return True
-    if not (storage.is_recruiter_subscribed(viewer_id) or storage.is_company_subscribed(viewer_id)):
+    limit = _views_per_day_limit(storage, viewer_id)
+    if limit is None:
         return True
-    if storage.profile_views_today(viewer_id) >= GC.PROFILE_VIEW_DAILY_LIMIT:
+    if storage.profile_views_today(viewer_id) >= limit:
         return False
     storage.log_profile_view(viewer_id, target_id)
     return True
@@ -1554,6 +1601,23 @@ def _parse_vacancy_fields(body: dict) -> dict:
     return out
 
 
+def _active_vacancies_limit(storage: GuroStorage, user_id: int, workspace: str) -> int:
+    """Раздел 2.3 ТЗ "Тарифы и лимиты" — потолок ОДНОВРЕМЕННО активных
+    вакансий, растёт с тарифом, считается ОТДЕЛЬНО на каждый кабинет."""
+    if workspace == "company":
+        tier = storage.get_company_tier(user_id)
+        if tier == GC.COMPANY_TIER_PRO:
+            return storage.get_effective_limit(
+                user_id, GC.LIMIT_KEY_ACTIVE_VACANCIES_COMPANY_PRO, GC.LIMIT_ACTIVE_VACANCIES_COMPANY_PRO,
+            )
+        return storage.get_effective_limit(
+            user_id, GC.LIMIT_KEY_ACTIVE_VACANCIES_COMPANY_BASIC, GC.LIMIT_ACTIVE_VACANCIES_COMPANY_BASIC,
+        )
+    return storage.get_effective_limit(
+        user_id, GC.LIMIT_KEY_ACTIVE_VACANCIES_RECRUITER, GC.LIMIT_ACTIVE_VACANCIES_RECRUITER,
+    )
+
+
 async def handle_create_vacancy(request: web.Request) -> web.Response:
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
@@ -1569,6 +1633,16 @@ async def handle_create_vacancy(request: web.Request) -> web.Response:
         author_workspace = "recruiter"
         if not storage.is_recruiter_subscribed(user["id"]):
             return web.json_response({"error": "RECRUITER_SUBSCRIPTION_REQUIRED"}, status=402)
+
+    # Раздел 2.3 ТЗ "Тарифы и лимиты" — два независимых лимита разом.
+    new_per_day = storage.get_effective_limit(user["id"], GC.LIMIT_KEY_NEW_VACANCIES, GC.LIMIT_NEW_VACANCIES_PER_DAY)
+    if storage.count_new_vacancies_today(user["id"]) >= new_per_day:
+        return web.json_response(
+            {"error": "DAILY_VACANCY_LIMIT_REACHED", "resets_at": _next_utc_midnight_iso()}, status=429,
+        )
+    active_limit = _active_vacancies_limit(storage, user["id"], author_workspace)
+    if storage.count_active_vacancies(user["id"], workspace=author_workspace) >= active_limit:
+        return web.json_response({"error": "ACTIVE_VACANCY_LIMIT_REACHED", "limit": active_limit}, status=429)
 
     fields = _parse_vacancy_fields(body)
     if not fields.get("title"):
@@ -1635,7 +1709,26 @@ async def handle_pause_vacancy(request: web.Request) -> web.Response:
 
 
 async def handle_resume_vacancy(request: web.Request) -> web.Response:
-    return await _vacancy_action(request, lambda s, vid, uid: s.resume_vacancy(vid, uid))
+    """Возобновление тоже сверяется с потолком одновременно активных
+    (раздел 2.3 ТЗ "Тарифы и лимиты") — иначе можно обойти лимит паузой/
+    возобновлением лишних вакансий вместо честного закрытия старых."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        vacancy_id = int(request.match_info["vacancy_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    row = storage.get_vacancy(vacancy_id)
+    if row is None or row["author_id"] != user["id"]:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    workspace = row["author_workspace"] or "recruiter"
+    active_limit = _active_vacancies_limit(storage, user["id"], workspace)
+    if storage.count_active_vacancies(user["id"], workspace=workspace) >= active_limit:
+        return web.json_response({"error": "ACTIVE_VACANCY_LIMIT_REACHED", "limit": active_limit}, status=429)
+    if not storage.resume_vacancy(vacancy_id, user["id"]):
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    row = storage.get_vacancy(vacancy_id)
+    return web.json_response(_vacancy_public(storage, row, viewer_id=user["id"]))
 
 
 async def handle_extend_vacancy(request: web.Request) -> web.Response:
@@ -1775,24 +1868,31 @@ async def handle_update_response_status(request: web.Request) -> web.Response:
 
 # product -> тарифная сетка. Обобщено под ключ продукта (Фаза 3, 12.08.2026)
 # вместо копипасты Stars+крипто-эндпоинтов под кабинет рекрутера — одна
-# проверенная в проде платёжная цепочка на оба продукта.
+# проверенная в проде платёжная цепочка на все продукты. company_basic/
+# company_pro (27.08.2026, ТЗ "Тарифы и лимиты") — два ТИРА одного кабинета
+# "Компания" реализованы как два отдельных product (см. GC.COMPANY_TIER_*),
+# оба активируют ОДНУ И ТУ ЖЕ guro_company_profiles, просто с разным tier.
 _PRODUCT_PLANS = {
     "guro_id": GC.SUBSCRIPTION_PLANS, "recruiter": GC.RECRUITER_SUBSCRIPTION_PLANS,
-    "company": GC.COMPANY_SUBSCRIPTION_PLANS,
+    "company_basic": GC.COMPANY_BASIC_SUBSCRIPTION_PLANS, "company_pro": GC.COMPANY_PRO_SUBSCRIPTION_PLANS,
 }
 _PRODUCT_PAYLOAD_PREFIX = {
     "guro_id": "guro_id_subscription", "recruiter": "guro_id_recruiter_subscription",
-    "company": "guro_id_company_subscription",
+    "company_basic": "guro_id_company_basic_subscription", "company_pro": "guro_id_company_pro_subscription",
 }
 _PRODUCT_TITLE = {
     "guro_id": "GURO ID — подписка", "recruiter": "GURO ID — кабинет рекрутера",
-    "company": "GURO ID — кабинет компании",
+    "company_basic": "GURO ID — кабинет компании Basic", "company_pro": "GURO ID — кабинет компании Pro",
 }
 _PRODUCT_DESCRIPTION = {
     "guro_id": "Полный поиск и просмотр профилей участников GURO ID: рейтинг, история партнёрств.",
     "recruiter": "Кабинет рекрутера GURO ID: отдельная витрина, публикация вакансий, просмотр резюме.",
-    "company": "Кабинет компании GURO ID: бренд-страница работодателя с логотипом и описанием.",
+    "company_basic": "Кабинет компании GURO ID (Basic, до 5 участников): бренд-страница работодателя.",
+    "company_pro": "Кабинет компании GURO ID (Pro, до 15-20 участников): бренд-страница работодателя.",
 }
+# product -> tier, который activate_company_subscription запишет в
+# guro_company_profiles.company_tier (только для company_basic/company_pro).
+_PRODUCT_COMPANY_TIER = {"company_basic": GC.COMPANY_TIER_BASIC, "company_pro": GC.COMPANY_TIER_PRO}
 
 
 def _plan_or_none(body: dict) -> tuple[str, str, dict] | None:
@@ -1937,17 +2037,18 @@ async def handle_crypto_webhook(request: web.Request) -> web.Response:
             logger.exception("guro_id: не удалось уведомить о recruiter crypto-оплате user_id=%s", user_id)
         return web.Response(status=200)
 
-    if product == "company":
-        expires_at = storage.activate_company_subscription(user_id, cfg["duration_days"])
+    if product in _PRODUCT_COMPANY_TIER:
+        tier = _PRODUCT_COMPANY_TIER[product]
+        expires_at = storage.activate_company_subscription(user_id, cfg["duration_days"], tier=tier)
         logger.info(
-            "guro_id: подписка компании активирована через крипту user_id=%s plan=%s до %s",
-            user_id, plan, expires_at,
+            "guro_id: подписка компании (%s) активирована через крипту user_id=%s plan=%s до %s",
+            tier, user_id, plan, expires_at,
         )
         try:
             async with Bot(token=settings.bot_token) as bot:
                 await bot.send_message(
                     user_id,
-                    f"✅ Кабинет компании GURO ID активирован до {expires_at[:10]} (оплата в крипте).",
+                    f"✅ Кабинет компании GURO ID ({tier}) активирован до {expires_at[:10]} (оплата в крипте).",
                 )
         except Exception:  # noqa: BLE001
             logger.exception("guro_id: не удалось уведомить о company crypto-оплате user_id=%s", user_id)

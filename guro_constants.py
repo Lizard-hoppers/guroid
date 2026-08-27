@@ -85,10 +85,6 @@ RATING_COMMENT_MAX = 500
 # стороны, либо не истечёт этот срок с момента подтверждения партнёрства.
 RATING_REVEAL_TIMEOUT_DAYS = 14
 
-# 7.1 — рейт-лимит просмотра ЧУЖИХ полных карточек для подписчиков
-# Рекрутер/Компания (антифрод скрапинга контактной базы). ТЗ — диапазон
-# 20-30/день, взята середина.
-PROFILE_VIEW_DAILY_LIMIT = 25
 # 7.3 — эвристика подозрительного скрапинга: N просмотров за M минут одним
 # аккаунтом -> флаг на РУЧНУЮ проверку (ТЗ явно требует ручную проверку +
 # возможность временной заморозки админом, не авто-бан).
@@ -98,49 +94,123 @@ SCRAPING_BURST_MINUTES = 10
 # продлить, повторно применив действие.
 ACCOUNT_FREEZE_HOURS = 24
 
+# --- Тарифы и лимиты (27.08.2026, ТЗ "Тарифы и лимиты") -------------------
+# Сам документ прямо помечен как "гипотеза для MVP, не проверенная на
+# реальных платежах цена" и требует хранить значения конфигурируемыми, не
+# хардкодить (раздел 3). Компромисс: дефолты — константы тут (тот же
+# принцип, что весь остальной прайсинг модуля, включая STARS_TO_USD_RATE),
+# а РЕАЛЬНЫЕ действующие значения дневных/одновременных лимитов можно
+# переопределить без релиза через guro_config (глобально) и
+# guro_user_limit_overrides (точечно на конкретный аккаунт) — см.
+# GuroStorage.get_config/get_effective_limit и handlers/admin_guro.py
+# (команда /guro_limit). Цены подписок (раздел 1) НЕ переведены на этот
+# слой — весь прайсинг сессии до сих пор жил в константах ниже
+# (SUBSCRIPTION_PLANS и т.п.), делать из одних только НОВЫХ цифр
+# исключение было бы непоследовательно; поменять цену — по-прежнему правка
+# константы и деплой, как раньше.
+
+# 2.1 — просмотр чужих профилей/день. Личный Pro НЕ лимитируется отдельно
+# (см. _check_profile_view_limit в guro_id_api.py — рейт-лимит применяется
+# только к подписчикам Рекрутер/Компания).
+LIMIT_VIEWS_PER_DAY_RECRUITER = 30
+LIMIT_VIEWS_PER_DAY_COMPANY_BASIC = 30
+LIMIT_VIEWS_PER_DAY_COMPANY_PRO = 50
+
+# 2.2 — новые заявки на партнёрство/найм в день (НЕ путать с RATE_LIMIT_HOURS
+# выше — тот лимитирует повтор ОДНОЙ И ТОЙ ЖЕ пары контрагентов, этот —
+# общее число НОВЫХ связей в день, узкое место фарма рейтинга).
+LIMIT_NEW_REQUESTS_PER_DAY_PERSONAL = 10
+LIMIT_NEW_REQUESTS_PER_DAY_RECRUITER = 20
+LIMIT_NEW_REQUESTS_PER_DAY_COMPANY = 30
+
+# 2.3 — вакансии: дневной лимит НОВЫХ публикаций (единый для всех, у кого
+# вообще есть право публиковать) + потолок ОДНОВРЕМЕННО активных
+# (коммерческий рычаг, растёт с тарифом; считается ОТДЕЛЬНО на каждый
+# кабинет — см. GuroStorage.count_active_vacancies(workspace=...)).
+LIMIT_NEW_VACANCIES_PER_DAY = 3
+LIMIT_ACTIVE_VACANCIES_RECRUITER = 10
+LIMIT_ACTIVE_VACANCIES_COMPANY_BASIC = 20
+LIMIT_ACTIVE_VACANCIES_COMPANY_PRO = 50
+
+# Ключи для guro_config/guro_user_limit_overrides (один и тот же строковый
+# ключ используется и глобальным конфигом, и точечным оверрайдом на
+# аккаунт — get_effective_limit сначала проверяет оверрайд, потом конфиг).
+LIMIT_KEY_VIEWS_RECRUITER = "views_per_day.recruiter"
+LIMIT_KEY_VIEWS_COMPANY_BASIC = "views_per_day.company_basic"
+LIMIT_KEY_VIEWS_COMPANY_PRO = "views_per_day.company_pro"
+LIMIT_KEY_REQUESTS_PERSONAL = "new_requests_per_day.personal"
+LIMIT_KEY_REQUESTS_RECRUITER = "new_requests_per_day.recruiter"
+LIMIT_KEY_REQUESTS_COMPANY = "new_requests_per_day.company"
+LIMIT_KEY_NEW_VACANCIES = "new_vacancies_per_day"
+LIMIT_KEY_ACTIVE_VACANCIES_RECRUITER = "active_vacancies.recruiter"
+LIMIT_KEY_ACTIVE_VACANCIES_COMPANY_BASIC = "active_vacancies.company_basic"
+LIMIT_KEY_ACTIVE_VACANCIES_COMPANY_PRO = "active_vacancies.company_pro"
+# Все ключи разом — для команды /guro_limit (валидация ввода + листинг).
+LIMIT_KEYS = (
+    LIMIT_KEY_VIEWS_RECRUITER, LIMIT_KEY_VIEWS_COMPANY_BASIC, LIMIT_KEY_VIEWS_COMPANY_PRO,
+    LIMIT_KEY_REQUESTS_PERSONAL, LIMIT_KEY_REQUESTS_RECRUITER, LIMIT_KEY_REQUESTS_COMPANY,
+    LIMIT_KEY_NEW_VACANCIES,
+    LIMIT_KEY_ACTIVE_VACANCIES_RECRUITER, LIMIT_KEY_ACTIVE_VACANCIES_COMPANY_BASIC,
+    LIMIT_KEY_ACTIVE_VACANCIES_COMPANY_PRO,
+)
+# Раздел 2.4 ТЗ (потолок участников компании + лимит одобрений заявок/день)
+# сознательно НЕ реализован в этом раунде — завязан на раздел "Команда"
+# (роли/заявки на присоединение), которого в кодовой базе ещё нет (см. ТЗ
+# "Компания. каб", раздел 7 — ссылается на отдельный "основное ТЗ").
+
+# --- Тарифы (раздел 1 ТЗ, репрайсинг 27.08.2026) --------------------------
+# Личный Pro: $6/мес, $50/год. Рекрутер Pro: $19/мес, $170/год. Компания
+# теперь ДВА тира вместо одного (Basic/Pro) — реализованы как два отдельных
+# "product" (company_basic/company_pro), та же generic-инфраструктура
+# оплаты, что у guro_id/recruiter (см. _PRODUCT_PLANS в guro_id_api.py).
+# Округление $->⭐ при STARS_TO_USD_RATE=0.015 до ближайших 50⭐ (тот же
+# приём, что раньше — "красивое число", ТЗ прямо пишет "цена не проверена").
+COMPANY_TIER_BASIC = "basic"
+COMPANY_TIER_PRO = "pro"
+COMPANY_TIERS = (COMPANY_TIER_BASIC, COMPANY_TIER_PRO)
+
 # Анти-фрод (ТЗ п.4, исходный план 04.08): не больше 1 новой заявки в сутки
 # на пару, и подтверждения между свежими (<14 дней в комьюнити) аккаунтами
 # не учитываются в рейтинге (видны, но помечены).
 RATE_LIMIT_HOURS = 24
 MIN_TENURE_DAYS_TO_COUNT = 14
 
-# Тарифы подписки (10.08.2026, поднято тем же вечером по просьбе
-# владельца до долларового ориентира $10/мес и $99/год — "звёзды сделай
-# эквивалентно округлённо"). При STARS_TO_USD_RATE=0.015: $10≈667⭐
-# (округлено вниз до 650 — красивое число), $99=6600⭐ (ровно, без
-# округления). "yearly" дороже помесячной цены x12 (650*12=7800) продан со
-# скидкой за 6600 — оба числа нужны фронту для зачёркнутой "полной" цены.
+# Тарифы подписки — "Личный Pro" (репрайсинг 27.08.2026, ТЗ "Тарифы и
+# лимиты": $6/мес, $50/год ~30% скидки). При STARS_TO_USD_RATE=0.015:
+# $6=400⭐ ровно, $50≈3333⭐ округлено до ближайших 50⭐ (3350). "yearly"
+# дороже помесячной цены x12 (400*12=4800) продан со скидкой за 3350 —
+# оба числа нужны фронту для зачёркнутой "полной" цены. Прежние цифры
+# (650/6600, ориентир $10/$99 от 10.08.2026) заменены этим раундом —
+# ТЗ прямо пишет "гипотеза, не проверенная на реальных платежах".
 SUBSCRIPTION_PLANS = {
     "monthly": {
         "label": "Месяц",
         "duration_days": 30,
-        "stars_price": 650,
+        "stars_price": 400,
     },
     "yearly": {
         "label": "Год",
         "duration_days": 365,
-        "stars_price": 6600,
-        "stars_price_full": 7800,  # 650*12 — "было бы" по помесячной цене, для скидочной плашки
+        "stars_price": 3350,
+        "stars_price_full": 4800,  # 400*12 — "было бы" по помесячной цене, для скидочной плашки
     },
 }
 
 # Кабинет рекрутера (Фаза 3, 12.08.2026) — ОТДЕЛЬНАЯ подписка поверх
-# базовой GURO ID (см. решение владельца из планирования: рейтинг/
-# партнёрства общие, витрина+функционал рекрутера — отдельно оплачиваемые).
-# Цена продиктована владельцем напрямую в звёздах (не $ + конвертация, как
-# у базового тарифа) — 800⭐/мес, 7000⭐/год. "Полная" цена по помесячной
-# (800*12=9600) для скидочной плашки, тот же паттерн, что у SUBSCRIPTION_PLANS.
+# базовой GURO ID. Репрайсинг 27.08.2026 (ТЗ "Тарифы и лимиты"): "Рекрутер
+# Pro" $19/мес, $170/год (~25% скидки). $19/0.015≈1267⭐ округлено до 1250⭐,
+# $170/0.015≈11333⭐ округлено до 11350⭐. "Полная" цена года = 1250*12=15000⭐.
 RECRUITER_SUBSCRIPTION_PLANS = {
     "monthly": {
         "label": "Месяц",
         "duration_days": 30,
-        "stars_price": 800,
+        "stars_price": 1250,
     },
     "yearly": {
         "label": "Год",
         "duration_days": 365,
-        "stars_price": 7000,
-        "stars_price_full": 9600,
+        "stars_price": 11350,
+        "stars_price_full": 15000,
     },
 }
 
@@ -175,17 +245,42 @@ RECRUITER_PERCENTILE_MIN_SAMPLE = 30
 # Profile). "name" здесь = название компании (не имя человека, как у
 # рекрутера) — то же имя поля намеренно, для единообразия остальной
 # generic-инфраструктуры (get_company_extra/set_company_profile_field).
-COMPANY_SUBSCRIPTION_PLANS = {
+# Компания — раньше ЕДИНАЯ подписка/цена, с 27.08.2026 (ТЗ "Тарифы и
+# лимиты") ДВА тира: Basic (до 5 участников, $49/мес, $420/год) и Pro (до
+# 15-20 участников, $99/мес, $850/год) — реализованы как два ОТДЕЛЬНЫХ
+# "product" (company_basic/company_pro) поверх той же generic-платёжной
+# цепочки, что guro_id/recruiter, а не как параметр внутри одного продукта
+# (минимально инвазивно: не трогает _PRODUCT_PLANS/handle_subscribe/
+# handle_crypto_webhook/guro_payments.py — просто два новых ключа словаря).
+# Обе пишут в ОДНУ И ТУ ЖЕ guro_company_profiles (один кабинет, один
+# аккаунт), тир фиксируется отдельным полем company_tier при активации
+# (см. GuroStorage.activate_company_subscription).
+# $49/0.015≈3267⭐ округлено до 3250⭐, $420/0.015=28000⭐ ровно.
+COMPANY_BASIC_SUBSCRIPTION_PLANS = {
     "monthly": {
         "label": "Месяц",
         "duration_days": 30,
-        "stars_price": 800,
+        "stars_price": 3250,
     },
     "yearly": {
         "label": "Год",
         "duration_days": 365,
-        "stars_price": 7000,
-        "stars_price_full": 9600,
+        "stars_price": 28000,
+        "stars_price_full": 39000,  # 3250*12
+    },
+}
+# $99/0.015=6600⭐ ровно, $850/0.015≈56667⭐ округлено до 56650⭐.
+COMPANY_PRO_SUBSCRIPTION_PLANS = {
+    "monthly": {
+        "label": "Месяц",
+        "duration_days": 30,
+        "stars_price": 6600,
+    },
+    "yearly": {
+        "label": "Год",
+        "duration_days": 365,
+        "stars_price": 56650,
+        "stars_price_full": 79200,  # 6600*12
     },
 }
 COMPANY_EXTRA_FIELDS = (

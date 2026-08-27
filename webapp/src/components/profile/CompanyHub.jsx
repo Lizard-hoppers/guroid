@@ -277,6 +277,11 @@ function SettingsPanel({ data, onFieldSaved, onPrivacyChange }) {
 
 export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, onNavigateTab }) {
   const { t } = useLang();
+  // Тир выбирается ДО первой оплаты (27.08.2026, ТЗ "Тарифы и лимиты") —
+  // Basic/Pro это два РАЗНЫХ product (см. SubscribeScreen.jsx), тут просто
+  // переключатель, какой из двух показать. После подписки тир уже
+  // зафиксирован на бэкенде (data.company_tier) — переключатель прячется.
+  const [tierChoice, setTierChoice] = useState("basic");
 
   if (!data.is_company_subscribed) {
     return (
@@ -284,8 +289,27 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
         <div className="card">
           <h3>{t("company.title")}</h3>
           <p className="partner-meta">{t("company.upsellText")}</p>
+          <div className="vertical-chips" style={{ marginTop: 10 }}>
+            <button
+              type="button"
+              className={`vertical-chip${tierChoice === "basic" ? " is-selected" : ""}`}
+              onClick={() => setTierChoice("basic")}
+            >
+              {t("company.tier.basic")}
+            </button>
+            <button
+              type="button"
+              className={`vertical-chip${tierChoice === "pro" ? " is-selected" : ""}`}
+              onClick={() => setTierChoice("pro")}
+            >
+              {t("company.tier.pro")}
+            </button>
+          </div>
+          <p className="partner-meta" style={{ marginTop: 8 }}>
+            {tierChoice === "pro" ? t("company.tier.proHint") : t("company.tier.basicHint")}
+          </p>
         </div>
-        <SubscribeScreen product="company" onSubscribed={onSubscribed} />
+        <SubscribeScreen product={tierChoice === "pro" ? "company_pro" : "company_basic"} onSubscribed={onSubscribed} />
       </div>
     );
   }
@@ -318,6 +342,7 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
             {hasReputation ? Math.round(data.reputation_score) : t("hub.ratingLocked")}
           </div>
         </div>
+        <span className="recruiter-role-badge">{t(`company.tier.${data.company_tier || "basic"}`)}</span>
         {data.vertical && <div className="company-vertical-big">{data.vertical}</div>}
         {(types.length > 0 || data.company_type_other) && (
           <div className="showcase-stack company-types-chips">

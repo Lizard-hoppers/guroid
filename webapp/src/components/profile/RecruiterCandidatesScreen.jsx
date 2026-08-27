@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { browseResumes, browseVertical, searchByUserId } from "../../api.js";
+import { browseResumes, browseVertical, searchByUserId, ApiError } from "../../api.js";
 import { DirectoryRow } from "../SearchScreen.jsx";
 import { Msg, MetricsRow, IdentityLine, WorkStatusBadge, Spinner, CharacteristicButton } from "../Shared.jsx";
 import { useLang } from "../../i18n.jsx";
+import { formatDate } from "../../utils.js";
 
 // Канонические вертикали — те же, что и в SearchScreen.jsx личного профиля.
 const VERTICALS = ["Gambling", "Betting", "Crypto", "Dating", "E-Commerce", "FinTech", "Nutra", "Other"];
@@ -30,12 +31,17 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
   }
 
   async function openCandidate(userId) {
-    setSelected({ loading: true, data: null });
+    setSelected({ loading: true, data: null, error: null });
     try {
       const data = await searchByUserId(userId);
-      setSelected({ loading: false, data });
-    } catch {
-      setSelected(null);
+      setSelected({ loading: false, data, error: null });
+    } catch (error) {
+      setSelected({
+        loading: false, data: null,
+        error: error instanceof ApiError && error.code === "VIEW_LIMIT_REACHED"
+          ? t("search.viewLimitReached", { date: formatDate(error.details?.resets_at) })
+          : t("search.genericError"),
+      });
     }
   }
 
@@ -47,6 +53,7 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
           {t("common.back")}
         </button>
         {selected.loading && <Spinner>{t("search.submitting")}</Spinner>}
+        {selected.error && <Msg type="error">{selected.error}</Msg>}
         {p && (
           <div className="card">
             <h2 className={p.name === null ? "hidden-value" : ""}>

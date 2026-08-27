@@ -204,6 +204,25 @@ CREATE TABLE IF NOT EXISTS guro_company_other_types (
     text TEXT,
     created_at TEXT
 );
+
+-- Лимиты/конфигурация (ТЗ "Тарифы и лимиты", раздел 3, 27.08.2026) —
+-- "хранить в конфигурации, не хардкодить в коде". guro_config — глобальный
+-- слой (дефолт берётся из констант guro_constants.py, если строки ещё нет),
+-- guro_user_limit_overrides — точечное исключение на конкретный аккаунт
+-- (см. GuroStorage.get_config/get_effective_limit, handlers/admin_guro.py).
+CREATE TABLE IF NOT EXISTS guro_config (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS guro_user_limit_overrides (
+    user_id INTEGER,
+    limit_key TEXT,
+    value TEXT,
+    updated_at TEXT,
+    PRIMARY KEY (user_id, limit_key)
+);
 """
 
 
@@ -272,6 +291,10 @@ class GuroStorage:
         # функциональность компании НЕ зависят от статуса верификации.
         self._ensure_column("guro_company_profiles", "verified", "INTEGER DEFAULT 0")
         self._ensure_column("guro_company_profiles", "verification_requested_at", "TEXT")
+        # Тир Basic/Pro (27.08.2026, ТЗ "Тарифы и лимиты") — существующие
+        # подписчики компании (до этого раунда — единственный тир) считаются
+        # Basic по умолчанию, пока не оплатят Pro явно.
+        self._ensure_column("guro_company_profiles", "company_tier", f"TEXT DEFAULT '{GC.COMPANY_TIER_BASIC}'")
         # Расширение "Моё CV" (12.08.2026) — новые поля личного профиля,
         # гейтятся существующим show_cv (см. guro_constants.CV_SIMPLE_FIELDS).
         self._ensure_column("guro_users", "cv_profession", "TEXT")
@@ -567,11 +590,21 @@ class GuroStorage:
         self._conn.commit()
         return self.get_recruiter_activity_status(user_id)
 
-    def count_active_vacancies(self, author_id: int) -> int:
-        row = self._conn.execute(
-            "SELECT COUNT(*) AS n FROM guro_vacancies WHERE author_id=? AND status=?",
-            (author_id, GC.VACANCY_STATUS_ACTIVE),
-        ).fetchone()
+    def count_active_vacancies(self, author_id: int, workspace: str | None = None) -> int:
+        """workspace (27.08.2026, ТЗ "Тарифы и лимиты", раздел 2.3) — потолок
+        активных вакансий считается ОТДЕЛЬНО на каждый кабинет (Рекрутер и
+        Компания — разные подписки/тарифы), не общим пулом на аккаунт.
+        workspace=None (как раньше) — все воркспейсы разом, для витрин."""
+        if workspace:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS n FROM guro_vacancies WHERE author_id=? AND status=? AND author_workspace=?",
+                (author_id, GC.VACANCY_STATUS_ACTIVE, workspace),
+            ).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS n FROM guro_vacancies WHERE author_id=? AND status=?",
+                (author_id, GC.VACANCY_STATUS_ACTIVE),
+            ).fetchone()
         return row["n"]
 
     def count_confirmed_partnerships_by_type(self, user_id: int, ptype: str) -> int:
@@ -703,16 +736,26 @@ class GuroStorage:
             row["subscription_status"], GL.parse_db_datetime(row["subscription_expires_at"]), self._now(),
         )
 
-    def activate_company_subscription(self, user_id: int, duration_days: int) -> str:
+    def activate_company_subscription(self, user_id: int, duration_days: int, *, tier: str = GC.COMPANY_TIER_BASIC) -> str:
+        """tier (27.08.2026, ТЗ "Тарифы и лимиты") — Basic/Pro, записывается
+        КАЖДЫЙ раз при активации (продление тем же тиром не меняет его,
+        оплата ДРУГОГО тира — меняет; апгрейд/даунгрейд-флоу как таковой
+        фронтом не предоставляется, апсейл только через новую оплату)."""
         self.get_or_create_company_profile(user_id)
         expires_at = GL.subscription_expires_at(self._now(), duration_days)
         self._conn.execute(
             "UPDATE guro_company_profiles SET subscription_status=?, subscription_expires_at=?, "
-            "updated_at=? WHERE user_id=?",
-            (GC.SUBSCRIPTION_ACTIVE, GL.format_db_datetime(expires_at), self._now_str(), user_id),
+            "company_tier=?, updated_at=? WHERE user_id=?",
+            (GC.SUBSCRIPTION_ACTIVE, GL.format_db_datetime(expires_at), tier, self._now_str(), user_id),
         )
         self._conn.commit()
         return GL.format_db_datetime(expires_at)
+
+    def get_company_tier(self, user_id: int) -> str:
+        row = self._conn.execute(
+            "SELECT company_tier FROM guro_company_profiles WHERE user_id=?", (user_id,),
+        ).fetchone()
+        return (row["company_tier"] if row and row["company_tier"] else GC.COMPANY_TIER_BASIC)
 
     def get_company_extra(self, user_id: int) -> dict:
         row = self.get_or_create_company_profile(user_id)
@@ -800,6 +843,87 @@ class GuroStorage:
             (user_id, text, self._now_str()),
         )
         self._conn.commit()
+
+    # --- лимиты/конфигурация (ТЗ "Тарифы и лимиты", раздел 3, 27.08.2026) ----
+
+    def get_config(self, key: str, default: int) -> int:
+        row = self._conn.execute("SELECT value FROM guro_config WHERE key=?", (key,)).fetchone()
+        if row is None:
+            return default
+        try:
+            return int(row["value"])
+        except (TypeError, ValueError):
+            return default
+
+    def set_config(self, key: str, value: int) -> None:
+        self._conn.execute(
+            "INSERT INTO guro_config (key, value, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+            (key, str(value), self._now_str()),
+        )
+        self._conn.commit()
+
+    def get_user_limit_override(self, user_id: int, key: str) -> int | None:
+        row = self._conn.execute(
+            "SELECT value FROM guro_user_limit_overrides WHERE user_id=? AND limit_key=?", (user_id, key),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            return int(row["value"])
+        except (TypeError, ValueError):
+            return None
+
+    def set_user_limit_override(self, user_id: int, key: str, value: int) -> None:
+        self._conn.execute(
+            "INSERT INTO guro_user_limit_overrides (user_id, limit_key, value, updated_at) VALUES (?,?,?,?) "
+            "ON CONFLICT(user_id, limit_key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+            (user_id, key, str(value), self._now_str()),
+        )
+        self._conn.commit()
+
+    def clear_user_limit_override(self, user_id: int, key: str) -> bool:
+        cur = self._conn.execute(
+            "DELETE FROM guro_user_limit_overrides WHERE user_id=? AND limit_key=?", (user_id, key),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def list_user_limit_overrides(self, user_id: int) -> list[sqlite3.Row]:
+        return self._conn.execute(
+            "SELECT * FROM guro_user_limit_overrides WHERE user_id=? ORDER BY limit_key", (user_id,),
+        ).fetchall()
+
+    def get_effective_limit(self, user_id: int, key: str, default: int) -> int:
+        """Оверрайд на аккаунт (если есть) -> глобальный конфиг (если есть)
+        -> дефолт-константа. Один и тот же key используется в обеих
+        таблицах — так проще, чем городить отдельные схемы ключей."""
+        override = self.get_user_limit_override(user_id, key)
+        if override is not None:
+            return override
+        return self.get_config(key, default)
+
+    def count_new_partnerships_today(self, initiator_id: int) -> int:
+        """2.2 ТЗ — НОВЫЕ заявки на партнёрство/найм за сегодня (UTC), не
+        путать с count_confirmed_partnerships_by_type (уже подтверждённые —
+        не лимитируются, ограничивать реальный бизнес нельзя)."""
+        today = self._now().strftime("%Y-%m-%d")
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM partnerships WHERE initiator_id=? AND substr(created_at,1,10)=?",
+            (initiator_id, today),
+        ).fetchone()
+        return row["n"]
+
+    def count_new_vacancies_today(self, author_id: int) -> int:
+        """2.3 ТЗ — дневной лимит НОВЫХ публикаций (общий на автора, вне
+        зависимости от воркспейса — публикация вакансии одна и та же
+        механика что от Рекрутера, что от Компании)."""
+        today = self._now().strftime("%Y-%m-%d")
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM guro_vacancies WHERE author_id=? AND substr(created_at,1,10)=?",
+            (author_id, today),
+        ).fetchone()
+        return row["n"]
 
     # --- partnerships -------------------------------------------------------
 

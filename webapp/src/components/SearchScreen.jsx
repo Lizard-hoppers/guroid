@@ -12,7 +12,7 @@ import {
 } from "./Shared.jsx";
 import { haptic } from "../telegram.js";
 import { useLang } from "../i18n.jsx";
-import { ensureHttpUrl, initialOf } from "../utils.js";
+import { ensureHttpUrl, initialOf, formatDate } from "../utils.js";
 
 // Канонический список вертикалей — ровно constants.VERTICALS в боте (то,
 // что реально пишется в profiles.vertical при регистрации, см.
@@ -367,7 +367,9 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, deepLinkWorkspace, 
         <Msg type="error">
           {state.error instanceof ApiError && state.error.code === "NOT_FOUND"
             ? t("search.notFound")
-            : t("search.genericError")}
+            : state.error instanceof ApiError && state.error.code === "VIEW_LIMIT_REACHED"
+              ? t("search.viewLimitReached", { date: formatDate(state.error.details?.resets_at) })
+              : t("search.genericError")}
         </Msg>
       )}
 

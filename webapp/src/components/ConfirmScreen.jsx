@@ -3,6 +3,7 @@ import { createPartnership, ApiError } from "../api.js";
 import { Msg } from "./Shared.jsx";
 import { haptic } from "../telegram.js";
 import { useLang } from "../i18n.jsx";
+import { formatDate } from "../utils.js";
 
 const ERROR_KEYS = {
   SELF_PARTNERSHIP: "confirm.error.SELF_PARTNERSHIP",
@@ -64,7 +65,9 @@ export function ConfirmScreen({ forcedType, prefill, onBack }) {
   }
 
   const errorText = state.error
-    ? t((state.error instanceof ApiError && ERROR_KEYS[state.error.code]) || "confirm.error.generic")
+    ? state.error instanceof ApiError && state.error.code === "DAILY_REQUEST_LIMIT_REACHED"
+      ? t("confirm.error.DAILY_REQUEST_LIMIT_REACHED", { date: formatDate(state.error.details?.resets_at) })
+      : t((state.error instanceof ApiError && ERROR_KEYS[state.error.code]) || "confirm.error.generic")
     : null;
 
   return (

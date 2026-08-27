@@ -339,6 +339,10 @@ const STRINGS = {
   "search.paywallText": { ru: "Без подписки доступен только точный поиск по юзернейму.", en: "Without a subscription only exact username search is available." },
   "search.notFound": { ru: "Такой участник не найден в GURO ID.", en: "No such member found in GURO ID." },
   "search.genericError": { ru: "Ошибка поиска.", en: "Search error." },
+  "search.viewLimitReached": {
+    ru: "Дневной лимит просмотров профилей исчерпан. Обновится {date}.",
+    en: "Daily profile view limit reached. Resets on {date}.",
+  },
   "search.topToggle": { ru: "🏆 Сначала высокий рейтинг", en: "🏆 Highest rating first" },
   "search.emptyList": { ru: "Ничего не нашлось. Попробуйте другое описание или вертикаль.", en: "Nothing found. Try another description or vertical." },
   "search.truncated": { ru: "Показаны не все совпадения — уточните запрос.", en: "Not all matches shown — refine your query." },
@@ -398,6 +402,10 @@ const STRINGS = {
     en: "This user hasn't filled in the @GamblingCommunitybot questionnaire yet — the bot can't message them.",
   },
   "confirm.error.generic": { ru: "Не получилось отправить заявку.", en: "Couldn't send the request." },
+  "confirm.error.DAILY_REQUEST_LIMIT_REACHED": {
+    ru: "Дневной лимит новых заявок исчерпан. Обновится {date}.",
+    en: "Daily limit of new requests reached. Resets on {date}.",
+  },
 
   // --- Подписка ---
   "subscribe.titleGuro": { ru: "Подписка GURO ID", en: "GURO ID subscription" },
@@ -427,6 +435,17 @@ const STRINGS = {
   "subscribe.compareCompany.brand": { ru: "Бренд-страница компании", en: "Company brand page" },
   "subscribe.compareCompany.showcase": { ru: "Логотип, описание, сайт, вертикаль", en: "Logo, description, website, vertical" },
   "subscribe.compareCompany.visibility": { ru: "Видимость витрины другим участникам GURO ID", en: "Showcase visibility to other GURO ID members" },
+  // Basic/Pro (27.08.2026, ТЗ "Тарифы и лимиты") — два тира, см. CompanyHub.jsx.
+  "subscribe.titleCompanyBasic": { ru: "Подписка на кабинет компании — Basic", en: "Company cabinet subscription — Basic" },
+  "subscribe.titleCompanyPro": { ru: "Подписка на кабинет компании — Pro", en: "Company cabinet subscription — Pro" },
+  "subscribe.hintCompanyBasic": {
+    ru: "Basic (до 5 участников команды): бренд-страница работодателя, публикация вакансий и поиск кандидатов от лица компании, до 20 активных вакансий, 30 просмотров/день на участника.",
+    en: "Basic (up to 5 team members): employer brand page, posting vacancies and searching candidates as the company, up to 20 active vacancies, 30 profile views/day per member.",
+  },
+  "subscribe.hintCompanyPro": {
+    ru: "Pro (до 15-20 участников команды): то же самое, что Basic, с увеличенными лимитами — до 50 активных вакансий, 50 просмотров/день на участника.",
+    en: "Pro (up to 15-20 team members): same as Basic with higher limits — up to 50 active vacancies, 50 profile views/day per member.",
+  },
   "subscribe.free": { ru: "бесплатно", en: "free" },
   "subscribe.paid": { ru: "по подписке", en: "subscription only" },
   "subscribe.economy": { ru: "экономия {amount} ⭐", en: "save {amount} ⭐" },
@@ -519,6 +538,16 @@ const STRINGS = {
   "company.upsellText": {
     ru: "Бренд-страница работодателя — логотип, описание, сайт и вертикаль. Отдельно от кабинета рекрутера: компания — это бренд, рекрутер — конкретный человек внутри неё.",
     en: "An employer brand page — logo, description, website and vertical. Separate from the recruiter cabinet: the company is the brand, the recruiter is a specific person inside it.",
+  },
+  "company.tier.basic": { ru: "Basic", en: "Basic" },
+  "company.tier.pro": { ru: "Pro", en: "Pro" },
+  "company.tier.basicHint": {
+    ru: "До 5 участников команды, до 20 активных вакансий, 30 просмотров/день на участника — $49/мес.",
+    en: "Up to 5 team members, up to 20 active vacancies, 30 profile views/day per member — $49/mo.",
+  },
+  "company.tier.proHint": {
+    ru: "До 15-20 участников команды, до 50 активных вакансий, 50 просмотров/день на участника — $99/мес.",
+    en: "Up to 15-20 team members, up to 50 active vacancies, 50 profile views/day per member — $99/mo.",
   },
   "company.field.name": { ru: "Название компании", en: "Company name" },
   "company.field.namePlaceholder": { ru: "Например: GURO Casino Ltd", en: "E.g.: GURO Casino Ltd" },
@@ -695,6 +724,14 @@ const STRINGS = {
   "vacancies.form.companySubRequired": {
     ru: "Нужна подписка кабинета Компания.",
     en: "A Company cabinet subscription is required.",
+  },
+  "vacancies.form.dailyLimitReached": {
+    ru: "Дневной лимит новых публикаций исчерпан. Обновится {date}.",
+    en: "Daily limit of new postings reached. Resets on {date}.",
+  },
+  "vacancies.form.activeLimitReached": {
+    ru: "Достигнут потолок одновременно активных вакансий ({limit}). Закройте одну из старых, чтобы опубликовать новую.",
+    en: "Reached the limit of simultaneously active vacancies ({limit}). Close one of the older ones to post a new one.",
   },
   "recruiter.responses.empty": { ru: "Пока нет откликов на ваши вакансии.", en: "No responses to your vacancies yet." },
   "recruiter.responses.loadError": { ru: "Не удалось загрузить отклики.", en: "Couldn't load responses." },

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   getMe, getPositions, getVacancies, getMyVacancies, getVacancy, createVacancy, editVacancy,
   pauseVacancy, resumeVacancy, extendVacancy, closeVacancy, respondVacancy,
-  getVacancyResponses, updateResponseStatus, ApiError,
+  getVacancyResponses, getMyResponses, updateResponseStatus, ApiError,
 } from "../api.js";
 import { Msg, Spinner } from "./Shared.jsx";
 import { useLang } from "../i18n.jsx";
@@ -633,23 +633,23 @@ function VacancyDetail({ id, onBack, onOpenMessages, onManage, onOpenResponses, 
 
 // "Мои вакансии" (раздел 4 ТЗ) — статус/счётчики/действия, тап по строке
 // открывает полную карточку (там же кнопки управления).
-function MyVacancies({ onOpen, onManage, refreshKey }) {
+// vacancies/loading подняты в VacanciesScreen (27.08.2026, ТЗ "экраны по ТЗ
+// от 23.08") — те же данные нужны и тут, и для подписи под плиткой
+// "Мои вакансии" в верхней навигации (см. NavTiles), незачем грузить дважды.
+function MyVacancies({ vacancies, loading, error, onOpen, onManage, onPublish }) {
   const { t } = useLang();
-  const [state, setState] = useState({ loading: true, vacancies: null, error: null });
 
-  function load() {
-    setState({ loading: true, vacancies: null, error: null });
-    getMyVacancies()
-      .then(({ vacancies }) => setState({ loading: false, vacancies, error: null }))
-      .catch((error) => setState({ loading: false, vacancies: null, error }));
-  }
-
-  useEffect(load, [refreshKey]);
-
-  if (state.loading) return <Spinner>{t("messages.loading")}</Spinner>;
-  if (state.error) return <Msg type="error">{t("vacancies.loadError")}</Msg>;
-  if (!state.vacancies || state.vacancies.length === 0) {
-    return <div className="partner-meta">{t("vacancies.mineEmpty")}</div>;
+  if (loading) return <Spinner>{t("messages.loading")}</Spinner>;
+  if (error) return <Msg type="error">{t("vacancies.loadError")}</Msg>;
+  if (!vacancies || vacancies.length === 0) {
+    return (
+      <div className="card">
+        <p className="partner-meta">{t("vacancies.mineEmpty")}</p>
+        <button type="button" className="btn" onClick={onPublish}>
+          {t("vacancies.publishBtn")}
+        </button>
+      </div>
+    );
   }
 
   function act(e, action, v) {
@@ -659,7 +659,7 @@ function MyVacancies({ onOpen, onManage, refreshKey }) {
 
   return (
     <div>
-      {state.vacancies.map((v) => (
+      {vacancies.map((v) => (
         <div key={v.id} className="card">
           <div className="partner-row" style={{ alignItems: "center", cursor: "pointer" }} onClick={() => onOpen(v.id)}>
             <div className="partner-info">
@@ -750,7 +750,16 @@ function VacancyResponses({ vacancyId, onBack, onOpenMessages, onOpenHireConfirm
       </button>
       <div className="card">
         <h3>{t("vacancies.responses.title")}</h3>
-        {state.vacancy && <div className="partner-meta">{state.vacancy.title}</div>}
+        {state.vacancy && (
+          <>
+            <div className="partner-meta">{state.vacancy.title}</div>
+            <div className="partner-meta">
+              {t("vacancies.viewsLabel", { n: state.vacancy.views_count })}
+              {" · "}
+              {t("vacancies.responsesLabel", { n: state.vacancy.responses_count })}
+            </div>
+          </>
+        )}
         <div className="vertical-chips" style={{ marginTop: 8 }}>
           <button
             type="button"
@@ -807,6 +816,106 @@ function VacancyResponses({ vacancyId, onBack, onOpenMessages, onOpenHireConfirm
   );
 }
 
+// "Отклики" — плитка верхней навигации (27.08.2026, ТЗ "экраны по ТЗ от
+// 23.08", "Вакансии"): агрегация по ВСЕМ своим вакансиям сразу, без захода
+// в конкретную — та же логика, что RecruiterResponsesSubscreen.jsx (доступна
+// из меню кабинета Рекрутер), но как отдельный вход прямо со вкладки
+// "Вакансии" (сама вакансия каждой карточки подписана r.vacancy_title).
+function AllResponses({ onBack, onOpenMessages, onOpenHireConfirm }) {
+  const { t } = useLang();
+  const [statusFilter, setStatusFilter] = useState("");
+  const [state, setState] = useState({ loading: true, responses: null, error: null });
+
+  function load() {
+    setState((s) => ({ ...s, loading: true, error: null }));
+    getMyResponses({ status: statusFilter || undefined })
+      .then(({ responses }) => setState({ loading: false, responses, error: null }))
+      .catch((error) => setState({ loading: false, responses: null, error }));
+  }
+
+  useEffect(load, [statusFilter]);
+
+  async function setStatus(responseId, status) {
+    try {
+      await updateResponseStatus(responseId, status);
+      haptic("light");
+      load();
+    } catch {
+      haptic("error");
+    }
+  }
+
+  function confirmHire(r) {
+    onOpenHireConfirm({
+      confirmerUsername: r.candidate_username || "",
+      vertical: r.candidate_vertical || "",
+      offer: r.vacancy_title || "",
+    });
+  }
+
+  return (
+    <div>
+      <button type="button" className="subscreen-back" onClick={onBack}>
+        {t("common.back")}
+      </button>
+      <div className="card">
+        <h3>{t("vacancies.responses.title")}</h3>
+        <div className="vertical-chips" style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            className={`vertical-chip${statusFilter === "" ? " is-selected" : ""}`}
+            onClick={() => setStatusFilter("")}
+          >
+            {t("vacancies.responses.statusAll")}
+          </button>
+          {RESPONSE_STATUSES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className={`vertical-chip${statusFilter === s ? " is-selected" : ""}`}
+              onClick={() => setStatusFilter(s)}
+            >
+              {t(`vacancies.responses.status.${s}`)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {state.loading && <Spinner>{t("messages.loading")}</Spinner>}
+      {state.error && <Msg type="error">{t("vacancies.loadError")}</Msg>}
+      {state.responses && state.responses.length === 0 && (
+        <div className="partner-meta">{t("vacancies.responses.empty")}</div>
+      )}
+      {state.responses?.map((r) => (
+        <div key={r.id} className="card">
+          <div className="partner-name">{r.vacancy_title}</div>
+          <div className="partner-meta">
+            {r.candidate_name || (r.candidate_username ? `@${r.candidate_username}` : t("common.noName"))}
+            {r.candidate_vertical ? ` · ${r.candidate_vertical}` : ""}
+            {typeof r.reputation_score === "number" ? ` · ★ ${r.reputation_score}` : ""}
+          </div>
+          {r.message && <div className="partner-meta" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{r.message}</div>}
+          <select value={r.status} onChange={(e) => setStatus(r.id, e.target.value)} style={{ marginTop: 10 }}>
+            {RESPONSE_STATUSES.map((s) => (
+              <option key={s} value={s}>{t(`vacancies.responses.status.${s}`)}</option>
+            ))}
+          </select>
+          <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
+            {r.candidate_username && (
+              <button type="button" className="btn secondary" onClick={() => onOpenMessages(r.candidate_id)}>
+                {t("vacancies.writeBtn")}
+              </button>
+            )}
+            <button type="button" className="btn" onClick={() => confirmHire(r)}>
+              {t("vacancies.responses.confirmHireBtn")}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm }) {
   const { t, lang } = useLang();
   const positions = usePositions();
@@ -825,6 +934,11 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
   // — жёсткий структурный фильтр поверх доски, тот же принцип, что грейд.
   const [companyType, setCompanyType] = useState("");
   const [state, setState] = useState({ loading: true, vacancies: null, truncated: false, error: null });
+  // "Мои вакансии" поднято на верхний уровень (27.08.2026, ТЗ "экраны по ТЗ
+  // от 23.08") — те же данные нужны и списку под табом, и подписи под
+  // плиткой верхней навигации ("N активных · N откликов"), незачем грузить
+  // дважды при переключении между табами.
+  const [myVac, setMyVac] = useState({ loading: true, vacancies: null, error: null });
 
   useEffect(() => {
     Promise.all([
@@ -832,6 +946,18 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
       getMe({ workspace: "company" }).then((d) => !!d.is_company_subscribed).catch(() => false),
     ]).then(([recruiter, company]) => setCaps({ loading: false, recruiter, company }));
   }, []);
+
+  function loadMyVacancies() {
+    setMyVac((s) => ({ ...s, loading: true, error: null }));
+    getMyVacancies()
+      .then(({ vacancies }) => setMyVac({ loading: false, vacancies, error: null }))
+      .catch((error) => setMyVac({ loading: false, vacancies: null, error }));
+  }
+
+  useEffect(loadMyVacancies, [refreshKey]);
+
+  const myVacActiveCount = myVac.vacancies?.filter((v) => v.status === "active").length ?? 0;
+  const myVacResponsesTotal = myVac.vacancies?.reduce((sum, v) => sum + (v.responses_count || 0), 0) ?? 0;
 
   function loadList() {
     setState({ loading: true, vacancies: null, truncated: false, error: null });
@@ -902,6 +1028,16 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
     );
   }
 
+  if (view.name === "all-responses") {
+    return (
+      <AllResponses
+        onBack={() => setView({ name: "board" })}
+        onOpenMessages={onOpenMessages}
+        onOpenHireConfirm={onOpenHireConfirm}
+      />
+    );
+  }
+
   if (view.name === "form" || view.name === "edit") {
     return (
       <VacancyForm
@@ -924,16 +1060,52 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
         <h3>{t("vacancies.title")}</h3>
         <div className="partner-meta" style={{ marginBottom: 10 }}>{t("vacancies.hint")}</div>
 
-        <div className="workspace-switch">
-          <button type="button" className={tab === "board" ? "is-active" : ""} onClick={() => setTab("board")}>
-            {t("vacancies.tabBoard")}
+        {/* Верхняя навигация плитками 2×2 (27.08.2026, ТЗ "экраны по ТЗ от
+            23.08", "Вакансии") — вместо старого 2-таб переключателя.
+            "Мои вакансии"/"Отклики"/"+Опубликовать" доступны только тем, у
+            кого есть публикующая подписка (Рекрутер/Компания) — те же
+            условия, что у старой кнопки "Опубликовать" ниже. */}
+        <div className="vacancy-nav-grid">
+          <button
+            type="button"
+            className={`vacancy-nav-tile${tab === "board" ? " is-active" : ""}`}
+            onClick={() => setTab("board")}
+          >
+            <span className="vacancy-nav-tile-title">{t("vacancies.tabBoard")}</span>
+            <span className="vacancy-nav-tile-sub">{t("vacancies.navBoardHint")}</span>
           </button>
           {canPublish && (
-            <button type="button" className={tab === "mine" ? "is-active" : ""} onClick={() => setTab("mine")}>
-              {t("vacancies.tabMine")}
+            <button
+              type="button"
+              className={`vacancy-nav-tile${tab === "mine" ? " is-active" : ""}`}
+              onClick={() => setTab("mine")}
+            >
+              <span className="vacancy-nav-tile-title">{t("vacancies.tabMine")}</span>
+              <span className="vacancy-nav-tile-sub">
+                {t("vacancies.navMineHint", { active: myVacActiveCount, responses: myVacResponsesTotal })}
+              </span>
+            </button>
+          )}
+          {canPublish && (
+            <button type="button" className="vacancy-nav-tile" onClick={() => setView({ name: "all-responses" })}>
+              <span className="vacancy-nav-tile-title">{t("vacancies.responses.title")}</span>
+              <span className="vacancy-nav-tile-sub">{t("vacancies.navResponsesHint")}</span>
+            </button>
+          )}
+          {canPublish && (
+            <button
+              type="button"
+              className="vacancy-nav-tile is-primary"
+              onClick={() => setView({ name: "form" })}
+            >
+              <span className="vacancy-nav-tile-title">{t("vacancies.publishBtn")}</span>
+              <span className="vacancy-nav-tile-sub">{t("vacancies.navPublishHint")}</span>
             </button>
           )}
         </div>
+        {!canPublish && !caps.loading && (
+          <div className="partner-meta" style={{ marginTop: 10 }}>{t("vacancies.upsellText")}</div>
+        )}
 
         {tab === "board" && (
           <>
@@ -992,21 +1164,19 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
           </>
         )}
 
-        {tab === "board" && (
-          canPublish ? (
-            <button className="btn" style={{ marginTop: 14 }} onClick={() => setView({ name: "form" })}>
-              {t("vacancies.publishBtn")}
-            </button>
-          ) : (
-            !caps.loading && <div className="partner-meta" style={{ marginTop: 14 }}>{t("vacancies.upsellText")}</div>
-          )
-        )}
       </div>
 
       {tab === "mine" && (
         <>
           <Msg type="error">{manageError}</Msg>
-          <MyVacancies onOpen={(id) => setView({ name: "detail", id })} onManage={onManage} refreshKey={refreshKey} />
+          <MyVacancies
+            vacancies={myVac.vacancies}
+            loading={myVac.loading}
+            error={myVac.error}
+            onOpen={(id) => setView({ name: "detail", id })}
+            onManage={onManage}
+            onPublish={() => setView({ name: "form" })}
+          />
         </>
       )}
 

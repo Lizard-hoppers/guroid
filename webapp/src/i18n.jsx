@@ -768,8 +768,17 @@ const STRINGS = {
   "vacancies.respondError.generic": { ru: "Не получилось отправить отклик. Попробуйте ещё раз.", en: "Couldn't send the response. Please try again." },
   "vacancies.tabBoard": { ru: "Доска", en: "Board" },
   "vacancies.tabMine": { ru: "Мои вакансии", en: "My vacancies" },
+  // Подписи под плитками верхней навигации (27.08.2026, ТЗ "экраны по ТЗ
+  // от 23.08", "Вакансии").
+  "vacancies.navBoardHint": { ru: "Все вакансии индустрии", en: "All vacancies in the industry" },
+  "vacancies.navMineHint": { ru: "{active} активные · {responses} откликов", en: "{active} active · {responses} responses" },
+  "vacancies.navResponsesHint": { ru: "Все отклики по вакансиям", en: "All responses to your vacancies" },
+  "vacancies.navPublishHint": { ru: "Новая вакансия", en: "New vacancy" },
   "vacancies.mineTitle": { ru: "Мои вакансии", en: "My vacancies" },
-  "vacancies.mineEmpty": { ru: "Вы ещё не публиковали вакансий.", en: "You haven't posted any vacancies yet." },
+  "vacancies.mineEmpty": {
+    ru: "У вас пока нет опубликованных вакансий. Опубликуйте первую — она появится на общей доске и станет видна кандидатам.",
+    en: "You don't have any published vacancies yet. Publish your first one — it'll appear on the shared board and become visible to candidates.",
+  },
   "vacancies.closeBtn": { ru: "Закрыть", en: "Close" },
   "vacancies.statusClosed": { ru: "Закрыта", en: "Closed" },
   "vacancies.status.active": { ru: "Активна", en: "Active" },

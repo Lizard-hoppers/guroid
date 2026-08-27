@@ -659,6 +659,18 @@ class GuroStorage:
         ).fetchone()
         return row["n"]
 
+    def count_confirmed_partnerships_by_type_for_company(self, company_id: int, ptype: str) -> int:
+        """Панель "Характеристика" кабинета "Компания" (27.08.2026, ТЗ "экраны
+        по ТЗ от 23.08") — сделки, совершённые ЛЮБЫМ участником команды "от
+        лица компании" (as_company=True при подтверждении, см. handle_confirm
+        partnership в guro_id_api.py), считаются на company_id как единое
+        целое (раздел 6 ТЗ "Роли и команда"), а не на конкретного участника."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM partnerships WHERE status=? AND ptype=? AND company_id=?",
+            (GC.PARTNERSHIP_STATUS_CONFIRMED, ptype, company_id),
+        ).fetchone()
+        return row["n"]
+
     def hire_w(self, user_id: int) -> float:
         """W_найм (ТЗ "Гуро рекрутер каб", раздел 2.5) — та же логика, что
         recompute_total_w, но ТОЛЬКО по партнёрствам ptype='hire' этого
@@ -2050,6 +2062,24 @@ class GuroStorage:
             params.append(status)
         sql += " ORDER BY r.created_at DESC"
         return self._conn.execute(sql, params).fetchall()
+
+    def count_responses_since(self, author_id: int, since_dt: datetime) -> int:
+        """"Откликов за 7 дней" (панель "Характеристика", 2.3 / раздел 3 ТЗ
+        "Компания. каб") — та же агрегация свои+компания, что у
+        list_responses_for_owner (см. выше), просто COUNT с отсечкой по дате
+        вместо полной выборки. Раньше был хардкод 0 (структурированной
+        механики "Отклики" ещё не было, см. старый комментарий в
+        _recruiter_summary) — сама механика уже реализована (guro_vacancy_
+        responses), просто забыли прокинуть сюда при её появлении."""
+        membership = self.get_company_membership(author_id)
+        author_ids = (author_id, membership["company_id"]) if membership else (author_id, author_id)
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM guro_vacancy_responses r "
+            "JOIN guro_vacancies v ON v.id = r.vacancy_id "
+            "WHERE v.author_id IN (?, ?) AND r.created_at >= ?",
+            (*author_ids, GL.format_db_datetime(since_dt)),
+        ).fetchone()
+        return row["n"]
 
     def update_vacancy_response_status(self, response_id: int, author_id: int, status: str) -> sqlite3.Row | None:
         """Поднимает ValueError('INVALID_STATUS'). None — отклика нет или

@@ -132,6 +132,20 @@ export function browseResumes(vertical, { top } = {}) {
   );
 }
 
+// «Поиск кандидатов» кабинета Рекрутер/Компания (27.08.2026, ТЗ "экраны по
+// ТЗ от 23.08") — тот же /api/search, что и browseVertical/browseResumes
+// выше, просто в одном запросе сразу вертикаль+грейд+должность+"ищет
+// работу"+топ-рейтинг (см. _directory_browse/_resume_browse в guro_id_api.py).
+export function searchCandidates({ vertical, grade, position, looking, top } = {}) {
+  const params = new URLSearchParams();
+  if (looking) params.set("resumes", "1");
+  if (vertical) params.set("vertical", vertical);
+  if (grade) params.set("grade", grade);
+  if (position) params.set("position", position);
+  if (top) params.set("top", "1");
+  return request(`/api/search?${params.toString()}`);
+}
+
 export function getInviteLink() {
   return request("/api/invite_link");
 }

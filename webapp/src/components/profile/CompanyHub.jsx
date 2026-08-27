@@ -227,6 +227,37 @@ function VerificationCard({ verified, requestedAt }) {
   );
 }
 
+// Панель "Характеристика" (27.08.2026, ТЗ "экраны по ТЗ от 23.08") — 2×2
+// плитки вместо старой строки текста, зеркало RecruiterHub.CharacteristicPanel
+// (та же CSS-сетка recruiter-metrics-grid — общестилевая, не завязана на
+// конкретный кабинет), но с "Участников команды" вместо "стажа в роли".
+function CharacteristicPanel({ data }) {
+  const { t } = useLang();
+  return (
+    <div className="card">
+      <h3>{t("company.characteristic.title")}</h3>
+      <div className="recruiter-metrics-grid">
+        <div className="recruiter-metric">
+          <div className="recruiter-metric-value">{data.successful_hires}</div>
+          <div className="recruiter-metric-label">{t("company.characteristic.hires")}</div>
+        </div>
+        <div className="recruiter-metric">
+          <div className="recruiter-metric-value">{data.active_vacancies}</div>
+          <div className="recruiter-metric-label">{t("company.characteristic.vacancies")}</div>
+        </div>
+        <div className="recruiter-metric">
+          <div className="recruiter-metric-value">{data.responses_7d}</div>
+          <div className="recruiter-metric-label">{t("company.characteristic.responses")}</div>
+        </div>
+        <div className="recruiter-metric">
+          <div className="recruiter-metric-value">{data.member_count} / {data.member_limit}</div>
+          <div className="recruiter-metric-label">{t("company.characteristic.members")}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Настройки за иконкой-шестерёнкой (по аналогии с ТЗ по кабинету Рекрутер,
 // раздел 1 ТЗ "Компания. каб") — логотип/обложка не обязательны при
 // создании, заполняются тут же, позже.
@@ -424,28 +455,33 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
 
       <SettingsPanel data={data} onFieldSaved={onFieldSaved} onPrivacyChange={onPrivacyChange} />
 
-      <VerificationCard verified={data.verified} requestedAt={data.verification_requested_at} />
+      <CharacteristicPanel data={data} />
 
-      <div className="card">
-        <div className="partner-meta" style={{ marginBottom: 10 }}>
-          {t("company.activeVacancies", { n: data.active_vacancies })}
-          {" · "}
-          {t("team.counter", { count: data.member_count, limit: data.member_limit })}
-        </div>
-        <div className="recruiter-quick-actions">
-          <button type="button" className="btn" onClick={() => onNavigateTab("vacancies")}>
-            {t("company.quickPublish")}
-          </button>
-          <button type="button" className="btn secondary" onClick={() => onNavigateSub("company-confirm")}>
-            {t("company.quickConfirm")}
-          </button>
-        </div>
-        <button type="button" className="btn secondary" style={{ marginTop: 10 }} onClick={() => onNavigateSub("company-team")}>
-          {t("team.title")}
+      <div className="card recruiter-quick-actions">
+        <button type="button" className="btn" onClick={() => onNavigateTab("vacancies")}>
+          {t("company.quickPublish")}
+        </button>
+        <button type="button" className="btn secondary" onClick={() => onNavigateSub("company-candidates")}>
+          {t("company.quickFind")}
+        </button>
+        <button type="button" className="btn secondary" onClick={() => onNavigateSub("company-confirm")}>
+          {t("company.quickConfirm")}
+        </button>
+        <button type="button" className="btn secondary" onClick={() => onNavigateSub("company-team")}>
+          {t("team.title")} · {t("team.counter", { count: data.member_count, limit: data.member_limit })}
         </button>
       </div>
 
+      <VerificationCard verified={data.verified} requestedAt={data.verification_requested_at} />
+
       <CompanyAddressCard />
+
+      <div className="card">
+        <button type="button" className="profile-menu-item" onClick={() => onNavigateSub("tariffs")}>
+          <span>{t("company.menu.tariffs")}</span>
+          <span className="profile-menu-item-chevron">›</span>
+        </button>
+      </div>
     </div>
   );
 }

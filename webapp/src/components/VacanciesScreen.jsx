@@ -26,7 +26,7 @@ const COMPANY_TYPES = [
 // Справочник должностей (Приложение к ТЗ "Recruitment — ВАКАНСИИ") — уже
 // есть готовый на бэкенде (professions_data.py, 1:1 совпадает с приложением),
 // грузим один раз через /api/positions, а не переносим руками.
-function usePositions() {
+export function usePositions() {
   const [state, setState] = useState({ loading: true, grades: [], professions: {} });
   useEffect(() => {
     let cancelled = false;

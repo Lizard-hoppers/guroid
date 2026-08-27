@@ -535,6 +535,19 @@ const STRINGS = {
     en: "Browse by vertical or among those looking for work.",
   },
   "recruiter.candidates.showAllResumes": { ru: "Показать всех, кто ищет работу", en: "Show everyone looking for work" },
+  // Фильтры "Поиск кандидатов" (27.08.2026, ТЗ "экраны по ТЗ от 23.08").
+  "recruiter.candidates.usernameLabel": { ru: "Юзернейм", en: "Username" },
+  "recruiter.candidates.usernamePlaceholder": { ru: "Например: mrchief15", en: "E.g.: mrchief15" },
+  "recruiter.candidates.usernameSubmit": { ru: "Найти по юзернейму", en: "Find by username" },
+  "recruiter.candidates.usernameNotFound": { ru: "Пользователь с таким юзернеймом не найден.", en: "No user with this username." },
+  "recruiter.candidates.verticalLabel": { ru: "1 · Вертикаль", en: "1 · Vertical" },
+  "recruiter.candidates.gradeLabel": { ru: "2 · Грейд", en: "2 · Grade" },
+  "recruiter.candidates.positionLabel": { ru: "3 · Должность", en: "3 · Position" },
+  "recruiter.candidates.positionPlaceholder": { ru: "Любая должность", en: "Any position" },
+  "recruiter.candidates.lookingOnlyLabel": { ru: "Только те, кто ищет работу", en: "Only those looking for work" },
+  "recruiter.candidates.topRatingLabel": { ru: "Сначала высокий рейтинг", en: "Highest rating first" },
+  "recruiter.candidates.submitBtn": { ru: "Показать кандидатов", en: "Show candidates" },
+  "recruiter.candidates.foundCount": { ru: "Найдено: {n}", en: "Found: {n}" },
   "thread.viaWorkspace": { ru: "Написал(а) через кабинет: {workspace}", en: "Sent via cabinet: {workspace}" },
 
   // --- Кабинет "Компания" (Фаза 5, 16-17.08.2026) ---
@@ -566,9 +579,18 @@ const STRINGS = {
   "company.field.coverUrl": { ru: "Обложка (ссылка на картинку, PNG)", en: "Cover banner (image link, PNG)" },
   "company.field.coverUrlPlaceholder": { ru: "https://…/cover.png", en: "https://…/cover.png" },
   "company.settingsBtn": { ru: "Настройки кабинета", en: "Cabinet settings" },
-  "company.quickPublish": { ru: "➕ Опубликовать вакансию", en: "➕ Post a vacancy" },
+  // Панель "Характеристика" (27.08.2026, ТЗ "экраны по ТЗ от 23.08") —
+  // зеркало recruiter.characteristic.*, 2×2 плитки вместо старой строки текста.
+  "company.characteristic.title": { ru: "Характеристика", en: "Characteristic" },
+  "company.characteristic.hires": { ru: "Успешных наймов", en: "Successful hires" },
+  "company.characteristic.vacancies": { ru: "Активных вакансий", en: "Active vacancies" },
+  "company.characteristic.responses": { ru: "Откликов за 7 дней", en: "Responses (7 days)" },
+  "company.characteristic.members": { ru: "Участников команды", en: "Team members" },
+  "company.quickPublish": { ru: "+ Опубликовать вакансию от бренда", en: "+ Post a vacancy as the brand" },
+  "company.quickFind": { ru: "Найти кандидата", en: "Find a candidate" },
   "company.quickConfirm": { ru: "🤝 Подтвердить сделку/найм", en: "🤝 Confirm deal/hire" },
   "company.activeVacancies": { ru: "Активных вакансий: {n}", en: "Active vacancies: {n}" },
+  "company.menu.tariffs": { ru: "Тарифы", en: "Pricing" },
   // Создание компании (27.08.2026, ТЗ "Роли и управление командой", раздел 1)
   "company.create.title": { ru: "Создать компанию", en: "Create a company" },
   "company.create.hint": {
@@ -672,6 +694,55 @@ const STRINGS = {
   "team.join.alreadyInCompany": { ru: "Вы уже состоите в другой компании.", en: "You're already a member of another company." },
   "team.join.alreadyMember": { ru: "Вы уже участник этой компании.", en: "You're already a member of this company." },
   "team.join.error": { ru: "Не получилось отправить запрос.", en: "Couldn't send the request." },
+
+  // --- Тарифы, единый экран (27.08.2026, ТЗ "экраны по ТЗ от 23.08",
+  // "Тарифы") — сводка всех 4 продуктов + таблица лимитов на одном экране,
+  // цены живые (см. getPlans), лимиты — статичные MVP-константы
+  // (guro_constants.py), как и в самом макете ("MVP — гипотеза цены"). ---
+  "tariffs.title": { ru: "Тарифы", en: "Pricing" },
+  "tariffs.mvpBadge": { ru: "MVP — гипотеза цены", en: "MVP — price hypothesis" },
+  "tariffs.loading": { ru: "Загружаем тарифы…", en: "Loading pricing…" },
+  "tariffs.hitBadge": { ru: "ХИТ", en: "POPULAR" },
+  "tariffs.perMonth": { ru: "/ мес", en: "/ mo" },
+  "tariffs.perYear": { ru: "/ год", en: "/ yr" },
+  "tariffs.product.guro_id.title": { ru: "Личный Pro", en: "Personal Pro" },
+  "tariffs.product.guro_id.blurb": {
+    ru: "Рейтинг, история сделок, полный поиск, история партнёрств контрагента.",
+    en: "Rating, deal history, full search, counterparty partnership history.",
+  },
+  "tariffs.product.recruiter.title": { ru: "Рекрутер Pro", en: "Recruiter Pro" },
+  "tariffs.product.recruiter.blurb": {
+    ru: "Витрина рекрутера, публикация вакансий, поиск кандидатов, отклики, подтверждение найма.",
+    en: "Recruiter showcase, posting vacancies, candidate search, responses, hire confirmation.",
+  },
+  "tariffs.product.company_basic.title": { ru: "Компания Basic", en: "Company Basic" },
+  "tariffs.product.company_basic.blurb": {
+    ru: "Бренд-страница, весь функционал рекрутера от лица бренда, команда до 5 участников.",
+    en: "Brand page, full recruiter functionality on behalf of the brand, team of up to 5.",
+  },
+  "tariffs.product.company_pro.title": { ru: "Компания Pro", en: "Company Pro" },
+  "tariffs.product.company_pro.blurb": {
+    ru: "То же + до 15–20 участников и увеличенные лимиты активности.",
+    en: "Same, plus up to 15–20 members and higher activity limits.",
+  },
+  "tariffs.limitsTitle": { ru: "Лимиты", en: "Limits" },
+  "tariffs.limits.viewsTitle": { ru: "Просмотры чужих профилей / день", en: "Other profiles viewed / day" },
+  "tariffs.limits.viewsValue": {
+    ru: "Личный — без лимита · Рекрутер 30 · Компания Basic 30 на участника · Pro 50 на участника",
+    en: "Personal — unlimited · Recruiter 30 · Company Basic 30 per member · Pro 50 per member",
+  },
+  "tariffs.limits.requestsTitle": { ru: "Новые заявки на подтверждение / день", en: "New confirmation requests / day" },
+  "tariffs.limits.requestsValue": {
+    ru: "Личный 10 · Рекрутер 20 · Компания 30 на аккаунт компании",
+    en: "Personal 10 · Recruiter 20 · Company 30 per company account",
+  },
+  "tariffs.limits.vacanciesTitle": { ru: "Публикация вакансий", en: "Posting vacancies" },
+  "tariffs.limits.vacanciesValue": {
+    ru: "3 новые / день у всех · активные: Рекрутер 10 · Basic 20 · Pro 50",
+    en: "3 new / day for everyone · active: Recruiter 10 · Basic 20 · Pro 50",
+  },
+  "tariffs.limits.approvalsTitle": { ru: "Одобрение в команду", en: "Team approvals" },
+  "tariffs.limits.approvalsValue": { ru: "5 в день, независимо от тарифа", en: "5 per day, regardless of plan" },
 
   // --- Вакансии (Фаза 4, 12.08.2026; переписано 26.08.2026 под ТЗ
   // "Recruitment — ВАКАНСИИ") ---

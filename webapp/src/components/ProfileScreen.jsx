@@ -16,6 +16,7 @@ import { RecruiterCandidatesScreen } from "./profile/RecruiterCandidatesScreen.j
 import { RecruiterResponsesSubscreen } from "./profile/RecruiterResponsesSubscreen.jsx";
 import { CompanyHub } from "./profile/CompanyHub.jsx";
 import { TeamScreen } from "./profile/TeamScreen.jsx";
+import { TariffsScreen } from "./profile/TariffsScreen.jsx";
 import { ConfirmScreen } from "./ConfirmScreen.jsx";
 import { useLang } from "../i18n.jsx";
 
@@ -70,6 +71,10 @@ export function ProfileScreen({
   // рекрутерским компоузом (тот тегируется via_workspace="recruiter",
   // см. openRecruiterMessages).
   const [recruiterMessageTargetId, setRecruiterMessageTargetId] = useState(null);
+  // "Найти кандидата" из кабинета "Компания" (27.08.2026, ТЗ "экраны по ТЗ
+  // от 23.08") — отдельный от recruiterMessageTargetId таргет, чтобы
+  // сообщение тегировалось via_workspace="company" (см. openCompanyMessages).
+  const [companyMessageTargetId, setCompanyMessageTargetId] = useState(null);
   // Префилл формы "Подтвердить найм" — либо из PercentileBlock (null, как
   // раньше), либо из отклика на вакансию (username кандидата + вертикаль/
   // грейд/должность, см. goToHireConfirm/ConfirmScreen.jsx).
@@ -116,6 +121,11 @@ export function ProfileScreen({
   function openRecruiterMessages(userId) {
     setRecruiterMessageTargetId(String(userId));
     setSub("recruiter-messages");
+  }
+
+  function openCompanyMessages(userId) {
+    setCompanyMessageTargetId(String(userId));
+    setSub("company-messages");
   }
 
   function updateRecruiterActivityStatus(activity_status) {
@@ -192,6 +202,13 @@ export function ProfileScreen({
     setCompanyState((s) => ({ ...s, data: { ...s.data, [field]: value } }));
   }
 
+  // "Тарифы" (27.08.2026, ТЗ "экраны по ТЗ от 23.08") — единый экран сразу
+  // на всех 4 продукта, реален независимо от текущего workspace (проверяем
+  // ДО веток workspace===recruiter/company ниже).
+  if (sub === "tariffs") {
+    return <TariffsScreen onBack={() => setSub(null)} />;
+  }
+
   if (workspace === "recruiter") {
     if (sub === "recruiter-confirm") {
       return (
@@ -264,6 +281,19 @@ export function ProfileScreen({
     }
     if (sub === "company-team") {
       return <TeamScreen onBack={() => setSub(null)} />;
+    }
+    if (sub === "company-candidates") {
+      return <RecruiterCandidatesScreen onBack={() => setSub(null)} onWrite={openCompanyMessages} />;
+    }
+    if (sub === "company-messages") {
+      return (
+        <MessagesScreen
+          initialThreadUserId={companyMessageTargetId}
+          onConsumeInitialThread={() => setCompanyMessageTargetId(null)}
+          onBack={() => setSub(null)}
+          viaWorkspace="company"
+        />
+      );
     }
     return (
       <div>

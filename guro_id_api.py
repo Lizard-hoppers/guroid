@@ -266,10 +266,10 @@ def _recruiter_summary(storage: GuroStorage, user_id: int) -> dict:
         # Панель "Характеристика" (2.3).
         "successful_hires": storage.count_confirmed_partnerships_by_type(user_id, GC.PARTNERSHIP_TYPE_HIRE),
         "active_vacancies": storage.count_active_vacancies(user_id, workspace="recruiter"),
-        # "Откликов за 7 дней" — заглушка 0: структурированной механики
-        # "Отклики" ещё нет (см. ТЗ, раздел 5, "вне рамок" — прорабатывается
-        # отдельно вместе с разделом "Вакансии"), считать пока не из чего.
-        "responses_7d": 0,
+        # "Откликов за 7 дней" (27.08.2026) — раньше был хардкод 0 (см. старый
+        # комментарий: механики "Отклики" ещё не было), сама механика уже
+        # реализована (guro_vacancy_responses), считаем реально.
+        "responses_7d": storage.count_responses_since(user_id, datetime.now(timezone.utc) - timedelta(days=7)),
         "tenure_days": _recruiter_tenure_days(row, datetime.now(timezone.utc)),
         # Статус активности (2.4) — отдельный от work_status личного профиля.
         "activity_status": row["activity_status"],
@@ -326,7 +326,15 @@ def _company_summary(storage: GuroStorage, user_id: int) -> dict:
         # сейчас смотрит на СВОЙ кабинет компании.
         "reputation_score": round(guro_user["reputation_score"], 1) if is_subscribed else None,
         "reputation_tier": GL.reputation_tier(guro_user["reputation_score"]) if is_subscribed else None,
+        # Панель "Характеристика" (27.08.2026, ТЗ "экраны по ТЗ от 23.08",
+        # "Кабинет «Компания»") — зеркало recruiter.characteristic, но
+        # агрегировано на company_id: "успешных наймов" — сделки, подтверждённые
+        # ЛЮБЫМ участником "от лица компании" (см. count_confirmed_
+        # partnerships_by_type_for_company), "откликов за 7 дней" — по всем
+        # вакансиям компании (см. count_responses_since).
+        "successful_hires": storage.count_confirmed_partnerships_by_type_for_company(company_id, GC.PARTNERSHIP_TYPE_HIRE),
         "active_vacancies": storage.count_active_vacancies(company_id, workspace="company"),
+        "responses_7d": storage.count_responses_since(user_id, datetime.now(timezone.utc) - timedelta(days=7)),
     }
 
 
@@ -614,46 +622,72 @@ def _directory_search(storage: GuroStorage, requester_id: int, query: str, *, to
     return _rank_directory_matches(matches, top=top)
 
 
-def _directory_browse(storage: GuroStorage, requester_id: int, vertical: str, *, top: bool) -> dict:
+def _grade_position_ok(summary: dict, grade_lower: str, position_lower: str) -> bool:
+    """Грейд/должность (27.08.2026, ТЗ "экраны по ТЗ от 23.08", "Поиск
+    кандидатов") — у личного профиля нет структурированной таксономии грейда
+    вакансий (cv_grade использует ДРУГОЙ список меток, см. CV_GRADE_LEVELS в
+    guro_constants.py — это сознательно другой справочник, "Experience Level"
+    из макета CV, не C-Level/Head of Director/... вакансий), поэтому матчим
+    подстрокой по тем же полям, что _directory_search (_searchable_text)."""
+    if not grade_lower and not position_lower:
+        return True
+    haystack = _searchable_text(summary)
+    if grade_lower and grade_lower not in haystack:
+        return False
+    if position_lower and position_lower not in haystack:
+        return False
+    return True
+
+
+def _directory_browse(
+    storage: GuroStorage, requester_id: int, vertical: str, *,
+    grade: str | None = None, position: str | None = None, top: bool,
+) -> dict:
     """Browse по вертикали (11.08.2026) — альтернатива текстовому поиску
     для тех, кто не знает точного юзернейма и не хочет формулировать
     запрос (см. PDF-фидбек владельца: "пока не понятно как они будут
     находить друг друга"). Сравнение — с КАНОНИЧЕСКИМ значением из
     constants.VERTICALS (то, что реально пишется в profiles.vertical при
     регистрации, см. handlers/flow.py), "Other" дополнительно матчит
-    произвольные "Other: <текст>"."""
+    произвольные "Other: <текст>". grade/position — необязательные
+    доп. фильтры кабинета Рекрутер/Компания (см. _grade_position_ok),
+    личный профиль (SearchScreen.jsx) их не передаёт."""
     vertical_lower = vertical.strip().lower()
+    grade_lower = (grade or "").strip().lower()
+    position_lower = (position or "").strip().lower()
 
     def match_fn(summary: dict) -> int:
-        v = (summary.get("vertical") or "").lower()
-        if v == vertical_lower:
-            return 1
-        if vertical_lower == "other" and v.startswith("other"):
-            return 1
-        return 0
+        if vertical_lower:
+            v = (summary.get("vertical") or "").lower()
+            if v != vertical_lower and not (vertical_lower == "other" and v.startswith("other")):
+                return 0
+        return 1 if _grade_position_ok(summary, grade_lower, position_lower) else 0
 
     matches = _scan_directory_candidates(storage, requester_id, match_fn)
     return _rank_directory_matches(matches, top=top)
 
 
-def _resume_browse(storage: GuroStorage, requester_id: int, vertical: str | None, *, top: bool) -> dict:
+def _resume_browse(
+    storage: GuroStorage, requester_id: int, vertical: str | None, *,
+    grade: str | None = None, position: str | None = None, top: bool,
+) -> dict:
     """«Резюме» (Фаза 4, 12.08.2026) — не отдельный экран/эндпоинт, а
     доп. фильтр к тому же поиску: показывает только тех, кто отметил
     статус «Ищу работу» (work_status=looking), опционально ещё и по
-    вертикали. require_privacy_open=False — см. _scan_directory_candidates."""
+    вертикали/грейду/должности (27.08.2026, см. _grade_position_ok).
+    require_privacy_open=False — см. _scan_directory_candidates."""
     vertical_lower = (vertical or "").strip().lower()
+    grade_lower = (grade or "").strip().lower()
+    position_lower = (position or "").strip().lower()
 
     def match_fn(summary: dict) -> int:
         if summary.get("work_status") != GC.WORK_STATUS_LOOKING:
             return 0
-        if not vertical_lower:
-            return 1
-        v = (summary.get("vertical") or "").lower()
-        if v == vertical_lower:
-            return 1
-        if vertical_lower == "other" and v.startswith("other"):
-            return 1
-        return 0
+        if vertical_lower:
+            v = (summary.get("vertical") or "").lower()
+            if v != vertical_lower and not (vertical_lower == "other" and v.startswith("other")):
+                return 0
+        return 1 if _grade_position_ok(summary, grade_lower, position_lower) else 0
 
     matches = _scan_directory_candidates(storage, requester_id, match_fn, require_privacy_open=False)
     return _rank_directory_matches(matches, top=top)
@@ -685,6 +719,10 @@ async def handle_search(request: web.Request) -> web.Response:
     vertical = request.query.get("vertical", "").strip()
     top = request.query.get("top") == "1"
     resumes = request.query.get("resumes") == "1"
+    # grade/position (27.08.2026, "Поиск кандидатов" — см. _grade_position_ok)
+    # — доп. фильтры, личный профиль их не отправляет, поведение не меняется.
+    grade = request.query.get("grade", "").strip()
+    position = request.query.get("position", "").strip()
 
     if request.query.get("workspace") == "recruiter":
         # Просмотр ЧУЖОГО кабинета рекрутера (Фаза 3) — резолвим человека
@@ -769,12 +807,16 @@ async def handle_search(request: web.Request) -> web.Response:
     if resumes:
         if not storage.any_subscription_active(requester["id"]):
             return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
-        return web.json_response(_resume_browse(storage, requester["id"], vertical or None, top=top))
+        return web.json_response(
+            _resume_browse(storage, requester["id"], vertical or None, grade=grade or None, position=position or None, top=top)
+        )
 
-    if vertical:
+    if vertical or grade or position:
         if not storage.any_subscription_active(requester["id"]):
             return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
-        return web.json_response(_directory_browse(storage, requester["id"], vertical, top=top))
+        return web.json_response(
+            _directory_browse(storage, requester["id"], vertical, grade=grade or None, position=position or None, top=top)
+        )
 
     q = query.strip()
     if not q:

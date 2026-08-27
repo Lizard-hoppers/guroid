@@ -772,6 +772,7 @@ const STRINGS = {
   // от 23.08", "Вакансии").
   "vacancies.navBoardHint": { ru: "Все вакансии индустрии", en: "All vacancies in the industry" },
   "vacancies.navMineHint": { ru: "{active} активные · {responses} откликов", en: "{active} active · {responses} responses" },
+  "vacancies.mineActiveBadge": { ru: "{active} из {limit} активные", en: "{active} of {limit} active" },
   "vacancies.navResponsesHint": { ru: "Все отклики по вакансиям", en: "All responses to your vacancies" },
   "vacancies.navPublishHint": { ru: "Новая вакансия", en: "New vacancy" },
   "vacancies.mineTitle": { ru: "Мои вакансии", en: "My vacancies" },

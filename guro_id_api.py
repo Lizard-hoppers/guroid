@@ -1871,11 +1871,27 @@ async def handle_list_vacancies(request: web.Request) -> web.Response:
 async def handle_my_vacancies(request: web.Request) -> web.Response:
     """Свои вакансии (включая закрытые/на паузе) — для управления, доступно
     любому (даже если подписка рекрутера/компании с тех пор истекла —
-    старые публикации остаются видны владельцу для архивации)."""
+    старые публикации остаются видны владельцу для архивации).
+
+    active_vacancies_limit (27.08.2026, ТЗ "экраны по ТЗ от 23.08", бейдж
+    "N из M активных" в шапке "Мои вакансии") — сумма лимитов ПО ВСЕМ
+    воркспейсам, где сейчас реально можно публиковать (обычно один, но
+    участник команды компании может быть ОДНОВРЕМЕННО и рекрутером-
+    подписчиком — тогда лимиты складываются, как и сами счётчики активных
+    вакансий обоих кабинетов у него в списке)."""
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
     rows = storage.list_my_vacancies(user["id"])
-    return web.json_response({"vacancies": [_vacancy_public(storage, r, viewer_id=user["id"]) for r in rows]})
+    limit = 0
+    if storage.is_recruiter_subscribed(user["id"]):
+        limit += _active_vacancies_limit(storage, user["id"], "recruiter")
+    membership = storage.get_company_membership(user["id"])
+    if membership is not None and storage.is_company_subscribed(membership["company_id"]):
+        limit += _active_vacancies_limit(storage, membership["company_id"], "company")
+    return web.json_response({
+        "vacancies": [_vacancy_public(storage, r, viewer_id=user["id"]) for r in rows],
+        "active_vacancies_limit": limit,
+    })
 
 
 async def handle_get_vacancy(request: web.Request) -> web.Response:

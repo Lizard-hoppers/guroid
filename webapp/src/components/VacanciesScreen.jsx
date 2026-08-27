@@ -938,7 +938,7 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
   // от 23.08") — те же данные нужны и списку под табом, и подписи под
   // плиткой верхней навигации ("N активных · N откликов"), незачем грузить
   // дважды при переключении между табами.
-  const [myVac, setMyVac] = useState({ loading: true, vacancies: null, error: null });
+  const [myVac, setMyVac] = useState({ loading: true, vacancies: null, error: null, activeLimit: 0 });
 
   useEffect(() => {
     Promise.all([
@@ -950,8 +950,8 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
   function loadMyVacancies() {
     setMyVac((s) => ({ ...s, loading: true, error: null }));
     getMyVacancies()
-      .then(({ vacancies }) => setMyVac({ loading: false, vacancies, error: null }))
-      .catch((error) => setMyVac({ loading: false, vacancies: null, error }));
+      .then(({ vacancies, active_vacancies_limit }) => setMyVac({ loading: false, vacancies, error: null, activeLimit: active_vacancies_limit }))
+      .catch((error) => setMyVac({ loading: false, vacancies: null, error, activeLimit: 0 }));
   }
 
   useEffect(loadMyVacancies, [refreshKey]);
@@ -1168,6 +1168,18 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
 
       {tab === "mine" && (
         <>
+          {/* Бейдж "N из M активных" в шапке (27.08.2026, ТЗ "экраны по ТЗ
+              от 23.08") — activeLimit=0, пока capability-фактические
+              подписки ещё грузятся/отсутствуют, тогда бейдж просто не
+              показываем (незачем пугать "0 из 0"). */}
+          {myVac.activeLimit > 0 && (
+            <div className="card">
+              <div className="project-head">
+                <h3>{t("vacancies.tabMine")}</h3>
+                <span className="chip">{t("vacancies.mineActiveBadge", { active: myVacActiveCount, limit: myVac.activeLimit })}</span>
+              </div>
+            </div>
+          )}
           <Msg type="error">{manageError}</Msg>
           <MyVacancies
             vacancies={myVac.vacancies}

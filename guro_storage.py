@@ -285,6 +285,10 @@ class GuroStorage:
         for field in GC.EXTRA_PROFILE_FIELDS:
             self._ensure_column("guro_users", field, "TEXT")
         self._ensure_column("guro_users", "work_status", "TEXT")
+        # Длина последнего оплаченного цикла подписки (28.08.2026, макет
+        # "10 · Подписка") — для progress bar "осталось N дней" на фронте,
+        # см. activate_subscription.
+        self._ensure_column("guro_users", "subscription_cycle_days", "INTEGER")
         # Фаза 2 (11.08.2026) — офер/суммы/отзыв в форме подтверждения
         # партнёрства (см. PDF-фидбек владельца). amount_visible=0 по
         # умолчанию (суммы приватны, owner решает при создании — opt-in,
@@ -525,12 +529,20 @@ class GuroStorage:
         return [row["user_id"] for row in rows]
 
     def activate_subscription(self, user_id: int, duration_days: int) -> str:
-        self.get_or_create_guro_user(user_id)
-        expires_at = GL.subscription_expires_at(self._now(), duration_days)
+        row = self.get_or_create_guro_user(user_id)
+        now = self._now()
+        current_expires = GL.parse_db_datetime(row["subscription_expires_at"])
+        is_active = GL.subscription_active(row["subscription_status"], current_expires, now)
+        expires_at = GL.subscription_expires_at(
+            now, duration_days, current_expires_at=current_expires if is_active else None,
+        )
+        # subscription_cycle_days (28.08.2026, макет "10 · Подписка") —
+        # длина ПОСЛЕДНЕГО оплаченного цикла, для progress bar "осталось N
+        # дней" на фронте (доля от cycle_days, не от произвольного "года").
         self._conn.execute(
-            "UPDATE guro_users SET subscription_status=?, subscription_expires_at=?, updated_at=? "
-            "WHERE user_id=?",
-            (GC.SUBSCRIPTION_ACTIVE, GL.format_db_datetime(expires_at), self._now_str(), user_id),
+            "UPDATE guro_users SET subscription_status=?, subscription_expires_at=?, "
+            "subscription_cycle_days=?, updated_at=? WHERE user_id=?",
+            (GC.SUBSCRIPTION_ACTIVE, GL.format_db_datetime(expires_at), duration_days, self._now_str(), user_id),
         )
         self._conn.commit()
         return GL.format_db_datetime(expires_at)
@@ -616,7 +628,15 @@ class GuroStorage:
 
     def activate_recruiter_subscription(self, user_id: int, duration_days: int) -> str:
         row = self.get_or_create_recruiter_profile(user_id)
-        expires_at = GL.subscription_expires_at(self._now(), duration_days)
+        now = self._now()
+        current_expires = GL.parse_db_datetime(row["subscription_expires_at"])
+        is_active = GL.subscription_active(row["subscription_status"], current_expires, now)
+        # Тот же биллинг-баг, что и у личной подписки (28.08.2026, макет
+        # "10 · Подписка"): раннее продление раньше сбрасывало остаток
+        # вместо того чтобы прибавлять к нему.
+        expires_at = GL.subscription_expires_at(
+            now, duration_days, current_expires_at=current_expires if is_active else None,
+        )
         # "Стаж в роли рекрутера" (2.3) считается от ПЕРВОЙ реальной оплаты,
         # не от первого захода на вкладку (та строку создаёт раньше, через
         # get_or_create в handle_me, ещё до оплаты) — пишем только один раз.
@@ -1008,8 +1028,19 @@ class GuroStorage:
         КАЖДЫЙ раз при активации (продление тем же тиром не меняет его,
         оплата ДРУГОГО тира — меняет; апгрейд/даунгрейд-флоу как таковой
         фронтом не предоставляется, апсейл только через новую оплату)."""
-        self.get_or_create_company_profile(user_id)
-        expires_at = GL.subscription_expires_at(self._now(), duration_days)
+        row = self.get_or_create_company_profile(user_id)
+        now = self._now()
+        current_expires = GL.parse_db_datetime(row["subscription_expires_at"])
+        is_active = GL.subscription_active(row["subscription_status"], current_expires, now)
+        # Тот же биллинг-баг, что и у личной/рекрутерской подписки
+        # (28.08.2026, макет "10 · Подписка") — раннее продление раньше
+        # сбрасывало остаток вместо того чтобы прибавлять к нему. Смена
+        # тира при ещё активной подписке ТОЖЕ продлевает от остатка
+        # (не сбрасывает) — тот же принцип, что "продление тем же тиром"
+        # выше в докстринге, апгрейд/даунгрейд не отдельный флоу.
+        expires_at = GL.subscription_expires_at(
+            now, duration_days, current_expires_at=current_expires if is_active else None,
+        )
         self._conn.execute(
             "UPDATE guro_company_profiles SET subscription_status=?, subscription_expires_at=?, "
             "company_tier=?, updated_at=? WHERE user_id=?",

@@ -2453,6 +2453,7 @@ def test_guro_id_storage():
     from storage import Storage
     from guro_storage import GuroStorage
     import guro_constants as GC
+    import guro_logic as GL
 
     with tempfile.TemporaryDirectory() as d:
         db_path = Path(d) / "t.sqlite3"
@@ -2487,6 +2488,35 @@ def test_guro_id_storage():
             check(False, "неизвестное поле должно кидать UNKNOWN_FIELD")
         except ValueError as e:
             check(str(e) == "UNKNOWN_FIELD", "неизвестное поле -> ValueError(UNKNOWN_FIELD)")
+
+        # Продление АКТИВНОЙ подписки прибавляет к остатку, не сбрасывает
+        # (28.08.2026, найдено по макету "10 · Подписка" — реальный
+        # биллинг-баг: раньше ранняя оплата тихо съедала уже оплаченные
+        # дни). Чистая функция — без похода в БД, чтобы не влиять на
+        # dashboard_stats дальше по тесту.
+        now = datetime.now(timezone.utc)
+        active_expiry = now + timedelta(days=300)
+        extended = GL.subscription_expires_at(now, 30, current_expires_at=active_expiry)
+        check(abs((extended - active_expiry).total_seconds() - 30 * 86400) < 1,
+              "продление активной подписки прибавляет duration_days к ОСТАВШЕМУСЯ сроку, не сбрасывает на now+duration")
+        expired_expiry = now - timedelta(days=5)
+        renewed = GL.subscription_expires_at(now, 30, current_expires_at=expired_expiry)
+        check(abs((renewed - now).total_seconds() - 30 * 86400) < 1,
+              "продление ПРОСРОЧЕННОЙ подписки считается от now, а не от старой (уже прошедшей) даты")
+
+        # Интеграционная проверка через storage (user 1 — уже часть набора
+        # "активных" ниже по тесту, повторная активация не меняет счёт
+        # dashboard_stats, только освежает срок).
+        gst.activate_subscription(1, 30)
+        first_expiry = GL.parse_db_datetime(gst.get_or_create_guro_user(1)["subscription_expires_at"])
+        gst.activate_subscription(1, 30)
+        second_expiry = GL.parse_db_datetime(gst.get_or_create_guro_user(1)["subscription_expires_at"])
+        check(
+            abs((second_expiry - first_expiry).total_seconds() - 30 * 86400) < 5,
+            "activate_subscription: та же логика продления, но через реальный storage-слой",
+        )
+        check(gst.get_or_create_guro_user(1)["subscription_cycle_days"] == 30,
+              "subscription_cycle_days запоминает длину последнего цикла (для progress bar)")
 
         try:
             gst.create_partnership(1, 1, None, None)

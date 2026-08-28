@@ -166,8 +166,20 @@ def rate_limited(last_request_at: datetime | None, now: datetime) -> bool:
     return (now - last_request_at) < timedelta(hours=GC.RATE_LIMIT_HOURS)
 
 
-def subscription_expires_at(now: datetime, duration_days: int) -> datetime:
-    return now + timedelta(days=duration_days)
+def subscription_expires_at(
+    now: datetime, duration_days: int, *, current_expires_at: datetime | None = None,
+) -> datetime:
+    """28.08.2026 (найдено по макету "10 · Подписка", Untitled-13— тот явно
+    рисует "Продлить" для УЖЕ активной подписки с 356 днями в запасе):
+    раньше продление ВСЕГДА считалось от now, независимо от остатка — ранняя
+    оплата тихо СЪЕДАЛА уже оплаченные дни (реальный биллинг-баг). Теперь
+    продление активной подписки прибавляет duration_days к текущему сроку,
+    а не сбрасывает его. current_expires_at передавать, только если
+    подписка СЕЙЧАС активна (см. subscription_active) — просроченную
+    подписку продлевать "от старой даты" было бы неверно, она считается
+    от now, как раньше."""
+    base = current_expires_at if (current_expires_at and current_expires_at > now) else now
+    return base + timedelta(days=duration_days)
 
 
 def subscription_active(status: str | None, expires_at: datetime | None, now: datetime) -> bool:

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getMe, getPlans, subscribe, subscribeCrypto } from "../api.js";
 import { Msg } from "./Shared.jsx";
 import { openInvoice, openTelegramLink, haptic } from "../telegram.js";
-import { formatDate } from "../utils.js";
+import { formatDate, pluralRu } from "../utils.js";
 import { useLang } from "../i18n.jsx";
 
 const COMPARE_ROWS = [
@@ -11,6 +11,24 @@ const COMPARE_ROWS = [
   "subscribe.compare.search",
   "subscribe.compare.history",
 ];
+
+// "Что даёт подписка" (28.08.2026, макет "10 · Подписка", Untitled-13) —
+// простой чек-лист вместо таблицы бесплатно/платно, только для product
+// "guro_id" (единственный, для которого есть этот макет — recruiter/
+// company пока используют старый COMPARE_ROWS до своей сверки).
+const GURO_BENEFITS = [
+  "subscribe.benefit.privacy",
+  "subscribe.benefit.partnerships",
+  "subscribe.benefit.search",
+  "subscribe.benefit.priority",
+];
+
+function daysUntil(dbDateString) {
+  if (!dbDateString) return null;
+  const then = new Date(dbDateString.replace(" ", "T") + "Z").getTime();
+  if (Number.isNaN(then)) return null;
+  return Math.max(0, Math.ceil((then - Date.now()) / 86400000));
+}
 
 // Кабинет рекрутера (Фаза 3, 12.08.2026) — та же оплата Stars+крипто, что у
 // базовой подписки, параметризована по product вместо копии экрана.
@@ -41,9 +59,11 @@ const PRODUCT_CONFIG = {
     workspace: undefined,
     subscribedKey: "is_subscribed",
     expiresKey: "subscription_expires_at",
+    cycleKey: "subscription_cycle_days",
     titleKey: "subscribe.titleGuro",
     hintKey: "subscribe.hintGuro",
     compareRows: COMPARE_ROWS,
+    benefits: GURO_BENEFITS,
   },
   recruiter: {
     workspace: "recruiter",
@@ -76,7 +96,7 @@ const PRODUCT_CONFIG = {
 };
 
 export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const cfg = PRODUCT_CONFIG[product] ?? PRODUCT_CONFIG.guro_id;
   const [me, setMe] = useState(null);
   const [plansData, setPlansData] = useState(null);
@@ -141,29 +161,80 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
 
   const isSubscribed = justPaid || me?.[cfg.subscribedKey];
   const expiresAt = me?.[cfg.expiresKey];
+  const cycleDays = cfg.cycleKey ? me?.[cfg.cycleKey] : null;
+  const daysLeft = daysUntil(expiresAt);
   const plan = plansData?.plans?.[selected];
   const compareRows = cfg.compareRows;
   const freeIndex = FREE_ROW_INDEX[product] ?? -1;
+  // Экран продления (28.08.2026, макет "10 · Подписка") — пока построен
+  // только для product="guro_id" (единственный отревьюженный макет): даже
+  // с активной подпиской остаётся видна выгода + пикер тарифов + оплата,
+  // чтобы продлить ЗАРАНЕЕ, не дожидаясь истечения (см. guro_logic.py::
+  // subscription_expires_at — продление теперь прибавляет к остатку, не
+  // сбрасывает его). recruiter/company пока не трогал — там как было
+  // (isSubscribed прячет всё, кроме статуса).
+  const showRenewal = !!cfg.benefits;
+  const showPlans = !isSubscribed || showRenewal;
 
   return (
     <div className="card">
       <h3>{t(cfg.titleKey)}</h3>
-      {isSubscribed ? (
-        <Msg type="ok">
-          {t("subscribe.active")}
-          {expiresAt ? t("subscribe.activeUntil", { date: formatDate(expiresAt) }) : ""}.
-        </Msg>
-      ) : (
+      {isSubscribed && (
+        <div className="subscribe-status">
+          <div className="subscribe-status-dot" />
+          <div className="subscribe-status-info">
+            <div className="subscribe-status-title">{t("subscribe.active")}</div>
+            {expiresAt && (
+              <div className="subscribe-status-meta">
+                {t("subscribe.activeUntilDate", { date: formatDate(expiresAt) })}
+                {daysLeft != null &&
+                  ` · ${t("subscribe.daysLeft", {
+                    count: daysLeft,
+                    unit: lang === "ru" ? pluralRu(daysLeft, ["день", "дня", "дней"]) : daysLeft === 1 ? "day" : "days",
+                  })}`}
+              </div>
+            )}
+            {cycleDays > 0 && daysLeft != null && (
+              <div className="subscribe-progress-track">
+                <div
+                  className="subscribe-progress-fill"
+                  style={{ width: `${Math.max(0, Math.min(100, (daysLeft / cycleDays) * 100))}%` }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!isSubscribed && !showRenewal && <div className="privacy-hint">{t(cfg.hintKey)}</div>}
+
+      {showPlans && cfg.benefits ? (
         <>
-          <div className="privacy-hint">{t(cfg.hintKey)}</div>
-          {compareRows.map((key, i) => (
-            <div className="compare-row" key={key}>
+          <div className="section-eyebrow" style={{ marginTop: isSubscribed ? 14 : 0 }}>
+            {t("subscribe.benefitsTitle")}
+          </div>
+          {cfg.benefits.map((key) => (
+            <div className="subscribe-benefit-row" key={key}>
+              <span>✅</span>
               <span>{t(key)}</span>
-              <span className={i === freeIndex ? "free" : "paid"}>
-                {i === freeIndex ? t("subscribe.free") : t("subscribe.paid")}
-              </span>
             </div>
           ))}
+        </>
+      ) : (
+        !isSubscribed &&
+        compareRows.map((key, i) => (
+          <div className="compare-row" key={key}>
+            <span>{t(key)}</span>
+            <span className={i === freeIndex ? "free" : "paid"}>
+              {i === freeIndex ? t("subscribe.free") : t("subscribe.paid")}
+            </span>
+          </div>
+        ))
+      )}
+
+      {showPlans && (
+        <>
+          {showRenewal && <div className="section-eyebrow" style={{ marginTop: 16 }}>{t("subscribe.renewSectionTitle")}</div>}
 
           {plansData && (
             <div className="plan-picker">
@@ -177,6 +248,7 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
                     haptic("select");
                   }}
                 >
+                  {p.stars_price_full && <span className="plan-card-value-badge">{t("subscribe.bestValueBadge")}</span>}
                   <div className="plan-card-label">{p.label}</div>
                   {p.stars_price_full && (
                     <span className="plan-card-price-full">{p.stars_price_full} ⭐</span>
@@ -193,7 +265,9 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
           )}
 
           <button className="btn" onClick={onSubscribeStars} disabled={busy || !plan}>
-            {busy ? t("subscribe.preparingInvoice") : t("subscribe.payStars", { price: plan ? plan.stars_price : "…" })}
+            {busy
+              ? t("subscribe.preparingInvoice")
+              : t(isSubscribed ? "subscribe.renewStars" : "subscribe.payStars", { price: plan ? plan.stars_price : "…" })}
           </button>
 
           {plansData?.crypto_enabled && plan && (

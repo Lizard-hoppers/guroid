@@ -533,7 +533,8 @@ const STRINGS = {
   "subscribe.titleRecruiter": { ru: "Подписка на кабинет рекрутера", en: "Recruiter cabinet subscription" },
   "subscribe.titleCompany": { ru: "Подписка на кабинет компании", en: "Company cabinet subscription" },
   "subscribe.active": { ru: "Подписка активна", en: "Subscription active" },
-  "subscribe.activeUntil": { ru: " до {date}", en: " until {date}" },
+  "subscribe.activeUntilDate": { ru: "до {date}", en: "until {date}" },
+  "subscribe.daysLeft": { ru: "осталось {count} {unit}", en: "{count} {unit} left" },
   // Обзор "других" подписок на табе "Подписка" (28.08.2026) — Рекрутер и
   // Компания живут в СВОИХ кабинетах, тут только статус + переход туда.
   "subscriptions.otherTitle": { ru: "Другие подписки", en: "Other subscriptions" },
@@ -575,6 +576,30 @@ const STRINGS = {
   "subscribe.free": { ru: "бесплатно", en: "free" },
   "subscribe.paid": { ru: "по подписке", en: "subscription only" },
   "subscribe.economy": { ru: "экономия {amount} ⭐", en: "save {amount} ⭐" },
+
+  // Чек-лист "Что даёт подписка" + продление (28.08.2026, макет "10 ·
+  // Подписка", Untitled-13) — только product="guro_id" пока, см.
+  // SubscribeScreen.jsx::GURO_BENEFITS.
+  "subscribe.benefitsTitle": { ru: "Что даёт подписка", en: "What the subscription gives you" },
+  "subscribe.benefit.privacy": {
+    ru: "Видны рейтинг и стаж других участников — независимо от их настроек приватности",
+    en: "See other members' rating and tenure — regardless of their privacy settings",
+  },
+  "subscribe.benefit.partnerships": {
+    ru: "Ваши партнёрства видны всем: это подтверждает вашу репутацию",
+    en: "Your partnerships are visible to everyone: this confirms your reputation",
+  },
+  "subscribe.benefit.search": {
+    ru: "Поиск по вертикалям и категориям, а не только по юзернейму",
+    en: "Search by vertical and category, not just by username",
+  },
+  "subscribe.benefit.priority": {
+    ru: "Приоритет в выдаче при равном рейтинге",
+    en: "Priority in listings when ratings are equal",
+  },
+  "subscribe.renewSectionTitle": { ru: "Продлить", en: "Renew" },
+  "subscribe.bestValueBadge": { ru: "Выгодно", en: "Best value" },
+  "subscribe.renewStars": { ru: "Продлить · {price} ⭐ Telegram Stars", en: "Renew · {price} ⭐ Telegram Stars" },
   "subscribe.payStars": { ru: "Оформить · {price} ⭐ Telegram Stars", en: "Subscribe · {price} ⭐ Telegram Stars" },
   "subscribe.preparingInvoice": { ru: "Готовим счёт…", en: "Preparing invoice…" },
   "subscribe.payCrypto": { ru: "Оплатить {amount} {asset} (крипто)", en: "Pay {amount} {asset} (crypto)" },

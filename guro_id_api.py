@@ -191,6 +191,9 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
         "partners": partners,
         "subscription_status": guro_user["subscription_status"],
         "subscription_expires_at": guro_user["subscription_expires_at"],
+        # Длина последнего оплаченного цикла (28.08.2026, макет "10 ·
+        # Подписка") — для progress bar "осталось N дней" на фронте.
+        "subscription_cycle_days": guro_user["subscription_cycle_days"],
         "is_subscribed": storage.is_subscribed(user_id),
         # Флаги для кнопок "Посмотреть как рекрутера"/"...компанию" в поиске
         # (SearchScreen.jsx). has_recruiter_profile обнаружен ОТСУТСТВУЮЩИМ
@@ -652,11 +655,26 @@ def _scan_directory_candidates(
 def _rank_directory_matches(matches: list[tuple[int, dict]], *, top: bool) -> dict:
     """top=True («ТОП рейтинга», 11.08.2026) — чистая сортировка по
     репутации вместо силы совпадения (для browse по вертикали сила
-    совпадения всегда одинакова, там top лишь один осмысленный порядок)."""
+    совпадения всегда одинакова, там top лишь один осмысленный порядок).
+
+    28.08.2026 (макет "10 · Подписка", Untitled-13) — экран подписки прямо
+    обещает "Приоритет в выдаче при равном рейтинге", а сортировка этого
+    не делала вообще (только совпадение + репутация, при точном равенстве
+    порядок был случайным побочным эффектом стабильной сортировки по
+    list_guro_user_ids()). is_subscribed добавлен последним ключом
+    сортировки — тай-брейк, не основной критерий."""
     if top:
-        ranked = sorted(matches, key=lambda pair: pair[1].get("reputation_score") or 0, reverse=True)
+        ranked = sorted(
+            matches,
+            key=lambda pair: (pair[1].get("reputation_score") or 0, bool(pair[1].get("is_subscribed"))),
+            reverse=True,
+        )
     else:
-        ranked = sorted(matches, key=lambda pair: (pair[0], pair[1].get("reputation_score") or 0), reverse=True)
+        ranked = sorted(
+            matches,
+            key=lambda pair: (pair[0], pair[1].get("reputation_score") or 0, bool(pair[1].get("is_subscribed"))),
+            reverse=True,
+        )
     sliced = ranked[: GC.DIRECTORY_RESULTS_LIMIT]
     results = [
         {

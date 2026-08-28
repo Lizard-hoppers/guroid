@@ -421,6 +421,11 @@ const STRINGS = {
   "subscribe.titleCompany": { ru: "Подписка на кабинет компании", en: "Company cabinet subscription" },
   "subscribe.active": { ru: "Подписка активна", en: "Subscription active" },
   "subscribe.activeUntil": { ru: " до {date}", en: " until {date}" },
+  // Обзор "других" подписок на табе "Подписка" (28.08.2026) — Рекрутер и
+  // Компания живут в СВОИХ кабинетах, тут только статус + переход туда.
+  "subscriptions.otherTitle": { ru: "Другие подписки", en: "Other subscriptions" },
+  "subscriptions.activeUntil": { ru: "Активна до {date}", en: "Active until {date}" },
+  "subscriptions.notSubscribed": { ru: "Не оформлена", en: "Not subscribed" },
   "subscribe.hintGuro": {
     ru: "Без активной подписки ваш рейтинг и история сделок скрыты — ни вам, ни другим (данные не удаляются, подписка просто держит их видимыми). Полный поиск и просмотр чужих профилей — тоже по подписке.",
     en: "Without an active subscription your rating and deal history are hidden — not to you, not to others (data isn't deleted, the subscription just keeps it visible). Full search and viewing other profiles also require a subscription.",

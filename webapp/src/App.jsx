@@ -5,7 +5,7 @@ import { TabBar } from "./components/TabBar.jsx";
 import { ProfileScreen } from "./components/ProfileScreen.jsx";
 import { SearchScreen } from "./components/SearchScreen.jsx";
 import { ConfirmScreen } from "./components/ConfirmScreen.jsx";
-import { SubscribeScreen } from "./components/SubscribeScreen.jsx";
+import { SubscriptionsScreen } from "./components/SubscriptionsScreen.jsx";
 import { VacanciesScreen } from "./components/VacanciesScreen.jsx";
 import { SlotIntro } from "./components/SlotIntro.jsx";
 import { BRAND_WORD_1, BRAND_WORD_2 } from "./brandLetters.js";
@@ -35,7 +35,7 @@ const SCREENS = {
   search: SearchScreen,
   vacancies: VacanciesScreen,
   confirm: ConfirmScreen,
-  subscribe: SubscribeScreen,
+  subscribe: SubscriptionsScreen,
 };
 
 const TAB_ORDER = ["profile", "search", "vacancies", "confirm", "subscribe"];

@@ -56,9 +56,9 @@ function WorkspaceSwitch({ workspace, onChange }) {
 export function ProfileScreen({
   onNavigate, messageTargetId, onConsumeMessageTarget,
   hireConfirmPrefill, onConsumeHireConfirmPrefill,
+  workspace, onWorkspaceChange: setWorkspace,
 }) {
   const { t } = useLang();
-  const [workspace, setWorkspace] = useState("personal");
   const [state, setState] = useState({ loading: true, data: null, error: null });
   const [recruiterState, setRecruiterState] = useState({ loading: true, data: null, error: null });
   const [companyState, setCompanyState] = useState({ loading: true, data: null, error: null });

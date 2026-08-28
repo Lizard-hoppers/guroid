@@ -95,6 +95,15 @@ function AppShell() {
   // Профиля), поэтому переход в форму найма кабинета Рекрутер требует
   // межвкладочной передачи (та же механика, что openMessages/messageTargetId).
   const [hireConfirmPrefill, setHireConfirmPrefill] = useState(null);
+  // Личный/Рекрутер/Компания (28.08.2026, фидбек владельца: "выбрал
+  // Компанию, ушёл на Сделки — сбрасывает на Личный") — раньше жил ВНУТРИ
+  // ProfileScreen как локальный useState, поэтому обнулялся при каждом
+  // размонтировании (переключение таба размонтирует экран целиком, см.
+  // key={tab} ниже). Здесь, в AppShell, компонент не размонтируется никогда
+  // — значение переживает любое переключение табов. Заодно даёт табу
+  // "Сделки" знать, от чьего лица действовать (см. confirmProps ниже) —
+  // раньше эта вкладка вообще не подозревала о выборе воркспейса в Профиле.
+  const [workspace, setWorkspace] = useState("personal");
   const [tab, setTab] = useState(initialTargetRef.current ? "search" : "profile");
   // Направление перехода между экранами — вперёд (вправо-налево, как
   // раньше) или назад (зеркально, влево-направо), в зависимости от того,
@@ -130,6 +139,15 @@ function AppShell() {
   }
 
   const Screen = SCREENS[tab];
+  // Таб "Сделки" наследует контекст воркспейса (28.08.2026) — то же
+  // соответствие, что уже было у точечных кнопок ВНУТРИ кабинетов
+  // ("Подтвердить сделку/найм" в Компании -> asCompany, "Подтвердить найм"
+  // в Рекрутере -> forcedType="hire"), просто теперь работает и с нижнего
+  // таба, а не только из хаба конкретного кабинета.
+  const confirmProps =
+    tab !== "confirm" ? {} :
+    workspace === "company" ? { asCompany: true } :
+    workspace === "recruiter" ? { forcedType: "hire" } : {};
 
   return (
     <LayoutGroup>
@@ -178,6 +196,9 @@ function AppShell() {
               >
                 <Screen
                   onNavigate={handleTabChange}
+                  workspace={workspace}
+                  onWorkspaceChange={setWorkspace}
+                  {...confirmProps}
                   deepLinkTargetId={
                     tab === "search" && initialTargetRef.current && !targetConsumedRef.current
                       ? initialTargetRef.current

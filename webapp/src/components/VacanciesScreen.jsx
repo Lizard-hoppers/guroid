@@ -94,6 +94,30 @@ function StatusBadge({ status, closedReason }) {
   );
 }
 
+// 28.08.2026 (макет "16 · Рекрутер — Отклики", Untitled-20) — точка-
+// индикатор статуса отклика, тот же визуальный паттерн, что StatusBadge
+// у вакансии выше, но своя палитра под 6 статусов мини-ATS (у макета
+// видно только 3 примера — "Новый"=бирюзовый, "Собеседование"=зелёный,
+// "Отказ"=приглушённый; остальные 3 statuses достроены по аналогии).
+const RESPONSE_STATUS_COLOR_CLASS = {
+  new: "vacancy-status-paused",
+  reviewing: "vacancy-status-paused",
+  interview: "vacancy-status-active",
+  offer: "vacancy-status-active",
+  hired: "vacancy-response-status-hired",
+  rejected: "vacancy-status-closed",
+};
+
+function ResponseStatusDot({ status }) {
+  const { t } = useLang();
+  return (
+    <span className={`vacancy-status-badge ${RESPONSE_STATUS_COLOR_CLASS[status] || ""}`}>
+      <span className="vacancy-status-dot" />
+      {t(`vacancies.responses.status.${status}`)}
+    </span>
+  );
+}
+
 function daysAgo(createdAt) {
   if (!createdAt) return null;
   const then = new Date(createdAt.replace(" ", "T") + "Z").getTime();
@@ -838,32 +862,57 @@ function VacancyResponses({ vacancyId, onBack, onOpenMessages, onOpenHireConfirm
       {state.responses && state.responses.length === 0 && (
         <div className="partner-meta">{t("vacancies.responses.empty")}</div>
       )}
-      {state.responses?.map((r) => (
-        <div key={r.id} className="card">
-          <div className="partner-name">
-            {r.candidate_name || (r.candidate_username ? `@${r.candidate_username}` : t("common.noName"))}
+      {state.responses?.map((r) => {
+        const days = daysAgo(r.created_at);
+        return (
+          <div key={r.id} className="card">
+            <div className="vacancy-response-head">
+              <div className="partner-name">
+                {r.candidate_name || (r.candidate_username ? `@${r.candidate_username}` : t("common.noName"))}
+              </div>
+              {typeof r.reputation_score === "number" && (
+                <div className="rating-preview-circle vacancy-response-rating">{Math.round(r.reputation_score)}</div>
+              )}
+            </div>
+            <div className="vacancy-mine-status-row">
+              <ResponseStatusDot status={r.status} />
+              {days !== null && (
+                <span className="vacancy-mine-counts">
+                  {days === 0 ? t("vacancies.responses.today") : t("vacancies.responses.daysAgo", { days })}
+                </span>
+              )}
+            </div>
+            {r.candidate_vertical && <div className="partner-meta" style={{ marginTop: 4 }}>{r.candidate_vertical}</div>}
+            {r.message && <div className="partner-meta" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{r.message}</div>}
+            <select value={r.status} onChange={(e) => setStatus(r.id, e.target.value)} style={{ marginTop: 10 }}>
+              {RESPONSE_STATUSES.map((s) => (
+                <option key={s} value={s}>{t(`vacancies.responses.status.${s}`)}</option>
+              ))}
+            </select>
+            <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
+              {r.candidate_username && (
+                <button type="button" className="btn secondary" onClick={() => onOpenMessages(r.candidate_id)}>
+                  {t("vacancies.writeBtn")}
+                </button>
+              )}
+              {r.status === "hired" && (
+                <button type="button" className="btn" onClick={() => confirmHire(r)}>
+                  {t("vacancies.responses.confirmHireBtn")}
+                </button>
+              )}
+            </div>
           </div>
-          <div className="partner-meta">
-            {[r.candidate_vertical, typeof r.reputation_score === "number" ? `★ ${r.reputation_score}` : null].filter(Boolean).join(" · ")}
+        );
+      })}
+
+      {state.responses && state.responses.length > 0 && (
+        <div className="profile-privacy-locked-note vacancy-hire-explainer">
+          <div className="profile-privacy-locked-title vacancy-hire-explainer-title">
+            {t("vacancies.responses.hireExplainerTitle")}
           </div>
-          {r.message && <div className="partner-meta" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{r.message}</div>}
-          <select value={r.status} onChange={(e) => setStatus(r.id, e.target.value)} style={{ marginTop: 10 }}>
-            {RESPONSE_STATUSES.map((s) => (
-              <option key={s} value={s}>{t(`vacancies.responses.status.${s}`)}</option>
-            ))}
-          </select>
-          <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
-            {r.candidate_username && (
-              <button type="button" className="btn secondary" onClick={() => onOpenMessages(r.candidate_id)}>
-                {t("vacancies.writeBtn")}
-              </button>
-            )}
-            <button type="button" className="btn" onClick={() => confirmHire(r)}>
-              {t("vacancies.responses.confirmHireBtn")}
-            </button>
-          </div>
+          <div className="privacy-row-note">{t("vacancies.responses.hireExplainerText")}</div>
         </div>
-      ))}
+      )}
     </div>
   );
 }

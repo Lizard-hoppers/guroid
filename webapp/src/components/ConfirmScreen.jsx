@@ -1,9 +1,46 @@
-import { useState } from "react";
-import { createPartnership, ApiError } from "../api.js";
-import { Msg } from "./Shared.jsx";
+import { useEffect, useState } from "react";
+import { createPartnership, getPendingRatings, ApiError } from "../api.js";
+import { Msg, Spinner } from "./Shared.jsx";
+import { RatePartnershipScreen } from "./RatePartnershipScreen.jsx";
 import { haptic } from "../telegram.js";
 import { useLang } from "../i18n.jsx";
 import { formatDate } from "../utils.js";
+
+// Список "Ждут вашей оценки" (28.08.2026, макет "07 · Сделки — шаг 2") —
+// GET /api/partnerships/pending_ratings уже существовал на бэкенде
+// неиспользуемым, тут наконец подключён к экрану. Только на базовом
+// табе "Подтвердить" (не в под-сценариях "Подтвердить найм" из кабинетов
+// Рекрутер/Компания/Вакансий — у тех есть onBack, см. условие в
+// ConfirmScreen ниже) — это личные партнёрства пользователя, у
+// найма-от-лица-кабинета своей оценки на этом шаге нет.
+function PendingRatingsList({ items, onOpen }) {
+  const { t } = useLang();
+  if (!items || items.length === 0) return null;
+  return (
+    <div className="card">
+      <h3>{t("confirm.pendingRatingsTitle")}</h3>
+      {items.map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          className="confirm-pending-rating-row"
+          onClick={() => onOpen(p)}
+        >
+          <span>
+            {p.name || (p.username ? `@${p.username}` : t("common.noName"))}
+            <span className="partner-meta">
+              {" · "}
+              {t(p.ptype === "hire" ? "confirm.ptype.hire" : "confirm.ptype.deal")}
+              {" · "}
+              {formatDate(p.confirmed_at)}
+            </span>
+          </span>
+          <span className="profile-menu-item-chevron">›</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const ERROR_KEYS = {
   SELF_PARTNERSHIP: "confirm.error.SELF_PARTNERSHIP",
@@ -49,6 +86,21 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
     ...(prefill || {}),
   }));
   const [state, setState] = useState({ loading: false, ok: false, error: null });
+  // "Ждут вашей оценки" + экран оценки, Шаг 2 (28.08.2026) — только на
+  // базовом табе "Подтвердить" (onBack не передан извне, см. App.jsx), не
+  // в под-сценариях "Подтвердить найм" из кабинетов (у тех есть onBack).
+  const showPendingRatings = !onBack;
+  const [pendingRatings, setPendingRatings] = useState(null);
+  const [rating, setRating] = useState(null); // выбранное партнёрство для RatePartnershipScreen
+
+  function loadPendingRatings() {
+    if (!showPendingRatings) return;
+    getPendingRatings()
+      .then(({ results }) => setPendingRatings(results))
+      .catch(() => setPendingRatings([]));
+  }
+
+  useEffect(loadPendingRatings, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function set(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -76,18 +128,34 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
       : t((state.error instanceof ApiError && ERROR_KEYS[state.error.code]) || "confirm.error.generic")
     : null;
 
+  if (rating) {
+    return (
+      <RatePartnershipScreen
+        partnership={rating}
+        onBack={() => setRating(null)}
+        onDone={() => {
+          setRating(null);
+          loadPendingRatings();
+        }}
+      />
+    );
+  }
+
   return (
-    <div className="card">
-      {onBack && (
-        <button type="button" className="subscreen-back" onClick={onBack}>
-          {t("common.back")}
-        </button>
-      )}
-      <h3>{t(forcedType === "hire" ? "confirm.title.hire" : "confirm.title")}</h3>
-      <div className="confirm-step-label">{t("confirm.stepLabel")}</div>
-      {asCompany && <div className="company-verify-status is-verified">{t("confirm.asCompanyHint")}</div>}
-      <div className="privacy-hint">{t("confirm.hint")}</div>
-      <form onSubmit={onSubmit}>
+    <div>
+      {showPendingRatings && pendingRatings === null && <Spinner>{t("messages.loading")}</Spinner>}
+      {showPendingRatings && <PendingRatingsList items={pendingRatings} onOpen={setRating} />}
+      <div className="card">
+        {onBack && (
+          <button type="button" className="subscreen-back" onClick={onBack}>
+            {t("common.back")}
+          </button>
+        )}
+        <h3>{t(forcedType === "hire" ? "confirm.title.hire" : "confirm.title")}</h3>
+        <div className="confirm-step-label">{t("confirm.stepLabel")}</div>
+        {asCompany && <div className="company-verify-status is-verified">{t("confirm.asCompanyHint")}</div>}
+        <div className="privacy-hint">{t("confirm.hint")}</div>
+        <form onSubmit={onSubmit}>
         <label>{t("confirm.usernameLabel")}</label>
         <input
           type="text"
@@ -194,9 +262,10 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
         >
           {state.loading ? t("confirm.submitting") : t("confirm.submit")}
         </button>
-      </form>
-      <Msg type="error">{errorText}</Msg>
-      <Msg type="ok">{state.ok ? t("confirm.sentOk") : null}</Msg>
+        </form>
+        <Msg type="error">{errorText}</Msg>
+        <Msg type="ok">{state.ok ? t("confirm.sentOk") : null}</Msg>
+      </div>
     </div>
   );
 }

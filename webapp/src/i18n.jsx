@@ -467,6 +467,47 @@ const STRINGS = {
     en: "Daily limit of new requests reached. Resets on {date}.",
   },
 
+  // Оценка партнёрства, Шаг 2 — отдельный экран (28.08.2026, макет "07 ·
+  // Сделки — шаг 2 (оценка)", Untitled-10). Раньше оценка была маленьким
+  // виджетом внутри строки "Мой рейтинг" (RateWidget, Shared.jsx) —
+  // отдельного экрана, доступного с таба "Подтвердить", не было вообще.
+  // Бэкенд для списка "ждут оценки" уже существовал неиспользуемым
+  // (GET /api/partnerships/pending_ratings, guro_id_api.py) — просто не
+  // был подключён ни к одному экрану.
+  "confirm.pendingRatingsTitle": { ru: "Ждут вашей оценки", en: "Awaiting your rating" },
+  "confirm.rate.title": { ru: "Оценить партнёрство", en: "Rate the partnership" },
+  "confirm.rate.stepLabel": {
+    ru: "Шаг 2 из 2 — оценка (доступна после подтверждения шага 1 обеими сторонами)",
+    en: "Step 2 of 2 — rating (available once both sides confirm step 1)",
+  },
+  "confirm.rate.hint": {
+    ru: "Партнёрство уже подтверждено — теперь можно оставить независимую оценку. Ваша оценка скрыта 14 дней и не видна собеседнику. Если за это время он тоже оставит оценку — обе публикуются одновременно. Если нет — ваша публикуется по истечении срока. Так никто не может занизить оценку в отместку.",
+    en: "The partnership is already confirmed — now you can leave an independent rating. Your rating is hidden for 14 days and not visible to the other side. If they also rate within that time — both are published at once. If not — yours is published once the period ends. This way no one can retaliate by lowballing a rating.",
+  },
+  "confirm.rate.partnershipLabel": { ru: "Партнёрство", en: "Partnership" },
+  "rating.confirmedOn": { ru: "подтверждено {date}", en: "confirmed {date}" },
+  "confirm.rate.verdictLabel": { ru: "Ваша оценка", en: "Your rating" },
+  // Короткие подписи КНОПОК (отличаются от длинных rating.verdict.* —
+  // те остаются как есть, используются в пояснительном тексте ниже и в
+  // других местах, напр. PartnerRow "Ваша оценка: ✅ Успешно").
+  "confirm.rate.verdictBtn.nuance": { ru: "Нюансы", en: "Nuances" },
+  "confirm.rate.verdictBtn.problematic": { ru: "Проблема", en: "Problem" },
+  "confirm.rate.commentRule": {
+    ru: "Комментарий обязателен при ⚠ «Были нюансы» или ❌ «Проблемная сделка». При ✅ «Успешно» можно оставить пустым.",
+    en: "A comment is required for ⚠ \"Had nuances\" or ❌ \"Problematic deal\". For ✅ \"Success\" it can be left empty.",
+  },
+  "confirm.rate.commentLabel": { ru: "Комментарий (обязателен при ⚠ или ❌)", en: "Comment (required for ⚠ or ❌)" },
+  "confirm.rate.commentPlaceholder": { ru: "Опишите, что пошло не так и почему", en: "Describe what went wrong and why" },
+  "confirm.rate.commentRequired": { ru: "Комментарий обязателен для этой оценки.", en: "A comment is required for this rating." },
+  "confirm.rate.footerNote": {
+    ru: "🔒 Антифрод-механизм: оценки скрыты 14 дней и публикуются только одновременно (если хоть один участник ответит взаимностью) — это защищает от мести за честный отзыв.",
+    en: "🔒 Anti-fraud mechanism: ratings are hidden for 14 days and published only simultaneously (if at least one participant reciprocates) — this protects against retaliation for an honest review.",
+  },
+  "confirm.rate.submitBtn": { ru: "Опубликовать оценку", en: "Publish rating" },
+  "confirm.rate.submitting": { ru: "Публикуем…", en: "Publishing…" },
+  "confirm.rate.sentOk": { ru: "Оценка сохранена.", en: "Rating saved." },
+  "confirm.rate.loadError": { ru: "Не удалось загрузить партнёрство.", en: "Couldn't load the partnership." },
+
   // --- Подписка ---
   "subscribe.titleGuro": { ru: "Подписка GURO ID", en: "GURO ID subscription" },
   "subscribe.titleRecruiter": { ru: "Подписка на кабинет рекрутера", en: "Recruiter cabinet subscription" },

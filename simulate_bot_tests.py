@@ -2579,9 +2579,19 @@ def test_guro_id_storage():
         not_yet = gst3.get_partnership(p2["id"])
         check(not_yet["rating_revealed_at"] is None, "одна оценка из двух -> ещё не раскрыто")
 
-        gst3.submit_rating(p2["id"], rater_id=1, verdict="nuance", comment=None)
+        # 28.08.2026 (макет "07 · Сделки — шаг 2"): комментарий теперь
+        # ОБЯЗАТЕЛЕН для "nuance" (раньше молча отбрасывался, как у
+        # "success") — без него submit_rating кидает COMMENT_REQUIRED.
+        try:
+            gst3.submit_rating(p2["id"], rater_id=1, verdict="nuance", comment=None)
+            check(False, "'nuance' без комментария должен кидать COMMENT_REQUIRED")
+        except ValueError as e:
+            check(str(e) == "COMMENT_REQUIRED", "'nuance' без комментария -> ValueError(COMMENT_REQUIRED)")
+
+        gst3.submit_rating(p2["id"], rater_id=1, verdict="nuance", comment="частично задержал ответ")
         edited = gst3.get_my_rating(p2["id"], 1)
         check(edited["verdict"] == "nuance", "повторная отправка РЕДАКТИРУЕТ оценку (upsert), не кидает ошибку")
+        check(edited["comment"] == "частично задержал ответ", "комментарий 'nuance' теперь СОХРАНЯЕТСЯ (раньше отбрасывался)")
 
         try:
             gst3.submit_rating(p2["id"], rater_id=999, verdict="success", comment=None)

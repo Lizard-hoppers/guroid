@@ -1375,9 +1375,17 @@ class GuroStorage:
             raise ValueError("NOT_CONFIRMED")
         ratee_id = row["confirmer_id"] if rater_id == row["initiator_id"] else row["initiator_id"]
 
+        # 28.08.2026 (макет "07 · Сделки — шаг 2", Untitled-10): раньше
+        # комментарий сохранялся ТОЛЬКО у "problematic", для "nuance" молча
+        # обнулялся, даже если фронт его прислал — макет явно требует
+        # комментарий для ОБОИХ негативных вердиктов ("Комментарий обязателен
+        # при ⚠ «Были нюансы» или ❌ «Проблемная сделка»"). Теперь "success" —
+        # единственный вердикт, где комментарий необязателен и отбрасывается.
         comment = (comment or "").strip()[: GC.RATING_COMMENT_MAX] or None
-        if verdict != GC.RATING_PROBLEMATIC:
+        if verdict == GC.RATING_SUCCESS:
             comment = None
+        elif comment is None:
+            raise ValueError("COMMENT_REQUIRED")
         existing = self._conn.execute(
             "SELECT id FROM guro_partnership_ratings WHERE partnership_id=? AND rater_id=?",
             (partnership_id, rater_id),

@@ -1046,7 +1046,7 @@ async def _notify_new_message(bot_token: str, webapp_url: str, recipient_id: int
 
 _RATING_ERROR_STATUS = {
     "NOT_FOUND": 404, "NOT_YOUR_PARTNERSHIP": 403, "NOT_CONFIRMED": 409,
-    "INVALID_VERDICT": 400, "RATING_NOT_FOUND": 404,
+    "INVALID_VERDICT": 400, "RATING_NOT_FOUND": 404, "COMMENT_REQUIRED": 400,
 }
 
 

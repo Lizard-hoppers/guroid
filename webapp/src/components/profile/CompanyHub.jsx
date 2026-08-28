@@ -457,15 +457,12 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
 
       <CharacteristicPanel data={data} />
 
-      <div className="card recruiter-quick-actions">
+      <div className="card recruiter-quick-actions is-stacked">
         <button type="button" className="btn" onClick={() => onNavigateTab("vacancies")}>
           {t("company.quickPublish")}
         </button>
         <button type="button" className="btn secondary" onClick={() => onNavigateSub("company-candidates")}>
           {t("company.quickFind")}
-        </button>
-        <button type="button" className="btn secondary" onClick={() => onNavigateSub("company-confirm")}>
-          {t("company.quickConfirm")}
         </button>
         <button type="button" className="btn secondary" onClick={() => onNavigateSub("company-team")}>
           {t("team.title")} · {t("team.counter", { count: data.member_count, limit: data.member_limit })}

@@ -110,25 +110,32 @@ function PositionCascadeSelect({ positions, vertical, grade, position, positionI
       </div>
 
       <label>{t("vacancies.form.positionLabel")}</label>
-      <select
-        value={positionIsOther ? "__other__" : position}
-        disabled={!vertical || !grade}
-        onChange={(e) => {
-          if (e.target.value === "__other__") {
-            onChange({ vertical, grade, position: "", positionIsOther: true });
-          } else {
-            onChange({ vertical, grade, position: e.target.value, positionIsOther: false });
-          }
-        }}
-      >
-        <option value="">{t("vacancies.form.positionPlaceholder")}</option>
-        {positionOptions.map(([code, label]) => (
-          <option key={code} value={label}>{label}</option>
-        ))}
-        <option value="__other__">{t("vacancies.form.positionOther")}</option>
-      </select>
+      {!positionIsOther && (
+        <select
+          value={position}
+          disabled={!vertical || !grade}
+          onChange={(e) => onChange({ vertical, grade, position: e.target.value, positionIsOther: false })}
+        >
+          <option value="">{t("vacancies.form.positionPlaceholder")}</option>
+          {positionOptions.map(([code, label]) => (
+            <option key={code} value={label}>{label}</option>
+          ))}
+        </select>
+      )}
 
-      {positionIsOther && (
+      {/* "Другое" — отдельная кнопка под селектом (28.08.2026, ТЗ "14 ·
+          Рекрутер — Опубликовать вакансию", "+ Другое → свободный ввод"),
+          не пункт внутри самого выпадающего списка, как было раньше. */}
+      {!positionIsOther ? (
+        <button
+          type="button"
+          className="btn secondary"
+          disabled={!vertical || !grade}
+          onClick={() => onChange({ vertical, grade, position: "", positionIsOther: true })}
+        >
+          {t("vacancies.form.positionOther")}
+        </button>
+      ) : (
         <input
           type="text"
           placeholder={t("vacancies.form.positionOtherPlaceholder")}
@@ -1088,6 +1095,15 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
             <span className="vacancy-nav-tile-title">{t("vacancies.tabBoard")}</span>
             <span className="vacancy-nav-tile-sub">{t("vacancies.navBoardHint")}</span>
           </button>
+          {/* Порядок плиток — как в PDF-макете ("13 · Рекрутер — Вакансии (4
+              блока)", 28.08.2026): верхний ряд Доска|Отклики, нижний Мои
+              вакансии|+Опубликовать (было наоборот). */}
+          {canPublish && (
+            <button type="button" className="vacancy-nav-tile" onClick={() => setView({ name: "all-responses" })}>
+              <span className="vacancy-nav-tile-title">{t("vacancies.responses.title")}</span>
+              <span className="vacancy-nav-tile-sub">{t("vacancies.navResponsesHint")}</span>
+            </button>
+          )}
           {canPublish && (
             <button
               type="button"
@@ -1098,12 +1114,6 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
               <span className="vacancy-nav-tile-sub">
                 {t("vacancies.navMineHint", { active: myVacActiveCount, responses: myVacResponsesTotal })}
               </span>
-            </button>
-          )}
-          {canPublish && (
-            <button type="button" className="vacancy-nav-tile" onClick={() => setView({ name: "all-responses" })}>
-              <span className="vacancy-nav-tile-title">{t("vacancies.responses.title")}</span>
-              <span className="vacancy-nav-tile-sub">{t("vacancies.navResponsesHint")}</span>
             </button>
           )}
           {canPublish && (

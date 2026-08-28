@@ -258,7 +258,7 @@ export function RecruiterHub({
         onConfirmHire={() => onNavigateSub("recruiter-confirm")}
       />
 
-      <div className="card recruiter-quick-actions">
+      <div className="card recruiter-quick-actions is-stacked">
         <button type="button" className="btn" onClick={() => onNavigateTab("vacancies")}>
           {t("recruiter.quickPublish")}
         </button>

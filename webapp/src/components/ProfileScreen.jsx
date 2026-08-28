@@ -276,9 +276,6 @@ export function ProfileScreen({
   }
 
   if (workspace === "company") {
-    if (sub === "company-confirm") {
-      return <ConfirmScreen asCompany onBack={() => setSub(null)} />;
-    }
     if (sub === "company-team") {
       return <TeamScreen onBack={() => setSub(null)} />;
     }

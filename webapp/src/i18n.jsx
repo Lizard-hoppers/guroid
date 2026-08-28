@@ -592,7 +592,6 @@ const STRINGS = {
   "company.characteristic.members": { ru: "Участников команды", en: "Team members" },
   "company.quickPublish": { ru: "+ Опубликовать вакансию от бренда", en: "+ Post a vacancy as the brand" },
   "company.quickFind": { ru: "Найти кандидата", en: "Find a candidate" },
-  "company.quickConfirm": { ru: "🤝 Подтвердить сделку/найм", en: "🤝 Confirm deal/hire" },
   "company.activeVacancies": { ru: "Активных вакансий: {n}", en: "Active vacancies: {n}" },
   "company.menu.tariffs": { ru: "Тарифы", en: "Pricing" },
   // Создание компании (27.08.2026, ТЗ "Роли и управление командой", раздел 1)
@@ -776,7 +775,7 @@ const STRINGS = {
   // от 23.08", "Вакансии").
   "vacancies.navBoardHint": { ru: "Все вакансии индустрии", en: "All vacancies in the industry" },
   "vacancies.navMineHint": { ru: "{active} активные · {responses} откликов", en: "{active} active · {responses} responses" },
-  "vacancies.mineActiveBadge": { ru: "{active} из {limit} активные", en: "{active} of {limit} active" },
+  "vacancies.mineActiveBadge": { ru: "{active} из {limit} активных", en: "{active} of {limit} active" },
   "vacancies.navResponsesHint": { ru: "Все отклики по вакансиям", en: "All responses to your vacancies" },
   "vacancies.navPublishHint": { ru: "Новая вакансия", en: "New vacancy" },
   "vacancies.mineTitle": { ru: "Мои вакансии", en: "My vacancies" },
@@ -837,7 +836,7 @@ const STRINGS = {
   "vacancies.form.gradePlaceholder": { ru: "Выберите грейд", en: "Select grade" },
   "vacancies.form.positionLabel": { ru: "Должность", en: "Position" },
   "vacancies.form.positionPlaceholder": { ru: "Выберите должность", en: "Select position" },
-  "vacancies.form.positionOther": { ru: "Другое…", en: "Other…" },
+  "vacancies.form.positionOther": { ru: "+ Другое → свободный ввод", en: "+ Other → free text" },
   "vacancies.form.positionOtherPlaceholder": { ru: "Укажите должность", en: "Enter the position" },
   "vacancies.form.locationLabel": { ru: "Локация", en: "Location" },
   "vacancies.form.locationPlaceholder": { ru: "Malta, Cyprus…", en: "Malta, Cyprus…" },

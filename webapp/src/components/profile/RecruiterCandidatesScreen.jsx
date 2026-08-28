@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { search, searchCandidates, searchByUserId, getCandidatesCount, ApiError } from "../../api.js";
 import { DirectoryRow } from "../SearchScreen.jsx";
 import { usePositions } from "../VacanciesScreen.jsx";
-import { Msg, MetricsRow, IdentityLine, WorkStatusBadge, Spinner, CharacteristicButton } from "../Shared.jsx";
+import { Msg, MetricsRow, IdentityLine, WorkStatusBadge, Spinner, CharacteristicButton, WorkspaceCabinetBadge } from "../Shared.jsx";
 import { useLang } from "../../i18n.jsx";
 import { formatDate } from "../../utils.js";
 
@@ -145,7 +145,10 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
       </button>
 
       <div className="card">
-        <h3>{t("recruiter.candidates.title")}</h3>
+        <div className="project-head">
+          <h3>{t("recruiter.candidates.title")}</h3>
+          <WorkspaceCabinetBadge workspace="recruiter" />
+        </div>
         <p className="partner-meta">{t("recruiter.candidates.hint")}</p>
 
         <form onSubmit={onSubmit}>

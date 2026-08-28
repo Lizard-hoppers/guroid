@@ -604,6 +604,8 @@ const STRINGS = {
 
   // --- Кабинет рекрутера ---
   "recruiter.title": { ru: "Кабинет рекрутера", en: "Recruiter cabinet" },
+  // Бейдж-подсказка "Кабинет: Рекрутер" (28.08.2026) — см. WorkspaceCabinetBadge, Shared.jsx.
+  "workspace.badge.recruiter": { ru: "Кабинет: Рекрутер", en: "Cabinet: Recruiter" },
   "recruiter.upsellText": {
     ru: "Отдельная витрина поверх личного профиля — своё имя, компания и CV для рабочего режима, независимо от того, что видно в личном профиле. Рейтинг и история сделок остаются общими для обоих режимов.",
     en: "A separate showcase on top of your personal profile — your own name, company and CV for work mode, independent of what's visible in your personal profile. Rating and deal history stay shared between both modes.",

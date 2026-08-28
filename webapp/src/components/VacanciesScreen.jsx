@@ -4,10 +4,10 @@ import {
   pauseVacancy, resumeVacancy, extendVacancy, closeVacancy, respondVacancy,
   getVacancyResponses, getMyResponses, updateResponseStatus, ApiError,
 } from "../api.js";
-import { Msg, Spinner } from "./Shared.jsx";
+import { Msg, Spinner, WorkspaceCabinetBadge } from "./Shared.jsx";
 import { useLang } from "../i18n.jsx";
 import { haptic } from "../telegram.js";
-import { formatDate } from "../utils.js";
+import { formatDate, initialOf } from "../utils.js";
 
 // Те же канонические вертикали, что в SearchScreen.jsx (constants.VERTICALS
 // в боте) — намеренно не вынесены в общий модуль ради одного переиспользования.
@@ -446,6 +446,16 @@ function VacancyForm({ editingId, initial, authorWorkspace, canRecruiter, canCom
 
 // Компактная карточка доски (раздел 2 ТЗ) — без описания, тап открывает
 // полную карточку.
+// 28.08.2026 (макет "13 · Рекрутер — Вакансии (4 блока)", Untitled-17) —
+// приведена в соответствие: бейдж "Официальная вакансия" переехал в
+// СВОЮ строку НАД заголовком (был инлайном после текста заголовка),
+// вертикаль/грейд/гео/формат/тип занятости стали отдельными чипами
+// (были голым текстом через " · "), зарплата — акцентным крупным
+// текстом, появилась строка "кто разместил" с аватаром/лого-миниатюрой
+// СЛЕВА и рейтинг-кружком СПРАВА (раньше рейтинга на карточке не было
+// вообще, хотя бэкенд его уже отдавал — _vacancy_poster_summary,
+// guro_id_api.py). employment_type ("Полная"/...) тоже раньше не
+// показывался в компактной карточке, хотя бэкенд его отдаёт.
 function VacancyCard({ v, onOpen }) {
   const { t } = useLang();
   const salaryText = v.salary_negotiable
@@ -455,10 +465,16 @@ function VacancyCard({ v, onOpen }) {
       : null;
   const days = daysAgo(v.created_at);
   // Премиальное оформление вакансии от лица "Компании" (26.08.2026, ТЗ
-  // "Компания. каб", раздел 4) — логотип-миниатюра + акцентная рамка +
-  // бейдж "Официальная вакансия компании", только у author_workspace=company
-  // (у вакансии рекрутера-одиночки — просто имя, без изображения/рамки).
+  // "Компания. каб", раздел 4) — акцентная рамка + бейдж "Официальная
+  // вакансия компании", только у author_workspace=company (у вакансии
+  // рекрутера-одиночки — просто имя, без бейджа).
   const isCompany = v.author_workspace === "company";
+  const posterName = v.company || v.poster_name;
+  const tags = [
+    v.vertical, v.grade, v.location,
+    v.work_format && t(`vacancies.workFormat.${v.work_format}`),
+    v.employment_type && t(`vacancies.employment.${v.employment_type}`),
+  ].filter(Boolean);
   return (
     <div
       className={`card vacancy-card${isCompany ? " vacancy-card-company" : ""}`}
@@ -466,26 +482,39 @@ function VacancyCard({ v, onOpen }) {
       role="button"
       tabIndex={0}
     >
-      <h3>
-        {isCompany && v.poster_logo_url && <img className="vacancy-card-poster-logo" src={v.poster_logo_url} alt="" />}
-        {v.title}
-        {isCompany && <span className="vacancy-official-badge">{t("vacancies.officialCompanyBadge")}</span>}
-      </h3>
-      <div className="partner-meta">
-        {[v.vertical, v.grade].filter(Boolean).join(" · ")}
-      </div>
-      <div className="partner-meta">
-        {[v.location, v.work_format && t(`vacancies.workFormat.${v.work_format}`)].filter(Boolean).join(" · ")}
-      </div>
-      {salaryText && <div className="partner-meta" style={{ marginTop: 4 }}>{salaryText}</div>}
-      <div className="partner-meta" style={{ marginTop: 6 }}>
-        {[v.company || v.poster_name, v.verified_company && t("vacancies.verifiedCompany")].filter(Boolean).join(" · ")}
-      </div>
-      {days != null && (
-        <div className="partner-meta" style={{ marginTop: 4 }}>
-          {days === 0 ? t("vacancies.postedToday") : t("vacancies.postedAgo", { days })}
+      {isCompany && (
+        <div className="vacancy-official-badge">✓ {t("vacancies.officialCompanyBadge")}</div>
+      )}
+      <h3>{v.title}</h3>
+      {tags.length > 0 && (
+        <div className="vacancy-tag-row">
+          {tags.map((tag, i) => (
+            <span className="vacancy-tag-chip" key={i}>{tag}</span>
+          ))}
         </div>
       )}
+      {salaryText && <div className="vacancy-salary">{salaryText}</div>}
+      <div className="vacancy-poster-row">
+        <div className="vacancy-poster-avatar">
+          {v.poster_logo_url ? <img src={v.poster_logo_url} alt="" /> : initialOf(posterName)}
+        </div>
+        <div className="vacancy-poster-info">
+          <div className="vacancy-poster-name">
+            {posterName}
+            {v.verified_company && (
+              <span className="company-verified-badge" title={t("company.verify.verified")}>✓</span>
+            )}
+          </div>
+          {days != null && (
+            <div className="partner-meta">
+              {days === 0 ? t("vacancies.postedToday") : t("vacancies.postedAgo", { days })}
+            </div>
+          )}
+        </div>
+        {typeof v.reputation_score === "number" && (
+          <div className="rating-preview-circle vacancy-poster-rating">{Math.round(v.reputation_score)}</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -900,7 +929,7 @@ function AllResponses({ onBack, onOpenMessages, onOpenHireConfirm }) {
   );
 }
 
-export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm }) {
+export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm, workspace }) {
   const { t, lang } = useLang();
   const positions = usePositions();
   const [tab, setTab] = useState("board"); // "board" | "mine"
@@ -1041,7 +1070,10 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
   return (
     <div>
       <div className="card">
-        <h3>{t("vacancies.title")}</h3>
+        <div className="project-head">
+          <h3>{t("vacancies.title")}</h3>
+          <WorkspaceCabinetBadge workspace={workspace} />
+        </div>
         <div className="partner-meta" style={{ marginBottom: 10 }}>{t("vacancies.hint")}</div>
 
         {/* Верхняя навигация плитками 2×2 (27.08.2026, ТЗ "экраны по ТЗ от
@@ -1058,15 +1090,14 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
             <span className="vacancy-nav-tile-title">{t("vacancies.tabBoard")}</span>
             <span className="vacancy-nav-tile-sub">{t("vacancies.navBoardHint")}</span>
           </button>
-          {/* Порядок плиток — как в PDF-макете ("13 · Рекрутер — Вакансии (4
-              блока)", 28.08.2026): верхний ряд Доска|Отклики, нижний Мои
-              вакансии|+Опубликовать (было наоборот). */}
-          {canPublish && (
-            <button type="button" className="vacancy-nav-tile" onClick={() => setView({ name: "all-responses" })}>
-              <span className="vacancy-nav-tile-title">{t("vacancies.responses.title")}</span>
-              <span className="vacancy-nav-tile-sub">{t("vacancies.navResponsesHint")}</span>
-            </button>
-          )}
+          {/* Порядок плиток — сверен ещё раз по РЕНДЕРУ макета "13 · Рекрутер
+              — Вакансии (4 блока)" (28.08.2026): верхний ряд Доска|Мои
+              вакансии, нижний Отклики|+Опубликовать (предыдущее чтение
+              этого же макета дало обратный порядок строк — при сверке с
+              картинкой, а не только текстовым слоем PDF, верным
+              оказался этот). Активная плитка (Доска/Мои вакансии) — та,
+              что залита цветом на макете; "+Опубликовать" там обычная
+              нейтральная плитка, а не всегда-зелёная, как было. */}
           {canPublish && (
             <button
               type="button"
@@ -1080,9 +1111,15 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm 
             </button>
           )}
           {canPublish && (
+            <button type="button" className="vacancy-nav-tile" onClick={() => setView({ name: "all-responses" })}>
+              <span className="vacancy-nav-tile-title">{t("vacancies.responses.title")}</span>
+              <span className="vacancy-nav-tile-sub">{t("vacancies.navResponsesHint")}</span>
+            </button>
+          )}
+          {canPublish && (
             <button
               type="button"
-              className="vacancy-nav-tile is-primary"
+              className="vacancy-nav-tile"
               onClick={() => setView({ name: "form" })}
             >
               <span className="vacancy-nav-tile-title">{t("vacancies.publishBtn")}</span>

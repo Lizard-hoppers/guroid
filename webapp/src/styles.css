@@ -572,11 +572,13 @@ label {
   cursor: pointer;
 }
 
+/* 28.08.2026 (макет "13 · Рекрутер — Вакансии (4 блока)") — активная
+   плитка (Доска/Мои вакансии, смотря какая сейчас выбрана) залита
+   акцентным градиентом, раньше был только тонкий контур. Плитку
+   "+Опубликовать" залитой градиентом БЕЗ УСЛОВИЙ (раньше — .is-primary,
+   всегда зелёная) макет не показывает — обычная нейтральная плитка,
+   как "Отклики"/невыбранная вкладка. */
 .vacancy-nav-tile.is-active {
-  border-color: var(--gold);
-}
-
-.vacancy-nav-tile.is-primary {
   background: linear-gradient(135deg, var(--gold), #54e4a6);
   border-color: transparent;
   color: #071510;
@@ -593,7 +595,7 @@ label {
   color: var(--text-dim);
 }
 
-.vacancy-nav-tile.is-primary .vacancy-nav-tile-sub {
+.vacancy-nav-tile.is-active .vacancy-nav-tile-sub {
   color: #071510cc;
 }
 
@@ -1983,6 +1985,20 @@ select {
   letter-spacing: 0.02em;
 }
 
+/* "Кабинет: Рекрутер" — бейдж в шапке общих экранов (Вакансии/Поиск
+   кандидатов), см. WorkspaceCabinetBadge, Shared.jsx. */
+.workspace-cabinet-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(62, 207, 234, 0.12);
+  border: 1px solid var(--recruiter-cyan);
+  color: var(--recruiter-cyan);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .recruiter-vertical-line {
   color: var(--recruiter-cyan);
   font-size: 13px;
@@ -2308,23 +2324,92 @@ select {
   border-left: 3px solid #4fd17a;
 }
 
-.vacancy-card-poster-logo {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  object-fit: cover;
-  vertical-align: middle;
-  margin-right: 6px;
-}
-
 .vacancy-official-badge {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 2px 8px;
   border-radius: 8px;
   background: rgba(79, 209, 122, 0.16);
   border: 1px solid rgba(79, 209, 122, 0.5);
   color: #4fd17a;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
+}
+
+/* Чипы тегов (вертикаль/грейд/гео/формат/тип занятости) + зарплата +
+   строка "кто разместил" (28.08.2026, макет "13 · Рекрутер — Вакансии
+   (4 блока)") — раньше всё это было голым текстом через " · ", без
+   рейтинга автора вообще. */
+.vacancy-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.vacancy-tag-chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #ffffff0d;
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.vacancy-salary {
+  margin-top: 10px;
+  font-family: Lora, serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--gold);
+}
+
+.vacancy-poster-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.vacancy-poster-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--gold), #2f8f66);
+  color: #071510;
+  font-family: Lora, serif;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.vacancy-poster-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vacancy-poster-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.vacancy-poster-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.vacancy-poster-rating {
+  width: 36px;
+  height: 36px;
+  font-size: 14px;
+  flex-shrink: 0;
 }

@@ -1818,7 +1818,6 @@ def _vacancy_public(storage: GuroStorage, row, *, viewer_id: int | None = None) 
         "salary_visible": bool(row["salary_visible"]),
         "description": row["description"],
         "contact_method": row["contact_method"],
-        "contact_url": row["contact_url"] if row["contact_method"] == GC.VACANCY_CONTACT_EXTERNAL else None,
         "lang": row["lang"],
         "status": row["status"],
         "duration_days": row["duration_days"],
@@ -2142,8 +2141,9 @@ _RESPONSE_ERROR_STATUS = {
 
 async def handle_respond_vacancy(request: web.Request) -> web.Response:
     """Отклик — один тап (раздел 5.1 ТЗ, "без сопроводительного письма") —
-    message опционален. Только для вакансий с contact_method=guro_id (раздел
-    3, п.11) — "внешняя ссылка" ведёт кандидата вовне, тут отклик не создаётся."""
+    message опционален. 28.08.2026: "внешняя ссылка" как способ связи убрана
+    (см. GC.VACANCY_CONTACT_METHODS) — все вакансии теперь contact_method=
+    guro_id, отклик всегда создаёт запись в системе."""
     settings, storage = request.app["settings"], request.app["storage"]
     user = _auth(request, settings)
     try:

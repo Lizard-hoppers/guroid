@@ -150,7 +150,7 @@ function PositionCascadeSelect({ positions, vertical, grade, position, positionI
 const EMPTY_FORM = {
   title: "", vertical: "", grade: "", position: "", positionIsOther: false, location: "",
   workFormat: "", employmentType: "", salaryFrom: "", salaryTo: "", salaryNegotiable: false,
-  salaryVisible: false, description: "", contactMethod: "guro_id", contactUrl: "",
+  salaryVisible: false, description: "",
   durationDays: 30, lang: "ru",
 };
 
@@ -161,7 +161,6 @@ function vacancyToForm(v) {
     workFormat: v.work_format || "", employmentType: v.employment_type || "",
     salaryFrom: v.salary_from ?? "", salaryTo: v.salary_to ?? "", salaryNegotiable: !!v.salary_negotiable,
     salaryVisible: !!v.salary_visible, description: v.description || "",
-    contactMethod: v.contact_method || "guro_id", contactUrl: v.contact_url || "",
     durationDays: v.duration_days || 30, lang: v.lang || "ru",
   };
 }
@@ -225,8 +224,6 @@ function VacancyForm({ editingId, initial, authorWorkspace, canRecruiter, canCom
       salary_negotiable: form.salaryNegotiable,
       salary_visible: form.salaryVisible,
       description: form.description || null,
-      contact_method: form.contactMethod,
-      contact_url: form.contactMethod === "external" ? form.contactUrl || null : null,
       lang: form.lang,
     };
     try {
@@ -392,32 +389,6 @@ function VacancyForm({ editingId, initial, authorWorkspace, canRecruiter, canCom
           value={form.description}
           onChange={(e) => set("description", e.target.value)}
         />
-
-        <label>{t("vacancies.form.contactMethodLabel")}</label>
-        <div className="vertical-chips">
-          <button
-            type="button"
-            className={`vertical-chip${form.contactMethod === "guro_id" ? " is-selected" : ""}`}
-            onClick={() => set("contactMethod", "guro_id")}
-          >
-            {t("vacancies.form.contactGuroId")}
-          </button>
-          <button
-            type="button"
-            className={`vertical-chip${form.contactMethod === "external" ? " is-selected" : ""}`}
-            onClick={() => set("contactMethod", "external")}
-          >
-            {t("vacancies.form.contactExternal")}
-          </button>
-        </div>
-        {form.contactMethod === "external" && (
-          <input
-            type="text"
-            placeholder={t("vacancies.form.contactUrlPlaceholder")}
-            value={form.contactUrl}
-            onChange={(e) => set("contactUrl", e.target.value)}
-          />
-        )}
 
         {!editingId && (
           <>
@@ -633,17 +604,9 @@ function VacancyDetail({ id, onBack, onOpenMessages, onManage, onOpenResponses, 
             <button type="button" className="btn secondary" style={{ marginTop: 12 }} onClick={() => onOpenMessages(v.author_id)}>
               {t("vacancies.writeBtn")}
             </button>
-            {v.contact_method === "external" ? (
-              v.contact_url && (
-                <a className="btn" style={{ marginTop: 8, display: "block", textAlign: "center", textDecoration: "none" }} href={v.contact_url} target="_blank" rel="noreferrer">
-                  {t("vacancies.externalApplyBtn")}
-                </a>
-              )
-            ) : (
-              <button type="button" className="btn" style={{ marginTop: 8 }} onClick={onRespond} disabled={respondState.loading || respondState.ok}>
-                {respondState.ok ? t("vacancies.respondSentOk") : t("vacancies.applyBtn")}
-              </button>
-            )}
+            <button type="button" className="btn" style={{ marginTop: 8 }} onClick={onRespond} disabled={respondState.loading || respondState.ok}>
+              {respondState.ok ? t("vacancies.respondSentOk") : t("vacancies.applyBtn")}
+            </button>
             <Msg type="error">{respondState.error}</Msg>
           </>
         )}

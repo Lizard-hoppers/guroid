@@ -450,12 +450,16 @@ VACANCY_POSITION_OTHER = "Другое"
 
 VACANCY_WORK_FORMATS = ("remote", "office", "hybrid")
 VACANCY_EMPLOYMENT_TYPES = ("full", "part", "project")
-# Контакт для отклика (раздел 3, п.11) — по умолчанию через GURO ID
-# (создаёт запись в guro_vacancy_responses), либо внешняя ссылка (URL,
-# отклик тогда не создаёт запись в системе — рекрутер ведёт кандидата вовне).
+# Контакт для отклика (раздел 3, п.11) — раньше был выбор "через GURO ID"
+# либо внешняя ссылка (отклик тогда не создавал запись в системе, кандидат
+# уходил вовне). 28.08.2026, фидбек владельца: вся коммуникация должна
+# оставаться внутри приложения — вариант "внешняя ссылка" убран, остался
+# единственный метод. VACANCY_CONTACT_METHODS — кортеж из одного значения,
+# не голая константа: _parse_vacancy_fields в guro_id_api.py проверяет
+# входящий contact_method через `in`, старые клиенты/данные с "external"
+# автоматически откатываются на guro_id.
 VACANCY_CONTACT_GURO_ID = "guro_id"
-VACANCY_CONTACT_EXTERNAL = "external"
-VACANCY_CONTACT_METHODS = (VACANCY_CONTACT_GURO_ID, VACANCY_CONTACT_EXTERNAL)
+VACANCY_CONTACT_METHODS = (VACANCY_CONTACT_GURO_ID,)
 VACANCY_DURATION_OPTIONS = (15, 30, 60)
 VACANCY_DURATION_DEFAULT = 30
 

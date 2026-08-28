@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
@@ -58,6 +59,34 @@ def _sniff_image_ext(data: bytes) -> str | None:
             continue
         return ext
     return None
+
+
+# _BACKGROUND_TASKS (28.08.2026, багрепорт "долго грузится профиль") —
+# держит ссылки на фоновые asyncio-таски, чтобы event loop не собрал их
+# сборщиком мусора ДО завершения (стандартная ловушка fire-and-forget
+# create_task без сохранённой ссылки — задача может оборваться посреди
+# работы). См. _schedule_tag_sync ниже.
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def _schedule_tag_sync(settings: Settings, storage: GuroStorage, user_id: int, *, reason: str) -> None:
+    """Обновление тега подписки в группе (см. guro_tags.py) — раньше
+    ДОЖИДАЛИСЬ этого перед ответом /api/me, а это живой сетевой запрос к
+    Telegram (создание нового Bot()-соединения + get_chat_member, иногда
+    ещё и set_chat_member_tag) — на медленной сети до секунды на каждое
+    открытие профиля. Тег не влияет на сам ответ /api/me (см. вызывающий
+    код) — можно просто отправить в фон, не блокируя пользователя."""
+    async def _run() -> None:
+        try:
+            await GT.sync_member_tag_standalone(
+                settings.bot_token, settings.community_chat_id, storage, user_id, reason=reason,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("guro_id: tag sync failed for user %s", user_id)
+
+    task = asyncio.create_task(_run())
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
 
 
 def _auth(request: web.Request, settings: Settings) -> dict:
@@ -387,12 +416,7 @@ async def handle_me(request: web.Request) -> web.Response:
     summary["privacy"] = storage.get_privacy(user["id"])
     summary = _apply_subscription_gate(summary, summary["is_subscribed"])
     summary["unread_messages"] = storage.count_unread_messages(user["id"])
-    try:
-        await GT.sync_member_tag_standalone(
-            settings.bot_token, settings.community_chat_id, storage, user["id"], reason="api_me",
-        )
-    except Exception:  # noqa: BLE001
-        logger.exception("guro_id: tag sync failed for user %s", user["id"])
+    _schedule_tag_sync(settings, storage, user["id"], reason="api_me")
     return web.json_response(summary)
 
 

@@ -92,6 +92,14 @@ export function TeamScreen({ onBack }) {
 
   const data = state.data;
   const isOwner = data.my_role === "owner";
+  // 29.08.2026 (макет "18 · Компания — Команда", Untitled-22, выноска
+  // "Шаг 20") — лимит НЕ отклоняет запрос автоматически, он просто ждёт
+  // владельца (approve_join_request на бэкенде и так уже кидает
+  // MEMBER_LIMIT_REACHED, не трогая сам запрос — см. guro_storage.py).
+  // Раньше это было видно только ПОСЛЕ неудачного клика на "Принять"
+  // (реактивная ошибка); теперь предупреждение показывается заранее, а
+  // сама кнопка "Принять" сразу неактивна, как на макете.
+  const atLimit = isOwner && data.member_count >= data.member_limit;
 
   return (
     <div>
@@ -99,15 +107,17 @@ export function TeamScreen({ onBack }) {
         {t("common.back")}
       </button>
       <div className="card">
-        <h3>{t("team.title")}</h3>
-        <div className="partner-meta">{t("team.counter", { count: data.member_count, limit: data.member_limit })}</div>
+        <div className="project-head">
+          <h3>{t("team.title")}</h3>
+          <span className="team-counter-badge">{t("team.counter", { count: data.member_count, limit: data.member_limit })}</span>
+        </div>
         {isOwner && (
           <div className="workspace-switch" style={{ marginTop: 10 }}>
             <button type="button" className={tab === "requests" ? "is-active" : ""} onClick={() => setTab("requests")}>
-              {t("team.tabRequests")}{data.requests?.length > 0 ? ` (${data.requests.length})` : ""}
+              {t("team.tabRequests")}{data.requests?.length > 0 ? ` ${data.requests.length}` : ""}
             </button>
             <button type="button" className={tab === "members" ? "is-active" : ""} onClick={() => setTab("members")}>
-              {t("team.tabMembers")}
+              {t("team.tabMembers")} {data.member_count}
             </button>
           </div>
         )}
@@ -133,7 +143,7 @@ export function TeamScreen({ onBack }) {
               </div>
               <div className="partner-meta">{formatDate(r.created_at)}</div>
               <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
-                <button type="button" className="btn" onClick={() => onApprove(r.id)}>
+                <button type="button" className="btn" onClick={() => onApprove(r.id)} disabled={atLimit}>
                   {t("team.approveBtn")}
                 </button>
                 <button type="button" className="btn secondary" onClick={() => onReject(r.id)}>
@@ -142,6 +152,11 @@ export function TeamScreen({ onBack }) {
               </div>
             </div>
           ))}
+          {atLimit && data.requests?.length > 0 && (
+            <div className="mismatch-banner">
+              ⚠️ {t("team.limitReachedBanner", { limit: data.member_limit, proLimit: 20 })}
+            </div>
+          )}
         </>
       )}
 

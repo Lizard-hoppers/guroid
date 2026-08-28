@@ -1999,6 +1999,21 @@ select {
   white-space: nowrap;
 }
 
+/* "N из M участников" — бейдж в шапке "Команда" (29.08.2026, макет
+   "18 · Компания — Команда"), тот же паттерн, что .workspace-cabinet-badge,
+   но нейтрального цвета (не привязан к конкретному кабинету/акценту). */
+.team-counter-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .recruiter-vertical-line {
   color: var(--recruiter-cyan);
   font-size: 13px;

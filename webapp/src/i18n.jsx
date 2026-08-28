@@ -852,6 +852,14 @@ const STRINGS = {
   "team.role.owner": { ru: "Владелец", en: "Owner" },
   "team.role.admin": { ru: "Админ/Рекрутер", en: "Admin/Recruiter" },
   "team.errors.generic": { ru: "Не получилось выполнить действие.", en: "Couldn't complete the action." },
+  // 29.08.2026 (макет "18 · Компания — Команда") — проактивное предупреждение
+  // при достижении лимита (до неудачного клика "Принять", не после); proLimit
+  // захардкожен (=GC.COMPANY_MEMBER_LIMIT_PRO=20 в guro_constants.py) — тот же
+  // приём, что и у прочих тарифных чисел в копирайтах приложения.
+  "team.limitReachedBanner": {
+    ru: "Достигнут лимит участников по тарифу ({limit}/{limit}). Удалите неактивного участника или перейдите на тариф Компания Pro (до {proLimit} участников). Запрос остаётся в очереди.",
+    en: "Member limit reached ({limit}/{limit}). Remove an inactive member or upgrade to Company Pro (up to {proLimit} members). The request stays queued.",
+  },
   "team.errors.memberLimitReached": {
     ru: "Достигнут лимит участников по тарифу ({limit}). Удалите неактивного участника или перейдите на тариф Компания Pro.",
     en: "Reached the tariff's member limit ({limit}). Remove an inactive member or upgrade to Company Pro.",

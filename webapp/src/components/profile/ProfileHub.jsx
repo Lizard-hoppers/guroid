@@ -1,7 +1,6 @@
 import { addToHomeScreen, canAddToHomeScreen, getAvatarUrl, haptic } from "../../telegram.js";
 import { initialOf, pluralRu } from "../../utils.js";
-import { PrivacyToggles } from "../PrivacyToggles.jsx";
-import { CharacteristicButton, RatingPreview, RatingSummaryLine, WorkStatusPicker } from "../Shared.jsx";
+import { CharacteristicButton, RatingCard, WorkStatusPicker } from "../Shared.jsx";
 import { useLang } from "../../i18n.jsx";
 
 // Порядок пунктов — по макету владельца ("рейтинг порядок.pdf", 16.08.2026):
@@ -15,11 +14,29 @@ const MENU = [
   { key: "contacts", labelKey: "hub.menu.contacts" },
 ];
 
+// "Первый шаг" (28.08.2026, макет "01 · Профиль (личный)") — видна, пока
+// у пользователя 0 подтверждённых партнёрств: вместо голого "рейтинг 0"
+// сразу даёт действие. Ведёт на таб "Сделки" (onNavigateTab — тот же
+// проп, что уже передаётся в RecruiterHub/CompanyHub, см. App.jsx).
+function FirstStepCard({ onNavigateTab }) {
+  const { t } = useLang();
+  return (
+    <div className="card first-step-card">
+      <span className="section-eyebrow">{t("hub.firstStep.eyebrow")}</span>
+      <h3>{t("hub.firstStep.title")}</h3>
+      <p className="partner-meta">{t("hub.firstStep.text")}</p>
+      <button type="button" className="btn" onClick={() => onNavigateTab?.("confirm")}>
+        {t("hub.firstStep.cta")}
+      </button>
+    </div>
+  );
+}
+
 // Главная страница профиля — визитка (аватар/имя/должность/компания/
 // вертикаль) + меню из разделов. Метрики/партнёры/CV/контакты/офферы
 // раньше были на одном экране, теперь разнесены по своим под-экранам
 // (см. profile/*.jsx), сюда попадает только сама визитка.
-export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, onWorkStatusChange }) {
+export function ProfileHub({ profile, onNavigateSub, onNavigateTab, onWorkStatusChange }) {
   const { t, lang } = useLang();
   const avatarUrl = getAvatarUrl();
   return (
@@ -36,17 +53,7 @@ export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, o
             {profile.profession && <div className="profile-header-sub">{profile.profession}</div>}
             {profile.company && <div className="profile-header-sub">{profile.company}</div>}
           </div>
-          <RatingPreview
-            reputation={profile.reputation_score}
-            onOpen={() => onNavigateSub("rating")}
-          />
         </div>
-        <RatingSummaryLine
-          reputation={profile.reputation_score}
-          partnerships={profile.confirmed_partnerships}
-          isSubscribed={profile.is_subscribed}
-          onOpen={() => onNavigateSub("rating")}
-        />
         {(profile.vertical || profile.days_in_community != null) && (
           <div className="profile-meta-row">
             {profile.vertical && <span className="profile-vertical-badge">{profile.vertical}</span>}
@@ -88,6 +95,15 @@ export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, o
         )}
       </div>
 
+      <RatingCard
+        reputation={profile.reputation_score}
+        tier={profile.reputation_tier}
+        partnerships={profile.confirmed_partnerships}
+        daysInCommunity={profile.days_in_community}
+      />
+
+      {(profile.confirmed_partnerships ?? 0) === 0 && <FirstStepCard onNavigateTab={onNavigateTab} />}
+
       <div className="card">
         {MENU.map((m) => (
           <button
@@ -106,13 +122,6 @@ export function ProfileHub({ profile, privacy, onPrivacyChange, onNavigateSub, o
           </button>
         ))}
       </div>
-
-      <PrivacyToggles
-        privacy={privacy}
-        onChange={onPrivacyChange}
-        fields={["show_name", "show_company", "show_vertical", "show_profession"]}
-        hint={t("hub.privacyHint")}
-      />
     </div>
   );
 }

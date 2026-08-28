@@ -72,10 +72,30 @@ const STRINGS = {
   "hub.lowRatingHint": { ru: "У вас низкий рейтинг в индустрии", en: "Your industry rating is low" },
   "hub.lowRatingCta": { ru: "Как исправить?", en: "How to fix?" },
   "hub.daysInCommunity": { ru: "В сообществе {count} {unit}", en: "{count} {unit} in the community" },
-  "hub.privacyHint": {
-    ru: "Эти поля видны в вашей визитке тем, кто ищет вас в GURO ID. По умолчанию скрыты — включите то, что хотите показать.",
-    en: "These fields are visible on your card to people searching for you in GURO ID. Hidden by default — turn on what you want to show.",
+  // Карточка рейтинга на главном экране Профиля (28.08.2026, макет
+  // "01 · Профиль (личный)") — кольцо-прогресс 0/100 + название уровня,
+  // вместо прежнего маленького кружка в шапке визитки.
+  "hub.ratingCard.title": { ru: "Ваш рейтинг", en: "Your rating" },
+  "hub.ratingCard.hint": {
+    ru: "Рейтинг растёт от подтверждённых сделок и стажа в комьюнити.",
+    en: "Your rating grows from confirmed deals and time in the community.",
   },
+  "hub.ratingCard.partnerships": { ru: "Партнёрства", en: "Partnerships" },
+  "hub.ratingCard.tenure": { ru: "Стаж, дней", en: "Tenure, days" },
+
+  // Карточка "Первый шаг" (28.08.2026, тот же макет) — видна, пока у
+  // пользователя 0 подтверждённых партнёрств: вместо демотивирующего
+  // "рейтинг 0" сразу даёт действие.
+  "hub.firstStep.eyebrow": { ru: "Первый шаг", en: "First step" },
+  "hub.firstStep.title": {
+    ru: "Подтвердите партнёрство — получите первые баллы рейтинга",
+    en: "Confirm a partnership — earn your first rating points",
+  },
+  "hub.firstStep.text": {
+    ru: "Партнёр подтверждает сделку со своей стороны — запись появляется в обоих профилях. Без ответа запись не публикуется.",
+    en: "Your partner confirms the deal on their side — the record appears in both profiles. Without a response, it isn't published.",
+  },
+  "hub.firstStep.cta": { ru: "Подтвердить партнёрство", en: "Confirm partnership" },
 
   "workStatus.looking": { ru: "Ищу работу", en: "Open to work" },
   "workStatus.neutral": { ru: "Нейтральный", en: "Neutral" },
@@ -111,6 +131,15 @@ const STRINGS = {
     en: "Controls what strangers see when they find you. Partnerships are ALWAYS visible to others (that's the whole point of GURO ID) — provided your subscription is active (see above).",
   },
   "rating.otherHistoryTitle": { ru: "История партнёрств контрагента", en: "Counterparty's partnership history" },
+  // Названия уровней рейтинга (5.3, guro_constants.REPUTATION_TIERS) —
+  // бэкенд шлёт литералы Bronze/Silver/Gold/Platinum в reputation_tier,
+  // тут только локализация подписи под кольцом (28.08.2026, макет "01 ·
+  // Профиль (личный)" явно даёт готовый текст только для Bronze —
+  // "Начальный уровень", остальные три — по аналогии).
+  "rating.tier.bronze": { ru: "Начальный уровень", en: "Starting level" },
+  "rating.tier.silver": { ru: "Уверенный уровень", en: "Confident level" },
+  "rating.tier.gold": { ru: "Высокий уровень", en: "High level" },
+  "rating.tier.platinum": { ru: "Топовый уровень", en: "Top level" },
   "metric.rating": { ru: "Рейтинг", en: "Rating" },
   "metric.partnerships": { ru: "Партнёрств", en: "Partnerships" },
   "metric.daysInCommunity": { ru: "Дней в комьюнити", en: "Days in community" },

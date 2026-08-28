@@ -219,11 +219,17 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
 # show_tenure/show_reputation в GC.PRIVACY_FIELDS/БД оставлены как есть
 # (мёртвый, но безвредный остаток) — просто больше нигде не читаются,
 # UI-тумблеры для них убраны (см. RatingSubscreen.jsx).
+#
+# 28.08.2026 (фидбек владельца, макет "01 · Профиль (личный)"): та же
+# судьба постигла show_name/show_company/show_vertical/show_profession —
+# UI-тумблеры убраны с ProfileHub.jsx (макет не показывает их вообще).
+# ВАЖНО: эти 4 поля по умолчанию DEFAULT 0 (скрыты) в БД (guro_storage.py
+# _init) — просто убрать тумблеры без этой правки означало бы, что КАЖДЫЙ
+# новый пользователь навсегда остаётся без имени/компании в чужом поиске,
+# без какого-либо способа это исправить. Поэтому имя/компания/вертикаль/
+# должность личного профиля теперь ВСЕГДА видны чужим — тот же принцип,
+# что уже действует для username/партнёрств (см. комментарий выше).
 _PRIVACY_FIELD_MAP = {
-    "show_name": ("name",),
-    "show_company": ("company",),
-    "show_vertical": ("vertical",),
-    "show_profession": ("profession",),
     "show_cv": ("cv_text", "cv_profession") + GC.CV_SIMPLE_FIELDS + (
         "cv_grade", "cv_relocation_ready", "cv_polygraph_consent",
         "cv_salary_from", "cv_salary_to", "cv_salary_negotiable", "cv_experience",

@@ -2886,24 +2886,28 @@ async def _run_guro_id_api_sim():
                 check(body["locked"] is False, "поиск с активной подпиской -> locked=False")
                 check(body["username"] == "initiator", "поиск с подпиской -> полная карточка")
 
-                # opt-in по умолчанию: все тумблеры выключены -> ничего не видно, кроме
-                # username и партнёрств
-                check(body["name"] is None, "по умолчанию имя скрыто в ЧУЖОМ поиске (opt-in)")
-                check(body["company"] is None and body["vertical"] is None,
-                      "по умолчанию company/vertical тоже скрыты")
-                # 25.08.2026 (фидбек владельца, "Правки.pdf": "убрать
-                # приватность, рейтинг должен быть доступный при условии,
-                # что человек оплатил подписку") — show_reputation/
-                # show_tenure больше НЕ гейтят видимость, только подписка
-                # ЦЕЛИ (которая тут активна, см. activate_subscription(100)
-                # выше) — рейтинг/стаж видны ВСЕГДА, даже без единого
-                # включённого тумблера.
+                # opt-in по умолчанию: все тумблеры выключены -> из полей,
+                # которые ЕЩЁ гейтятся тумблером, ничего не видно, кроме
+                # username и партнёрств.
+                # 28.08.2026 (фидбек владельца, макет "01 · Профиль
+                # (личный)": "убрать кнопки переключатели приватности") —
+                # name/company/vertical/profession та же судьба, что и
+                # reputation/tenure чуть раньше (25.08.2026): тумблеры
+                # show_name/show_company/show_vertical/show_profession
+                # убраны из _PRIVACY_FIELD_MAP (guro_id_api.py), эти поля
+                # теперь видны ВСЕГДА, как username/партнёрства — иначе
+                # каждый новый пользователь навсегда оставался бы без
+                # имени в чужом поиске (default=0 в БД, UI-тумблера для
+                # включения больше нет).
+                check(body["name"] == "Init", "имя личного профиля видно ВСЕГДА в чужом поиске (тумблер убран)")
+                check(body["company"] == "GURO Co" and body["vertical"] == "iGaming",
+                      "company/vertical тоже видны всегда (тумблер убран)")
                 check(body["reputation_score"] is not None,
                       "рейтинг виден без тумблера -> подписки цели достаточно (приватность рейтинга убрана)")
                 check(body["joined_community_at"] is not None and body["days_in_community"] is not None,
                       "стаж виден без тумблера по той же причине")
                 check(body["confirmed_partnerships"] == 0, "число партнёрств видно ВСЕГДА, даже без единого включённого тумблера")
-                check(body["profession"] is None, "по умолчанию профессия скрыта")
+                check(body["profession"] == "Manager", "профессия личного профиля видна ВСЕГДА (тумблер убран)")
                 check(body["linkedin"] is None and body["website"] is None,
                       "по умолчанию show_contacts выключен -> linkedin/website скрыты")
                 check(body["looking_for"] is None and body["offering"] is None,
@@ -3097,7 +3101,11 @@ async def _run_guro_id_api_sim():
                 body = await resp.json()
                 check(body["cv_experience"] == [], "после удаления cv_experience снова пуст")
 
-                # приватность: initiator включает показ своего имени
+                # приватность: /api/privacy всё ещё принимает и сохраняет
+                # show_name (дохлый, но безвредный остаток — 28.08.2026,
+                # тот же принцип, что и у show_tenure/show_reputation чуть
+                # раньше), но больше ни на что не влияет — имя/company
+                # видны в чужом поиске ВСЕГДА, независимо от значения.
                 resp = await client.post("/api/privacy", headers=auth_100,
                                           json={"field": "show_name", "value": True})
                 check(resp.status == 200, "POST /api/privacy -> 200")
@@ -3106,8 +3114,8 @@ async def _run_guro_id_api_sim():
 
                 resp = await client.get("/api/search?username=initiator", headers=auth_200)
                 body = await resp.json()
-                check(body["name"] == "Init", "включённое имя -> видно в ЧУЖОМ поиске")
-                check(body["company"] is None, "остальные тумблеры независимы — company всё ещё скрыт")
+                check(body["name"] == "Init", "имя видно в ЧУЖОМ поиске (show_name больше ни на что не влияет)")
+                check(body["company"] == "GURO Co", "company тоже видна ВСЕГДА (тумблер убран из гейта)")
                 check(body["username"] == "initiator", "username всё равно виден (нужен для идентификации)")
 
                 resp = await client.get("/api/me", headers=auth_100)
@@ -4077,8 +4085,8 @@ async def _run_guro_id_api_sim():
                       "resumeuser1 (work_status=looking) найден, ХОТЯ не открыл ни одного privacy-тумблера")
                 check(498 not in resume_ids, "resumeuser2 (work_status=working) НЕ попадает в резюме-выдачу")
                 found_resume = next(r for r in body["results"] if r["user_id"] == 497)
-                check(found_resume["name"] is None,
-                      "имя всё равно скрыто (privacy не открыт) — виден только сам факт 'ищу работу'")
+                check(found_resume["name"] == "Resume One",
+                      "имя видно ВСЕГДА (28.08.2026: show_name больше не гейтит, тумблер убран)")
                 check(found_resume["work_status"] == "looking", "work_status виден в результате резюме-поиска")
 
                 resp = await client.get("/api/search?resumes=1&vertical=Crypto", headers=auth_200)

@@ -242,6 +242,75 @@ export function RatingSummaryLine({ reputation, partnerships, isSubscribed, onOp
   );
 }
 
+// Карточка рейтинга на главном экране Профиля (28.08.2026, макет "01 ·
+// Профиль (личный)") — заменяет прежний маленький кружок в шапке визитки
+// (RatingPreview/RatingSummaryLine выше, они остаются как были для
+// кабинета "Рекрутер"). Кольцо-прогресс 0-100 + название уровня из
+// reputation_tier — бэкенд шлёт Bronze/Silver/Gold/Platinum уже с
+// 25.08.2026 (формула рейтинга v2, см. guro_logic.reputation_tier),
+// фронт эти поля просто не использовал до сих пор.
+const RATING_TIER_LABEL_KEY = {
+  Bronze: "rating.tier.bronze",
+  Silver: "rating.tier.silver",
+  Gold: "rating.tier.gold",
+  Platinum: "rating.tier.platinum",
+};
+
+const RATING_RING_RADIUS = 46;
+const RATING_RING_STROKE = 8;
+const RATING_RING_CIRCUMFERENCE = 2 * Math.PI * RATING_RING_RADIUS;
+
+export function RatingCard({ reputation, tier, partnerships, daysInCommunity }) {
+  const { t } = useLang();
+  const score = reputation ?? 0;
+  const pct = Math.max(0, Math.min(1, score / 100));
+  const offset = RATING_RING_CIRCUMFERENCE * (1 - pct);
+  const tierLabelKey = RATING_TIER_LABEL_KEY[tier] || RATING_TIER_LABEL_KEY.Bronze;
+
+  return (
+    <div className="card rating-card">
+      <div className="rating-card-head">
+        <span className="section-eyebrow">{t("hub.ratingCard.title")}</span>
+        <span className="rating-card-score">{Math.round(score)} / 100</span>
+      </div>
+      <div className="rating-card-body">
+        <div className="rating-ring-wrap">
+          <svg className="rating-ring" viewBox="0 0 120 120">
+            <circle className="rating-ring-track" cx="60" cy="60" r={RATING_RING_RADIUS} strokeWidth={RATING_RING_STROKE} fill="none" />
+            <circle
+              className="rating-ring-progress"
+              cx="60"
+              cy="60"
+              r={RATING_RING_RADIUS}
+              strokeWidth={RATING_RING_STROKE}
+              fill="none"
+              strokeDasharray={RATING_RING_CIRCUMFERENCE}
+              strokeDashoffset={offset}
+              strokeLinecap="round"
+              transform="rotate(-90 60 60)"
+            />
+          </svg>
+          <div className="rating-ring-value">{Math.round(score)}</div>
+        </div>
+        <div className="rating-card-info">
+          <div className="rating-card-tier">{t(tierLabelKey)}</div>
+          <div className="rating-card-hint">{t("hub.ratingCard.hint")}</div>
+        </div>
+      </div>
+      <div className="metrics-row rating-card-metrics">
+        <div className="metric">
+          <div className="value">{partnerships ?? 0}</div>
+          <div className="label">{t("hub.ratingCard.partnerships")}</div>
+        </div>
+        <div className="metric">
+          <div className="value">{daysInCommunity ?? 0}</div>
+          <div className="label">{t("hub.ratingCard.tenure")}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Оценка партнёрства, Шаг 2 (ТЗ 6.1, 25.08.2026) — своя оценка (my_rating)
 // не меняется после отправки, чужая (other_rating) приходит от бэкенда
 // ТОЛЬКО когда обе стороны оценили или истёк таймаут (rating_revealed) —

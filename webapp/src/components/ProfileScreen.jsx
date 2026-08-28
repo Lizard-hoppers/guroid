@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { getMe, ApiError } from "../api.js";
 import { Spinner, Msg } from "./Shared.jsx";
-import { PrivacyToggles } from "./PrivacyToggles.jsx";
 import { ProfileHub } from "./profile/ProfileHub.jsx";
 import { RatingSubscreen } from "./profile/RatingSubscreen.jsx";
 import { CvSubscreen } from "./profile/CvSubscreen.jsx";
@@ -377,9 +376,8 @@ export function ProfileScreen({
       <WorkspaceSwitch workspace={workspace} onChange={switchWorkspace} />
       <ProfileHub
         profile={p}
-        privacy={p.privacy}
-        onPrivacyChange={updatePrivacy}
         onNavigateSub={setSub}
+        onNavigateTab={onNavigate}
         onWorkStatusChange={updateWorkStatus}
       />
     </div>

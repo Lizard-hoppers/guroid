@@ -230,11 +230,15 @@ function CompanyResultCard({ p, onBackToPersonal }) {
 // поиск по юзернейму (см. onOpen -> searchByUserId).
 // Экспортирован (26.08.2026) — переиспользуется в RecruiterCandidatesScreen.jsx
 // ("Найти кандидата", ТЗ "Гуро рекрутер каб") без дублирования разметки.
-export function DirectoryRow({ r, onOpen }) {
+// showAvatar/showRating (28.08.2026, макет "12 · Рекрутер — Поиск
+// кандидатов") — опциональные, только RecruiterCandidatesScreen их
+// включает; обычный поиск личного профиля выглядит как раньше.
+export function DirectoryRow({ r, onOpen, showAvatar = false, showRating = false }) {
   const { t } = useLang();
   const heading = r.name || (r.username ? `@${r.username}` : t("common.noName"));
   return (
     <button type="button" className="directory-row" onClick={() => onOpen(r.user_id)}>
+      {showAvatar && <div className="avatar-dot">{initialOf(r.name, r.username)}</div>}
       <div className="directory-row-main">
         <div className="directory-row-name">{heading}</div>
         <div className="partner-meta">
@@ -242,6 +246,9 @@ export function DirectoryRow({ r, onOpen }) {
         </div>
         <WorkStatusBadge status={r.work_status} />
       </div>
+      {showRating && typeof r.reputation_score === "number" && (
+        <div className="rating-preview-circle directory-row-rating">{Math.round(r.reputation_score)}</div>
+      )}
       <span className="profile-menu-item-chevron">›</span>
     </button>
   );

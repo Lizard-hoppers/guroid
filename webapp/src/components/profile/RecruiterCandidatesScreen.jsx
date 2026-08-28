@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { search, searchCandidates, searchByUserId, ApiError } from "../../api.js";
+import { useEffect, useState } from "react";
+import { search, searchCandidates, searchByUserId, getCandidatesCount, ApiError } from "../../api.js";
 import { DirectoryRow } from "../SearchScreen.jsx";
 import { usePositions } from "../VacanciesScreen.jsx";
 import { Msg, MetricsRow, IdentityLine, WorkStatusBadge, Spinner, CharacteristicButton } from "../Shared.jsx";
@@ -29,8 +29,32 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
   const [topRating, setTopRating] = useState(false);
   const [state, setState] = useState({ loading: false, data: null, error: null });
   const [selected, setSelected] = useState(null); // открытая карточка кандидата
+  // Живой счётчик на кнопке (28.08.2026, макет "12 · Рекрутер — Поиск
+  // кандидатов") — null, пока считается/только сменился фильтр (кнопка
+  // тогда без числа). Не запрашивается, пока в поле username что-то
+  // введено — свободный текст не участвует в count-эндпоинте (см. ниже,
+  // объединённая кнопка отправки).
+  const [candidateCount, setCandidateCount] = useState(null);
 
   const positionOptions = vertical && grade ? (positions.professions[vertical]?.[grade] || []) : [];
+
+  useEffect(() => {
+    if (username.trim()) {
+      setCandidateCount(null);
+      return;
+    }
+    let cancelled = false;
+    setCandidateCount(null);
+    const timer = setTimeout(() => {
+      getCandidatesCount({ vertical, grade, position, looking: lookingOnly })
+        .then(({ count }) => !cancelled && setCandidateCount(count))
+        .catch(() => !cancelled && setCandidateCount(null));
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [username, vertical, grade, position, lookingOnly]);
 
   async function runFilterSearch() {
     setState({ loading: true, data: null, error: null });
@@ -42,9 +66,7 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
     }
   }
 
-  async function runUsernameSearch(e) {
-    e.preventDefault();
-    if (!username.trim()) return;
+  async function runUsernameSearch() {
     setState({ loading: true, data: null, error: null });
     try {
       const data = await search(username.trim());
@@ -54,6 +76,20 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
         loading: false, data: null,
         error: error instanceof ApiError && error.code === "NOT_FOUND" ? "notFound" : error,
       });
+    }
+  }
+
+  // Единая кнопка отправки (28.08.2026, макет — одна кнопка "Показать N
+  // кандидатов" внизу, не два отдельных мини-флоу) — раньше юзернейм/
+  // свободное описание были СВОЕЙ формой со своей кнопкой поверх фильтра
+  // вертикаль/грейд/должность. Текст в поле — в приоритете (это точный
+  // юзернейм или самостоятельный запрос), иначе используются чипы-фильтры.
+  function onSubmit(e) {
+    e.preventDefault();
+    if (username.trim()) {
+      runUsernameSearch();
+    } else {
+      runFilterSearch();
     }
   }
 
@@ -112,7 +148,7 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
         <h3>{t("recruiter.candidates.title")}</h3>
         <p className="partner-meta">{t("recruiter.candidates.hint")}</p>
 
-        <form onSubmit={runUsernameSearch}>
+        <form onSubmit={onSubmit}>
           <label>{t("recruiter.candidates.usernameLabel")}</label>
           <input
             type="text"
@@ -120,66 +156,65 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
-          <button type="submit" className="btn secondary" style={{ marginTop: 8 }} disabled={!username.trim()}>
-            {t("recruiter.candidates.usernameSubmit")}
+
+          <label style={{ marginTop: 14 }}>{t("recruiter.candidates.verticalLabel")}</label>
+          <div className="vertical-chips">
+            {VERTICALS.map((v) => (
+              <button
+                key={v}
+                type="button"
+                className={`vertical-chip${vertical === v ? " is-selected" : ""}`}
+                onClick={() => {
+                  setVertical(vertical === v ? "" : v);
+                  setGrade("");
+                  setPosition("");
+                }}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+
+          <label style={{ marginTop: 10 }}>{t("recruiter.candidates.gradeLabel")}</label>
+          <div className="vertical-chips">
+            {positions.grades.map((g) => (
+              <button
+                key={g}
+                type="button"
+                className={`vertical-chip${grade === g ? " is-selected" : ""}`}
+                onClick={() => {
+                  setGrade(grade === g ? "" : g);
+                  setPosition("");
+                }}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+
+          <label style={{ marginTop: 10 }}>{t("recruiter.candidates.positionLabel")}</label>
+          <select value={position} disabled={!vertical || !grade} onChange={(e) => setPosition(e.target.value)}>
+            <option value="">{t("recruiter.candidates.positionPlaceholder")}</option>
+            {positionOptions.map(([code, label]) => (
+              <option key={code} value={label}>{label}</option>
+            ))}
+          </select>
+
+          <label className="checkbox-row" style={{ marginTop: 10 }}>
+            <input type="checkbox" checked={lookingOnly} onChange={(e) => setLookingOnly(e.target.checked)} />
+            {t("recruiter.candidates.lookingOnlyLabel")}
+          </label>
+          <label className="checkbox-row">
+            <input type="checkbox" checked={topRating} onChange={(e) => setTopRating(e.target.checked)} />
+            {t("recruiter.candidates.topRatingLabel")}
+          </label>
+
+          <button type="submit" className="btn" style={{ marginTop: 10 }} disabled={state.loading}>
+            {candidateCount != null && !username.trim()
+              ? t("recruiter.candidates.submitBtnCount", { count: candidateCount })
+              : t("recruiter.candidates.submitBtn")}
           </button>
         </form>
-
-        <label style={{ marginTop: 14 }}>{t("recruiter.candidates.verticalLabel")}</label>
-        <div className="vertical-chips">
-          {VERTICALS.map((v) => (
-            <button
-              key={v}
-              type="button"
-              className={`vertical-chip${vertical === v ? " is-selected" : ""}`}
-              onClick={() => {
-                setVertical(vertical === v ? "" : v);
-                setGrade("");
-                setPosition("");
-              }}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
-
-        <label style={{ marginTop: 10 }}>{t("recruiter.candidates.gradeLabel")}</label>
-        <div className="vertical-chips">
-          {positions.grades.map((g) => (
-            <button
-              key={g}
-              type="button"
-              className={`vertical-chip${grade === g ? " is-selected" : ""}`}
-              onClick={() => {
-                setGrade(grade === g ? "" : g);
-                setPosition("");
-              }}
-            >
-              {g}
-            </button>
-          ))}
-        </div>
-
-        <label style={{ marginTop: 10 }}>{t("recruiter.candidates.positionLabel")}</label>
-        <select value={position} disabled={!vertical || !grade} onChange={(e) => setPosition(e.target.value)}>
-          <option value="">{t("recruiter.candidates.positionPlaceholder")}</option>
-          {positionOptions.map(([code, label]) => (
-            <option key={code} value={label}>{label}</option>
-          ))}
-        </select>
-
-        <label className="checkbox-row" style={{ marginTop: 10 }}>
-          <input type="checkbox" checked={lookingOnly} onChange={(e) => setLookingOnly(e.target.checked)} />
-          {t("recruiter.candidates.lookingOnlyLabel")}
-        </label>
-        <label className="checkbox-row">
-          <input type="checkbox" checked={topRating} onChange={(e) => setTopRating(e.target.checked)} />
-          {t("recruiter.candidates.topRatingLabel")}
-        </label>
-
-        <button type="button" className="btn" style={{ marginTop: 10 }} onClick={runFilterSearch}>
-          {t("recruiter.candidates.submitBtn")}
-        </button>
       </div>
 
       {state.loading && <Spinner>{t("search.submitting")}</Spinner>}
@@ -188,7 +223,7 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
 
       {state.data?.mode === "profile" && (
         <div className="directory-results">
-          <DirectoryRow r={state.data} onOpen={openCandidate} />
+          <DirectoryRow r={state.data} onOpen={openCandidate} showAvatar showRating />
         </div>
       )}
       {state.data?.mode === "list" && (
@@ -198,7 +233,7 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
           {state.data.results.length > 0 && (
             <div className="directory-results">
               {state.data.results.map((r) => (
-                <DirectoryRow key={r.user_id} r={r} onOpen={openCandidate} />
+                <DirectoryRow key={r.user_id} r={r} onOpen={openCandidate} showAvatar showRating />
               ))}
             </div>
           )}

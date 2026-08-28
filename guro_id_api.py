@@ -780,6 +780,38 @@ def _resume_browse(
     return _rank_directory_matches(matches, top=top)
 
 
+async def handle_candidates_count(request: web.Request) -> web.Response:
+    """Живой счётчик "Показать N кандидатов" (28.08.2026, макет "12 ·
+    Рекрутер — Поиск кандидатов") — та же фильтрация, что и _directory_
+    browse/_resume_browse (vertical/grade/position/looking), но без
+    ранжирования и без сборки полных карточек, только count. Гейт
+    подписки тот же (any_subscription_active) — иначе можно было бы
+    бесплатно узнавать размер выдачи, не оплачивая сам поиск."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    requester = _auth(request, settings)
+    if storage.is_frozen(requester["id"]):
+        return web.json_response({"error": "ACCOUNT_FROZEN"}, status=403)
+    if not storage.any_subscription_active(requester["id"]):
+        return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
+
+    vertical_lower = request.query.get("vertical", "").strip().lower()
+    grade_lower = request.query.get("grade", "").strip().lower()
+    position_lower = request.query.get("position", "").strip().lower()
+    looking = request.query.get("resumes") == "1"
+
+    def match_fn(summary: dict) -> int:
+        if looking and summary.get("work_status") != GC.WORK_STATUS_LOOKING:
+            return 0
+        if vertical_lower:
+            v = (summary.get("vertical") or "").lower()
+            if v != vertical_lower and not (vertical_lower == "other" and v.startswith("other")):
+                return 0
+        return 1 if _grade_position_ok(summary, grade_lower, position_lower) else 0
+
+    matches = _scan_directory_candidates(storage, requester["id"], match_fn, require_privacy_open=not looking)
+    return web.json_response({"count": len(matches)})
+
+
 async def handle_search(request: web.Request) -> web.Response:
     """Режимы запроса:
     - `user_id=<id>` — точный переход по ID (QR, клик по результату поиска).
@@ -2585,6 +2617,7 @@ def create_app(settings: Settings) -> web.Application:
     app["main_storage"] = Storage(settings.database_path)
     app.router.add_get("/api/me", handle_me)
     app.router.add_get("/api/search", handle_search)
+    app.router.add_get("/api/candidates/count", handle_candidates_count)
     app.router.add_post("/api/partnerships", handle_create_partnership)
     app.router.add_get("/api/messages", handle_list_messages)
     app.router.add_get("/api/messages/with/{user_id}", handle_get_thread)

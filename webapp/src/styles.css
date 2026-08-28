@@ -1670,12 +1670,25 @@ select {
 }
 
 .directory-row-main {
+  flex: 1;
   min-width: 0;
 }
 
 .directory-row-name {
   font-weight: 600;
   font-size: 14px;
+}
+
+/* Аватар-кружок + рейтинг (28.08.2026, макет "12 · Рекрутер — Поиск
+   кандидатов") — опциональные, только когда DirectoryRow вызван с
+   showAvatar/showRating (см. RecruiterCandidatesScreen.jsx); обычный
+   поиск личного профиля (SearchScreen.jsx) их не запрашивает, вид не
+   меняется. */
+.directory-row-rating {
+  width: 36px;
+  height: 36px;
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
 .directory-paywall {

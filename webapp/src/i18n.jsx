@@ -683,17 +683,28 @@ const STRINGS = {
   },
   "recruiter.candidates.showAllResumes": { ru: "Показать всех, кто ищет работу", en: "Show everyone looking for work" },
   // Фильтры "Поиск кандидатов" (27.08.2026, ТЗ "экраны по ТЗ от 23.08").
-  "recruiter.candidates.usernameLabel": { ru: "Юзернейм", en: "Username" },
-  "recruiter.candidates.usernamePlaceholder": { ru: "Например: mrchief15", en: "E.g.: mrchief15" },
-  "recruiter.candidates.usernameSubmit": { ru: "Найти по юзернейму", en: "Find by username" },
+  // 28.08.2026 (макет "12 · Рекрутер — Поиск кандидатов", Untitled-15):
+  // поле "Юзернейм" на самом деле уже поддерживает и свободное описание
+  // (тот же q= на бэкенде, что у поиска по описанию — просто текст экрана
+  // раньше не отражал это), макет явно подписывает оба варианта разом.
+  "recruiter.candidates.usernameLabel": { ru: "Юзернейм или свободное описание", en: "Username or free-text description" },
+  "recruiter.candidates.usernamePlaceholder": { ru: "Например: affiliate manager Кипр", en: "E.g.: affiliate manager Cyprus" },
   "recruiter.candidates.usernameNotFound": { ru: "Пользователь с таким юзернеймом не найден.", en: "No user with this username." },
   "recruiter.candidates.verticalLabel": { ru: "1 · Вертикаль", en: "1 · Vertical" },
-  "recruiter.candidates.gradeLabel": { ru: "2 · Грейд", en: "2 · Grade" },
-  "recruiter.candidates.positionLabel": { ru: "3 · Должность", en: "3 · Position" },
+  "recruiter.candidates.gradeLabel": { ru: "2 · Грейд — зависит от вертикали", en: "2 · Grade — depends on vertical" },
+  "recruiter.candidates.positionLabel": {
+    ru: "3 · Должность — зависит от вертикали и грейда",
+    en: "3 · Position — depends on vertical and grade",
+  },
   "recruiter.candidates.positionPlaceholder": { ru: "Любая должность", en: "Any position" },
   "recruiter.candidates.lookingOnlyLabel": { ru: "Только те, кто ищет работу", en: "Only those looking for work" },
   "recruiter.candidates.topRatingLabel": { ru: "Сначала высокий рейтинг", en: "Highest rating first" },
+  // Живой счётчик (28.08.2026) — обновляется при каждой смене фильтра, до
+  // нажатия (см. GET /api/candidates/count, guro_id_api.py). count=null,
+  // пока ещё не посчитан (только что сменили фильтр) — тогда просто
+  // "Показать кандидатов" без числа.
   "recruiter.candidates.submitBtn": { ru: "Показать кандидатов", en: "Show candidates" },
+  "recruiter.candidates.submitBtnCount": { ru: "Показать {count} кандидатов", en: "Show {count} candidates" },
   "recruiter.candidates.foundCount": { ru: "Найдено: {n}", en: "Found: {n}" },
   "thread.viaWorkspace": { ru: "Написал(а) через кабинет: {workspace}", en: "Sent via cabinet: {workspace}" },
 

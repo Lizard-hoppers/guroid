@@ -4149,6 +4149,25 @@ async def _run_guro_id_api_sim():
                 check(497 not in [r["user_id"] for r in body["results"]],
                       "resumes=1 + vertical= сужает выдачу (resumeuser1 в Gambling, не Crypto)")
 
+                # Живой счётчик "Показать N кандидатов" (28.08.2026, макет
+                # "12 · Рекрутер — Поиск кандидатов") — тот же гейт/фильтры,
+                # что у /api/search, но только count, без сборки карточек.
+                resp = await client.get("/api/candidates/count?resumes=1", headers=auth_496)
+                check(resp.status == 402, "GET /api/candidates/count без подписки -> 402 (тот же гейт, что у /api/search)")
+
+                resp = await client.get("/api/candidates/count?resumes=1", headers=auth_200)
+                check(resp.status == 200, "GET /api/candidates/count с подпиской -> 200")
+                count_body = await resp.json()
+                resp = await client.get("/api/search?resumes=1", headers=auth_200)
+                list_body = await resp.json()
+                check(count_body["count"] == len(list_body["results"]),
+                      "count совпадает с фактическим числом результатов того же фильтра")
+
+                resp = await client.get("/api/candidates/count?resumes=1&vertical=Crypto", headers=auth_200)
+                count_body = await resp.json()
+                check(count_body["count"] == 0,
+                      "count с тем же фильтром vertical=Crypto, что сузил выдачу выше, -> 0")
+
                 # --- Тарифы и лимиты (27.08.2026, ТЗ "Тарифы и лимиты") -------
                 # Конфиг/оверрайд (раздел 3 ТЗ) — глобальный слой + точечный
                 # оверрайд на аккаунт, оба уровня поверх дефолт-констант.

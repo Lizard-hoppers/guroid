@@ -146,6 +146,18 @@ export function searchCandidates({ vertical, grade, position, looking, top } = {
   return request(`/api/search?${params.toString()}`);
 }
 
+// Живой счётчик "Показать N кандидатов" (28.08.2026, макет "12 · Рекрутер
+// — Поиск кандидатов") — та же фильтрация, что searchCandidates, но
+// только count, до нажатия кнопки.
+export function getCandidatesCount({ vertical, grade, position, looking } = {}) {
+  const params = new URLSearchParams();
+  if (looking) params.set("resumes", "1");
+  if (vertical) params.set("vertical", vertical);
+  if (grade) params.set("grade", grade);
+  if (position) params.set("position", position);
+  return request(`/api/candidates/count?${params.toString()}`);
+}
+
 export function getInviteLink() {
   return request("/api/invite_link");
 }

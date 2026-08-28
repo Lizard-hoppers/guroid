@@ -505,6 +505,14 @@ export function PartnerRow({ partner, allowRating = false }) {
             {partner.other_rating_comment && ` — «${partner.other_rating_comment}»`}
           </div>
         )}
+        {/* 28.08.2026 (макет "08 · История партнёрств"): раньше при
+            otherMeta===null эта строка молча пропадала — не различить
+            "ещё не оценил, жду" от "оценил, просто нейтрально". Условие
+            !rating_revealed отличает это от случая "окно 14 дней истекло,
+            собеседник так и не оценил" — тогда сообщение было бы враньём. */}
+        {myRating && !otherMeta && !partner.rating_revealed && (
+          <div className="partner-meta">🔒 {t("rating.otherHidden")}</div>
+        )}
         {allowRating && (!myRating || editingRating) && (
           <RateWidget
             partnershipId={partner.id}

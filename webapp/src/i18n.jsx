@@ -164,6 +164,10 @@ const STRINGS = {
   "rating.editLink": { ru: "изменить", en: "edit" },
   "rating.deleteLink": { ru: "удалить", en: "delete" },
   "rating.otherRating": { ru: "Оценка контрагента", en: "Counterparty's rating" },
+  "rating.otherHidden": {
+    ru: "Оценка собеседника ещё скрыта — появится после его ответа или через 14 дней.",
+    en: "The other side's rating is still hidden — it'll appear after they respond or in 14 days.",
+  },
   "rating.error": { ru: "Не получилось отправить оценку.", en: "Couldn't submit the rating." },
 
   // --- Моё CV ---
@@ -507,6 +511,22 @@ const STRINGS = {
   "confirm.rate.submitting": { ru: "Публикуем…", en: "Publishing…" },
   "confirm.rate.sentOk": { ru: "Оценка сохранена.", en: "Rating saved." },
   "confirm.rate.loadError": { ru: "Не удалось загрузить партнёрство.", en: "Couldn't load the partnership." },
+
+  // "История партнёрств" (28.08.2026, макет "08 · История партнёрств",
+  // Untitled-11) — ссылка с таба "Подтвердить" на уже существующий список
+  // (тот же, что в "Профиль -> Мой рейтинг", PartnerRow/PartnersList,
+  // Shared.jsx) — тут просто НОВАЯ точка входа со сводкой счётчиков по
+  // вердиктам, которой раньше не было нигде.
+  "confirm.historyLink": { ru: "История партнёрств", en: "Partnership history" },
+  "confirm.history.title": { ru: "История партнёрств", en: "Partnership history" },
+  "confirm.history.successLabel": { ru: "успешных", en: "successful" },
+  "confirm.history.nuanceLabel": { ru: "с нюансами", en: "with nuances" },
+  "confirm.history.problematicLabel": { ru: "проблемных", en: "problematic" },
+  "confirm.history.allTime": { ru: "за всё время", en: "all time" },
+  "confirm.history.hint": {
+    ru: "Отзыв виден только после того, как обе стороны его оставят (или истекут 14 дней). Удалить можно только собственный текст.",
+    en: "A review is visible only after both sides leave one (or after 14 days pass). You can only delete your own text.",
+  },
 
   // --- Подписка ---
   "subscribe.titleGuro": { ru: "Подписка GURO ID", en: "GURO ID subscription" },

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { createPartnership, getPendingRatings, ApiError } from "../api.js";
-import { Msg, Spinner } from "./Shared.jsx";
+import { createPartnership, getPendingRatings, getMe, ApiError } from "../api.js";
+import { Msg, Spinner, PartnersList } from "./Shared.jsx";
 import { RatePartnershipScreen } from "./RatePartnershipScreen.jsx";
 import { haptic } from "../telegram.js";
 import { useLang } from "../i18n.jsx";
@@ -38,6 +38,36 @@ function PendingRatingsList({ items, onOpen }) {
           <span className="profile-menu-item-chevron">›</span>
         </button>
       ))}
+    </div>
+  );
+}
+
+// "История партнёрств" (28.08.2026, макет "08 · История партнёрств") —
+// ссылка с таба "Подтвердить" на уже существующий список подтверждённых
+// партнёрств (тот же PartnerRow/PartnersList, что и "Профиль -> Мой
+// рейтинг" — та подсказка/дашборд метрик остаётся как есть, не трогали,
+// см. RatingSubscreen.jsx). Тут — просто сводка счётчиков по вердиктам
+// (✅/⚠/❌), которой раньше не было НИГДЕ в приложении.
+function PartnershipHistoryScreen({ partners, onBack }) {
+  const { t } = useLang();
+  const counts = (partners || []).reduce((acc, p) => {
+    if (p.my_rating) acc[p.my_rating] = (acc[p.my_rating] || 0) + 1;
+    return acc;
+  }, {});
+  return (
+    <div className="card">
+      <button type="button" className="subscreen-back" onClick={onBack}>
+        {t("common.back")}
+      </button>
+      <h3>{t("confirm.history.title")}</h3>
+      <p className="partner-meta">
+        ✅ {counts.success || 0} {t("confirm.history.successLabel")}
+        {" · "}⚠ {counts.nuance || 0} {t("confirm.history.nuanceLabel")}
+        {" · "}❌ {counts.problematic || 0} {t("confirm.history.problematicLabel")}
+        {" · "}{t("confirm.history.allTime")}
+      </p>
+      <div className="privacy-hint">{t("confirm.history.hint")}</div>
+      <PartnersList partners={partners} emptyHint={t("rating.emptyOwn")} allowRating />
     </div>
   );
 }
@@ -92,6 +122,13 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
   const showPendingRatings = !onBack;
   const [pendingRatings, setPendingRatings] = useState(null);
   const [rating, setRating] = useState(null); // выбранное партнёрство для RatePartnershipScreen
+  // "История партнёрств" (28.08.2026, макет "08 · История партнёрств") —
+  // partners тянем через getMe() (то же поле, что и "Профиль -> Мой
+  // рейтинг"), только когда реально открыт экран истории (showHistory),
+  // не на каждом заходе на таб "Подтвердить" — незачем лишний запрос,
+  // пока пользователь им не воспользовался.
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyPartners, setHistoryPartners] = useState(null);
 
   function loadPendingRatings() {
     if (!showPendingRatings) return;
@@ -101,6 +138,14 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
   }
 
   useEffect(loadPendingRatings, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!showHistory || historyPartners !== null) return;
+    getMe()
+      .then((data) => setHistoryPartners(data.partners || []))
+      .catch(() => setHistoryPartners([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showHistory]);
 
   function set(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -141,10 +186,26 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
     );
   }
 
+  if (showHistory) {
+    return historyPartners === null ? (
+      <Spinner>{t("messages.loading")}</Spinner>
+    ) : (
+      <PartnershipHistoryScreen partners={historyPartners} onBack={() => setShowHistory(false)} />
+    );
+  }
+
   return (
     <div>
       {showPendingRatings && pendingRatings === null && <Spinner>{t("messages.loading")}</Spinner>}
       {showPendingRatings && <PendingRatingsList items={pendingRatings} onOpen={setRating} />}
+      {showPendingRatings && (
+        <div className="card">
+          <button type="button" className="profile-menu-item" onClick={() => setShowHistory(true)}>
+            <span>{t("confirm.historyLink")}</span>
+            <span className="profile-menu-item-chevron">›</span>
+          </button>
+        </div>
+      )}
       <div className="card">
         {onBack && (
           <button type="button" className="subscreen-back" onClick={onBack}>

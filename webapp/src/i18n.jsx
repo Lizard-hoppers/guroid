@@ -887,8 +887,8 @@ const STRINGS = {
   "tariffs.mvpBadge": { ru: "MVP — гипотеза цены", en: "MVP — price hypothesis" },
   "tariffs.loading": { ru: "Загружаем тарифы…", en: "Loading pricing…" },
   "tariffs.hitBadge": { ru: "ХИТ", en: "POPULAR" },
-  "tariffs.perMonth": { ru: "/ мес", en: "/ mo" },
-  "tariffs.perYear": { ru: "/ год", en: "/ yr" },
+  "tariffs.perMonth": { ru: " / мес", en: " / mo" },
+  "tariffs.perYear": { ru: " / год", en: " / yr" },
   "tariffs.product.guro_id.title": { ru: "Личный Pro", en: "Personal Pro" },
   "tariffs.product.guro_id.blurb": {
     ru: "Рейтинг, история сделок, полный поиск, история партнёрств контрагента.",
@@ -922,7 +922,7 @@ const STRINGS = {
   },
   "tariffs.limits.vacanciesTitle": { ru: "Публикация вакансий", en: "Posting vacancies" },
   "tariffs.limits.vacanciesValue": {
-    ru: "3 новые / день у всех · активные: Рекрутер 10 · Basic 20 · Pro 50",
+    ru: "3 новые / день у всех · активных: Рекрутер 10 · Basic 20 · Pro 50",
     en: "3 new / day for everyone · active: Recruiter 10 · Basic 20 · Pro 50",
   },
   "tariffs.limits.approvalsTitle": { ru: "Одобрение в команду", en: "Team approvals" },

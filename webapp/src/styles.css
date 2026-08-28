@@ -1488,23 +1488,18 @@ label {
   color: var(--gold);
 }
 
-/* Подсказка про кабинеты Рекрутер/Компания (25.08.2026, фидбек владельца) —
-   лёгкий разделитель перед списком вертикалей, без своей отдельной карточки. */
+/* Подсказка про кабинеты Рекрутер/Компания (28.08.2026, макет "03 ·
+   Поиск") — выделенный блок со звездой, а не просто текст с разделителем
+   (было до 28.08.2026 — см. git-историю, plain top-border divider). */
 .search-cabinets-hint {
-  margin: 6px 0 14px;
-  padding-top: 10px;
-  border-top: 1px solid var(--glass-border);
-}
-
-.search-demo-badge {
-  display: inline-block;
-  padding: 1px 8px;
-  border-radius: 8px;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--gold-soft);
+  background: rgba(170, 246, 74, 0.08);
   color: var(--gold);
-  font-size: 11px;
-  vertical-align: middle;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 /* --- Browse по вертикали (Фаза 2, 11.08.2026) --- */

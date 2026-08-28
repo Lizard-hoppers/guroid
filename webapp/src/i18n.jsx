@@ -351,19 +351,26 @@ const STRINGS = {
 
   // --- Поиск ---
   "search.title": { ru: "Поиск", en: "Search" },
-  // 25.08.2026 (фидбек владельца, "Правки.pdf"): поиск по описанию убран из
-  // личного профиля — тут только точный юзернейм. Описание/параметры/резюме —
-  // теперь функционал кабинетов Рекрутер/Компания (см. search.cabinetsHint).
-  "search.hint": { ru: "Точный поиск по юзернейму участника.", en: "Exact search by a member's username." },
-  "search.placeholder": { ru: "Юзернейм", en: "Username" },
+  // 28.08.2026 (макет "03 · Поиск", Untitled-7): текст hint/placeholder/
+  // cabinetsHint/browseHint обновлены на формулировки из макета — старые
+  // версии (25.08.2026, "Правки.pdf") были по смыслу тем же самым, но
+  // короче/без явного упоминания "какая вертикаль реально работает с
+  // реальными данными" (Gambling) — макет добавляет эту деталь.
+  "search.hint": {
+    ru: "Поиск по юзернейму — бесплатно (тизер-карточка): показывает только то, что участник сам открыл в профиле. Поиск по описанию, должности и вертикали доступен в кабинете Рекрутер или Компания.",
+    en: "Search by username is free (teaser card): shows only what the member opened up in their profile. Search by description, position and vertical is available in the Recruiter or Company cabinet.",
+  },
+  "search.placeholder": { ru: "Юзернейм, например @igamingschool", en: "Username, e.g. @igamingschool" },
   "search.submit": { ru: "Найти", en: "Search" },
   "search.submitting": { ru: "Ищем…", en: "Searching…" },
   "search.cabinetsHint": {
-    ru: "Чтобы находить резюме по категориям, профессиям и навыкам — активируйте кабинет «Рекрутер». А чтобы находить клиентов, кандидатов и представлять бренд — активируйте кабинет «Компания».",
-    en: "To find résumés by category, profession or skill — activate the Recruiter cabinet. To find clients, candidates and represent a brand — activate the Company cabinet.",
+    ru: "⭐ Нужен поиск по описанию, должности и вертикали? Оформите кабинет Рекрутер или Компания в «Профиль».",
+    en: "⭐ Need to search by description, position and vertical? Activate the Recruiter or Company cabinet in \"Profile\".",
   },
-  "search.demoLabel": { ru: "Демо версия", en: "Demo version" },
-  "search.browseHint": { ru: "Или посмотрите по вертикали, если не знаете юзернейм (по подписке):", en: "Or browse by vertical if you don't know the username (subscription required):" },
+  "search.browseHint": {
+    ru: "Фильтр по вертикали — демо-версия (по подписке). Сейчас с реальными данными работает только Gambling:",
+    en: "Vertical filter — demo version (subscription required). Right now only Gambling works with real data:",
+  },
   "search.paywallTitle": { ru: "Поиск по вертикалям — по подписке", en: "Vertical search — subscription only" },
   "search.paywallText": { ru: "Без подписки доступен только точный поиск по юзернейму.", en: "Without a subscription only exact username search is available." },
   "search.notFound": { ru: "Такой участник не найден в GURO ID.", en: "No such member found in GURO ID." },
@@ -376,8 +383,8 @@ const STRINGS = {
   "search.emptyList": { ru: "Ничего не нашлось. Попробуйте другое описание или вертикаль.", en: "Nothing found. Try another description or vertical." },
   "search.truncated": { ru: "Показаны не все совпадения — уточните запрос.", en: "Not all matches shown — refine your query." },
   "search.resumesToggle": {
-    ru: "🎯 Только те, кто ищет работу (для вертикалей выше и кнопки ниже)",
-    en: "🎯 Only people looking for work (applies to verticals above and the button below)",
+    ru: "Только те, кто ищет работу (для вертикалей выше и кнопки ниже)",
+    en: "Only people looking for work (applies to verticals above and the button below)",
   },
   "search.resumesShowAll": { ru: "Показать всех, кто ищет работу", en: "Show everyone looking for work" },
   "identity.vertical": { ru: "Вертикаль: ", en: "Vertical: " },

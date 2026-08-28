@@ -301,8 +301,16 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, deepLinkWorkspace, 
     await runQuery("q", q, sortTop);
   }
 
+  // Подсветка выбранной вертикали (28.08.2026, макет "03 · Поиск") — раньше
+  // не было НИКАКОГО визуального состояния "выбрано", хотя CSS для этого
+  // (.vertical-chip.is-selected) уже существовал в styles.css неиспользуемым.
+  // Gambling выбрана по умолчанию — единственная вертикаль, где сейчас
+  // реальные данные (см. search.browseHint), макет показывает её активной.
+  const [selectedVertical, setSelectedVertical] = useState(VERTICALS[0]);
+
   async function onPickVertical(v) {
     setQuery("");
+    setSelectedVertical(v);
     await runQuery(resumesOnly ? "resumes" : "vertical", v, sortTop);
   }
 
@@ -393,12 +401,15 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, deepLinkWorkspace, 
 
         <div className="partner-meta" style={{ margin: "12px 0 6px" }}>
           {t("search.browseHint")}
-          {" "}
-          <span className="search-demo-badge">{t("search.demoLabel")}</span>
         </div>
         <div className="vertical-chips">
           {VERTICALS.map((v) => (
-            <button key={v} type="button" className="vertical-chip" onClick={() => onPickVertical(v)}>
+            <button
+              key={v}
+              type="button"
+              className={`vertical-chip${v === selectedVertical ? " is-selected" : ""}`}
+              onClick={() => onPickVertical(v)}
+            >
               {v}
             </button>
           ))}
@@ -412,6 +423,10 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, deepLinkWorkspace, 
             <span className="link-underline">{t("search.resumesShowAll")}</span>
           </button>
         )}
+        <label className="checkbox-row" style={{ marginTop: 10 }}>
+          <input type="checkbox" checked={sortTop} onChange={toggleTop} />
+          {t("search.topToggle")}
+        </label>
       </div>
 
       {state.loading && !state.data && <Spinner>{t("search.submitting")}</Spinner>}
@@ -434,13 +449,6 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, deepLinkWorkspace, 
               ? t("search.viewLimitReached", { date: formatDate(state.error.details?.resets_at) })
               : t("search.genericError")}
         </Msg>
-      )}
-
-      {state.data && state.data.mode === "list" && (
-        <label className="checkbox-row" style={{ margin: "12px 2px" }}>
-          <input type="checkbox" checked={sortTop} onChange={toggleTop} />
-          {t("search.topToggle")}
-        </label>
       )}
 
       {state.data && state.data.mode === "list" && state.data.results.length === 0 && (

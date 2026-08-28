@@ -141,7 +141,7 @@ const STRINGS = {
   "cv.title": { ru: "Моё CV", en: "My CV" },
   // «Характеристика» (26.08.2026) — кнопка в каждом профиле, доступная
   // любому подписчику: офферы ("Я ищу"/"Я полезен") + CV просматриваемого.
-  "characteristic.button": { ru: "🪪 Характеристика", en: "🪪 Characteristic" },
+  "characteristic.button": { ru: "Характеристика", en: "Characteristic" },
   "characteristic.hide": { ru: "Скрыть характеристику", en: "Hide characteristic" },
   "characteristic.offersTitle": { ru: "Офферы", en: "Offers" },
   "characteristic.emptyOffers": { ru: "Офферы не заполнены.", en: "No offers filled in." },

@@ -2122,31 +2122,48 @@ select {
   cursor: pointer;
 }
 
+/* 28.08.2026 (макет "15 · Рекрутер — Мои вакансии") — залитая пилюля
+   сменена на точку-индикатор + текст (было — сплошной цветной фон). */
 .vacancy-status-badge {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   font-weight: 600;
-  border: 1px solid transparent;
+}
+
+.vacancy-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: currentColor;
 }
 
 .vacancy-status-active {
-  border-color: rgba(107, 191, 138, 0.5);
-  background: rgba(107, 191, 138, 0.16);
   color: var(--ok);
 }
 
 .vacancy-status-paused {
-  border-color: rgba(170, 246, 74, 0.5);
-  background: rgba(170, 246, 74, 0.16);
-  color: var(--gold);
+  color: var(--recruiter-cyan);
 }
 
 .vacancy-status-closed {
-  border-color: var(--glass-border);
-  background: #ffffff1c;
   color: var(--text-dim);
+}
+
+.vacancy-mine-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.vacancy-mine-counts {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
 }
 
 .title-suggestions {

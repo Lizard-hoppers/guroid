@@ -74,10 +74,24 @@ function flattenPositions(professions) {
   return out;
 }
 
-function StatusBadge({ status }) {
+// closedReason (28.08.2026, макет "15 · Рекрутер — Мои вакансии") —
+// бэкенд отдаёт closed_reason ("Нашли кандидата" и т.п.) уже давно
+// (см. handle_close_vacancy, guro_id_api.py), но фронт нигде его не
+// показывал — макет явно дописывает причину прямо в статус-бейдж
+// ("Закрыта — нашли кандидата"). Заодно бейдж переделан с залитой
+// пилюли на маленькую точку-индикатор + текст — так в макете.
+function StatusBadge({ status, closedReason }) {
   const { t } = useLang();
   const cls = status === "active" ? "vacancy-status-active" : status === "paused" ? "vacancy-status-paused" : "vacancy-status-closed";
-  return <span className={`vacancy-status-badge ${cls}`}>{t(`vacancies.status.${status}`)}</span>;
+  const label = status === "closed" && closedReason
+    ? `${t(`vacancies.status.${status}`)} — ${closedReason}`
+    : t(`vacancies.status.${status}`);
+  return (
+    <span className={`vacancy-status-badge ${cls}`}>
+      <span className="vacancy-status-dot" />
+      {label}
+    </span>
+  );
 }
 
 function daysAgo(createdAt) {
@@ -594,7 +608,7 @@ function VacancyDetail({ id, onBack, onOpenMessages, onManage, onOpenResponses, 
         {t("common.back")}
       </button>
       <div className="card">
-        <StatusBadge status={v.status} />
+        <StatusBadge status={v.status} closedReason={v.closed_reason} />
         <h2 style={{ marginTop: 8 }}>{v.title}</h2>
         <div className="partner-meta">{[v.vertical, v.grade, v.position].filter(Boolean).join(" · ")}</div>
         <div className="partner-meta">
@@ -698,16 +712,16 @@ function MyVacancies({ vacancies, loading, error, onOpen, onManage, onPublish })
   return (
     <div>
       {vacancies.map((v) => (
-        <div key={v.id} className="card">
-          <div className="partner-row" style={{ alignItems: "center", cursor: "pointer" }} onClick={() => onOpen(v.id)}>
-            <div className="partner-info">
-              <div className="partner-name">{v.title}</div>
-              <div className="partner-meta">{[v.vertical, v.grade].filter(Boolean).join(" · ")}</div>
-              <div className="partner-meta">
-                {t("vacancies.viewsLabel", { n: v.views_count })} · {t("vacancies.responsesLabel", { n: v.responses_count })}
-              </div>
-            </div>
-            <StatusBadge status={v.status} />
+        <div key={v.id} className="card" style={{ cursor: "pointer" }} onClick={() => onOpen(v.id)}>
+          <div className="partner-name">{v.title}</div>
+          {/* Тап по телу карточки открывает "Отклики" именно на эту
+              вакансию (28.08.2026, макет "15 · Рекрутер — Мои вакансии") —
+              раньше вёл на общий экран деталей вакансии. */}
+          <div className="vacancy-mine-status-row">
+            <StatusBadge status={v.status} closedReason={v.closed_reason} />
+            <span className="vacancy-mine-counts">
+              👁 {v.views_count} ↩ {v.responses_count}
+            </span>
           </div>
           <div className="recruiter-quick-actions" style={{ marginTop: 10, flexWrap: "wrap" }}>
             <button type="button" className="btn secondary" onClick={(e) => act(e, "edit", v)}>
@@ -1049,17 +1063,26 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
         }}
         onOpenMessages={onOpenMessages}
         onManage={onManage}
-        onOpenResponses={(id) => setView({ name: "responses", id })}
+        onOpenResponses={(id) => setView({ name: "responses", id, returnTo: "detail" })}
         manageError={manageError}
       />
     );
   }
 
+  // returnTo (28.08.2026, макет "15 · Рекрутер — Мои вакансии") — "Отклики"
+  // теперь открывается ДВУМЯ путями: кнопкой на VacancyDetail (returnTo=
+  // "detail", как раньше) И тапом по телу карточки в "Мои вакансии"
+  // (returnTo="board" — макет: "Тап по телу карточки открывает отклики
+  // именно на эту вакансию", минуя промежуточный экран детали). "Назад"
+  // должен вернуть туда, откуда реально пришли, а не всегда в деталь.
   if (view.name === "responses") {
     return (
       <VacancyResponses
         vacancyId={view.id}
-        onBack={() => setView({ name: "detail", id: view.id })}
+        onBack={() => {
+          setView({ name: view.returnTo || "detail", id: view.id });
+          if (view.returnTo === "board") setRefreshKey((k) => k + 1);
+        }}
         onOpenMessages={onOpenMessages}
         onOpenHireConfirm={onOpenHireConfirm}
       />
@@ -1234,7 +1257,7 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
             vacancies={myVac.vacancies}
             loading={myVac.loading}
             error={myVac.error}
-            onOpen={(id) => setView({ name: "detail", id })}
+            onOpen={(id) => setView({ name: "responses", id, returnTo: "board" })}
             onManage={onManage}
             onPublish={() => setView({ name: "form" })}
           />

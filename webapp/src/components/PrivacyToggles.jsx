@@ -25,8 +25,13 @@ export const PRIVACY_LABELS = {
 // (setRecruiterPrivacyField + уточнённые ключи — у витрины рекрутера
 // нет LinkedIn/"ищу", только сайт/"полезен"). labels — словарь key ->
 // ключ перевода (не сам текст), т.к. язык может переключиться в рантайме.
+// title/children (28.08.2026, экран "Приватность профиля",
+// PrivacySubscreen.jsx) — необязательные, чтобы не трогать 5 уже
+// существующих вызовов (CV/Contacts/Offers/RecruiterHub/CompanyHub), у
+// тех остаётся дефолтный заголовок "Приватность" и никакого футера.
 export function PrivacyToggles({
   privacy, onChange, fields, hint, savePrivacyField = setPrivacyField, labels = PRIVACY_LABELS,
+  title, children,
 }) {
   const { t } = useLang();
   const [pending, setPending] = useState(null);
@@ -53,7 +58,7 @@ export function PrivacyToggles({
 
   return (
     <div className="card">
-      <h3>{t("privacy.title")}</h3>
+      <h3>{title || t("privacy.title")}</h3>
       {hint && <div className="privacy-hint">{hint}</div>}
       {fields.map((key) => (
         <div className="privacy-row" key={key}>
@@ -74,6 +79,7 @@ export function PrivacyToggles({
           </label>
         </div>
       ))}
+      {children}
       <Msg type="error">{error}</Msg>
     </div>
   );

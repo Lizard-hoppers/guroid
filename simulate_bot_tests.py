@@ -2467,12 +2467,21 @@ def test_guro_id_storage():
         u1 = gst.get_or_create_guro_user(1)
         check(u1["reputation_score"] == 0.0, f"первичная репутация = 0 (0 сделок, 0 дней стажа), а не {u1['reputation_score']}")
 
+        # 28.08.2026 (макет "09 · Приватность"): смешанная политика — 4
+        # opt-out поля (show_name/show_company/show_vertical/show_profession,
+        # default=1) видны по умолчанию, остальные — opt-in (default=0),
+        # см. guro_storage.py::_OPT_OUT_PRIVACY_FIELDS.
         privacy = gst.get_privacy(1)
-        check(all(v is False for v in privacy.values()), "приватность по умолчанию -> всё выключено (opt-in, ничего не видно чужим)")
-        updated = gst.set_privacy_field(1, "show_company", True)
-        check(updated["show_company"] is True, "set_privacy_field включает конкретный тумблер")
-        check(updated["show_name"] is False, "остальные тумблеры не трогает")
-        check(gst.get_privacy(1)["show_company"] is True, "значение сохраняется между вызовами")
+        opt_out_fields = {"show_name", "show_company", "show_vertical", "show_profession"}
+        check(
+            all(privacy[k] is True for k in opt_out_fields) and all(v is False for k, v in privacy.items() if k not in opt_out_fields),
+            "приватность по умолчанию: opt-out поля видны, остальное скрыто (opt-in)",
+        )
+        updated = gst.set_privacy_field(1, "show_cv", True)
+        check(updated["show_cv"] is True, "set_privacy_field включает конкретный тумблер")
+        check(updated["show_contacts"] is False, "остальные opt-in тумблеры не трогает")
+        check(updated["show_name"] is True, "opt-out тумблеры тоже не трогает (остаются как были)")
+        check(gst.get_privacy(1)["show_cv"] is True, "значение сохраняется между вызовами")
         try:
             gst.set_privacy_field(1, "show_everything", True)
             check(False, "неизвестное поле должно кидать UNKNOWN_FIELD")
@@ -2896,33 +2905,41 @@ async def _run_guro_id_api_sim():
                 check(body["locked"] is False, "поиск с активной подпиской -> locked=False")
                 check(body["username"] == "initiator", "поиск с подпиской -> полная карточка")
 
-                # opt-in по умолчанию: все тумблеры выключены -> из полей,
-                # которые ЕЩЁ гейтятся тумблером, ничего не видно, кроме
-                # username и партнёрств.
-                # 28.08.2026 (фидбек владельца, макет "01 · Профиль
-                # (личный)": "убрать кнопки переключатели приватности") —
-                # name/company/vertical/profession та же судьба, что и
-                # reputation/tenure чуть раньше (25.08.2026): тумблеры
-                # show_name/show_company/show_vertical/show_profession
-                # убраны из _PRIVACY_FIELD_MAP (guro_id_api.py), эти поля
-                # теперь видны ВСЕГДА, как username/партнёрства — иначе
-                # каждый новый пользователь навсегда оставался бы без
-                # имени в чужом поиске (default=0 в БД, UI-тумблера для
-                # включения больше нет).
-                check(body["name"] == "Init", "имя личного профиля видно ВСЕГДА в чужом поиске (тумблер убран)")
+                # Смешанная политика тумблеров (28.08.2026, макет "09 ·
+                # Приватность", Untitled-12): show_name/show_company/
+                # show_vertical/show_profession — opt-out (default=1,
+                # видно по умолчанию, можно СКРЫТЬ), остальные
+                # (show_cv/show_contacts/show_offers) — opt-in (default=0,
+                # скрыто, нужно явно включить). До этого момента (в тот же
+                # день, но раньше) эти 4 поля были ВООБЩЕ без гейта —
+                # затем нашёлся макет отдельного экрана "Приватность
+                # профиля" с этими же тумблерами, гейт вернули, но с
+                # opt-out дефолтом (иначе каждый новый пользователь
+                # оставался бы без имени в поиске, пока сам не зайдёт в
+                # новый экран и не включит вручную).
+                check(body["name"] == "Init", "имя личного профиля видно по умолчанию (opt-out)")
                 check(body["company"] == "GURO Co" and body["vertical"] == "iGaming",
-                      "company/vertical тоже видны всегда (тумблер убран)")
+                      "company/vertical тоже видны по умолчанию (opt-out)")
                 check(body["reputation_score"] is not None,
                       "рейтинг виден без тумблера -> подписки цели достаточно (приватность рейтинга убрана)")
                 check(body["joined_community_at"] is not None and body["days_in_community"] is not None,
                       "стаж виден без тумблера по той же причине")
                 check(body["confirmed_partnerships"] == 0, "число партнёрств видно ВСЕГДА, даже без единого включённого тумблера")
-                check(body["profession"] == "Manager", "профессия личного профиля видна ВСЕГДА (тумблер убран)")
+                check(body["profession"] == "Manager", "профессия личного профиля видна по умолчанию (opt-out)")
                 check(body["linkedin"] is None and body["website"] is None,
                       "по умолчанию show_contacts выключен -> linkedin/website скрыты")
                 check(body["looking_for"] is None and body["offering"] is None,
                       "по умолчанию show_offers выключен -> looking_for/offering скрыты")
                 check(body["cv_text"] is None, "по умолчанию show_cv выключен -> cv_text скрыт")
+
+                # opt-out работает и в обратную сторону — явно выключенный
+                # тумблер реально прячет поле (не просто мёртвая настройка).
+                await client.post("/api/privacy", headers=auth_100, json={"field": "show_profession", "value": False})
+                resp = await client.get("/api/search?username=initiator", headers=auth_200)
+                body = await resp.json()
+                check(body["profession"] is None, "явно выключенный show_profession реально прячет поле (opt-out можно выключить)")
+                check(body["name"] == "Init", "остальные opt-out поля не задеты выключением одного")
+                await client.post("/api/privacy", headers=auth_100, json={"field": "show_profession", "value": True})
 
                 # редизайн профиля: /api/me отдаёт поля анкеты (профессия/linkedin/
                 # "ищу"), даже те, что не были в _profile_summary раньше
@@ -3111,11 +3128,9 @@ async def _run_guro_id_api_sim():
                 body = await resp.json()
                 check(body["cv_experience"] == [], "после удаления cv_experience снова пуст")
 
-                # приватность: /api/privacy всё ещё принимает и сохраняет
-                # show_name (дохлый, но безвредный остаток — 28.08.2026,
-                # тот же принцип, что и у show_tenure/show_reputation чуть
-                # раньше), но больше ни на что не влияет — имя/company
-                # видны в чужом поиске ВСЕГДА, независимо от значения.
+                # приватность: show_name opt-out (28.08.2026) — явно
+                # включаем то, что и так уже включено по умолчанию, просто
+                # проверяем, что тумблер реально работает в обе стороны.
                 resp = await client.post("/api/privacy", headers=auth_100,
                                           json={"field": "show_name", "value": True})
                 check(resp.status == 200, "POST /api/privacy -> 200")
@@ -3124,8 +3139,8 @@ async def _run_guro_id_api_sim():
 
                 resp = await client.get("/api/search?username=initiator", headers=auth_200)
                 body = await resp.json()
-                check(body["name"] == "Init", "имя видно в ЧУЖОМ поиске (show_name больше ни на что не влияет)")
-                check(body["company"] == "GURO Co", "company тоже видна ВСЕГДА (тумблер убран из гейта)")
+                check(body["name"] == "Init", "имя видно в ЧУЖОМ поиске (show_name=True, как и по умолчанию)")
+                check(body["company"] == "GURO Co", "company тоже видна (opt-out по умолчанию, не трогали)")
                 check(body["username"] == "initiator", "username всё равно виден (нужен для идентификации)")
 
                 resp = await client.get("/api/me", headers=auth_100)
@@ -4096,7 +4111,7 @@ async def _run_guro_id_api_sim():
                 check(498 not in resume_ids, "resumeuser2 (work_status=working) НЕ попадает в резюме-выдачу")
                 found_resume = next(r for r in body["results"] if r["user_id"] == 497)
                 check(found_resume["name"] == "Resume One",
-                      "имя видно ВСЕГДА (28.08.2026: show_name больше не гейтит, тумблер убран)")
+                      "имя видно по умолчанию (28.08.2026: show_name — opt-out, resumeuser1 его не трогал)")
                 check(found_resume["work_status"] == "looking", "work_status виден в результате резюме-поиска")
 
                 resp = await client.get("/api/search?resumes=1&vertical=Crypto", headers=auth_200)

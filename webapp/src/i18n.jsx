@@ -1020,6 +1020,20 @@ const STRINGS = {
   "privacy.label.show_contacts": { ru: "Контакты (LinkedIn, сайт)", en: "Contacts (LinkedIn, website)" },
   "privacy.label.show_offers": { ru: "Офферы (ищу / полезен)", en: "Offers (looking for / can offer)" },
 
+  // Отдельный экран "Приватность профиля" (28.08.2026, макет "09 ·
+  // Приватность", Untitled-12) — ProfileHub.jsx -> меню -> PrivacySubscreen.jsx.
+  "profile.privacy.menuLabel": { ru: "Приватность", en: "Privacy" },
+  "profile.privacy.title": { ru: "Приватность профиля", en: "Profile privacy" },
+  "profile.privacy.hint": {
+    ru: "Каждое поле можно скрыть от чужого поиска по отдельности. Это не влияет на Рейтинг и Стаж — см. отдельное правило ниже.",
+    en: "Each field can be hidden from others' search individually. This doesn't affect Rating and Tenure — see the separate rule below.",
+  },
+  "profile.privacy.lockedTitle": { ru: "🔓 Рейтинг и Стаж — без переключателя", en: "🔓 Rating and Tenure — no toggle" },
+  "profile.privacy.lockedText": {
+    ru: "Эти два поля всегда видны участникам с активной подпиской GURO ID и не скрываются приватностью — они формируют доверие в комьюнити и не должны обходиться настройками.",
+    en: "These two fields are always visible to members with an active GURO ID subscription and can't be hidden by privacy settings — they build trust in the community and shouldn't be bypassable.",
+  },
+
   "workStatusBadge.free": { ru: "Виден всем бесплатно", en: "Visible to everyone for free" },
 
   "locked.title": { ru: "Полная карточка профиля", en: "Full profile card" },

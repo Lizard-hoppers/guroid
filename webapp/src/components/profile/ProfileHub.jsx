@@ -12,6 +12,10 @@ const MENU = [
   { key: "qr", labelKey: "hub.menu.qr" },
   { key: "cv", labelKey: "hub.menu.cv" },
   { key: "contacts", labelKey: "hub.menu.contacts" },
+  // "Приватность" (28.08.2026, макет "09 · Приватность", Untitled-12) —
+  // добавлена ПОСЛЕДНЕЙ, за явно заданным владельцем порядком остальных
+  // 6 пунктов ("рейтинг порядок.pdf") — этот макет её порядок не задавал.
+  { key: "privacy", labelKey: "profile.privacy.menuLabel" },
 ];
 
 // "Первый шаг" (28.08.2026, макет "01 · Профиль (личный)") — видна, пока

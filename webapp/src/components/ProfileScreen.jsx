@@ -6,6 +6,7 @@ import { RatingSubscreen } from "./profile/RatingSubscreen.jsx";
 import { CvSubscreen } from "./profile/CvSubscreen.jsx";
 import { ContactsSubscreen } from "./profile/ContactsSubscreen.jsx";
 import { OffersSubscreen } from "./profile/OffersSubscreen.jsx";
+import { PrivacySubscreen } from "./profile/PrivacySubscreen.jsx";
 import { QrSubscreen } from "./profile/QrSubscreen.jsx";
 import { MessagesScreen } from "./profile/MessagesScreen.jsx";
 import { OnboardingScreen } from "./profile/OnboardingScreen.jsx";
@@ -354,6 +355,15 @@ export function ProfileScreen({
         privacy={p.privacy}
         onPrivacyChange={updatePrivacy}
         onFieldSaved={updateField}
+        onBack={() => setSub(null)}
+      />
+    );
+  }
+  if (sub === "privacy") {
+    return (
+      <PrivacySubscreen
+        privacy={p.privacy}
+        onPrivacyChange={updatePrivacy}
         onBack={() => setSub(null)}
       />
     );

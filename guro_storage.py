@@ -267,8 +267,21 @@ class GuroStorage:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(_SCHEMA)
         # мягкие миграции — never ALTER TABLE вручную (тот же приём, что в storage.py)
+        # 28.08.2026 (макет "09 · Приватность", Untitled-12): show_name/
+        # show_company/show_vertical/show_profession ЛИЧНОГО профиля —
+        # единственные из PRIVACY_FIELDS с opt-out (default=1, видно), а не
+        # opt-in — макет явно показывает их включёнными по умолчанию, а не
+        # скрытыми. Это касается только новых БД: у существующих строк
+        # (прод) значения уже проставлены, см. migrate_privacy_opt_out_
+        # default.py — одноразовая миграция, которая переводит существующих
+        # пользователей на этот же opt-out (нужна, т.к. эти 4 тумблера были
+        # временно вообще без гейта, см. git-историю _PRIVACY_FIELD_MAP).
+        # Остальные PRIVACY_FIELDS (show_cv/show_contacts/show_offers/
+        # мёртвые show_tenure/show_reputation) остаются opt-in, как были.
+        _OPT_OUT_PRIVACY_FIELDS = {"show_name", "show_company", "show_vertical", "show_profession"}
         for field in GC.PRIVACY_FIELDS:
-            self._ensure_column("guro_users", field, "INTEGER DEFAULT 0")
+            default = 1 if field in _OPT_OUT_PRIVACY_FIELDS else 0
+            self._ensure_column("guro_users", field, f"INTEGER DEFAULT {default}")
         for field in GC.EXTRA_PROFILE_FIELDS:
             self._ensure_column("guro_users", field, "TEXT")
         self._ensure_column("guro_users", "work_status", "TEXT")

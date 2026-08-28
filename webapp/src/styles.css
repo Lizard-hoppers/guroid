@@ -2160,6 +2160,39 @@ select {
   margin-top: 6px;
 }
 
+/* Отклики (28.08.2026, макет "16 · Рекрутер — Отклики") — имя кандидата +
+   бейдж рейтинга (переиспользован .rating-preview-circle, но мельче — тут
+   он в компактной строке карточки, а не в шапке экрана). */
+.vacancy-response-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.vacancy-response-rating {
+  width: 30px;
+  height: 30px;
+  font-size: 13px;
+}
+
+/* "Найм подтверждён" — финальный позитивный статус, отдельный (не зелёный
+   "в процессе", как interview/offer) цвет-акцент. */
+.vacancy-response-status-hired {
+  color: var(--gold);
+}
+
+/* Пояснительная карточка про кнопку "Подтвердить найм" — тот же паттерн,
+   что .profile-privacy-locked-note, но в бирюзовом (кабинет Рекрутера). */
+.vacancy-hire-explainer {
+  border-color: rgba(62, 207, 234, 0.35);
+  background: rgba(62, 207, 234, 0.08);
+}
+
+.vacancy-hire-explainer-title {
+  color: var(--recruiter-cyan);
+}
+
 .vacancy-mine-counts {
   font-size: 12px;
   color: var(--text-dim);

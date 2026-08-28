@@ -985,7 +985,24 @@ const STRINGS = {
   "vacancies.responses.status.offer": { ru: "Оффер отправлен", en: "Offer sent" },
   "vacancies.responses.status.hired": { ru: "Найм подтверждён", en: "Hired" },
   "vacancies.responses.status.rejected": { ru: "Отказ", en: "Rejected" },
-  "vacancies.responses.confirmHireBtn": { ru: "✅ Подтвердить найм", en: "✅ Confirm hire" },
+  "vacancies.responses.confirmHireBtn": { ru: "Подтвердить найм →", en: "Confirm hire →" },
+  // 28.08.2026 (макет "16 · Рекрутер — Отклики (мини-ATS)", Untitled-20) —
+  // раньше кнопка подтверждения найма была доступна ДЛЯ ЛЮБОГО отклика
+  // независимо от статуса (реальный баг — можно было "подтвердить найм"
+  // по только что пришедшему, ещё не рассмотренному отклику). Выноска
+  // явно говорит: статус "Найм подтверждён" АКТИВИРУЕТ кнопку — теперь
+  // кнопка показывается только при status="hired". Пояснительная карточка
+  // ниже списка объясняет почему (сверил с владельцем: список+инлайн-
+  // редактирование статуса оставлены как есть, не переделывал в
+  // список+деталь с отдельным подэкраном, как на макете — заметно
+  // больше работы без явной необходимости).
+  "vacancies.responses.hireExplainerTitle": { ru: "Статус «Найм подтверждён»", en: "\"Hired\" status" },
+  "vacancies.responses.hireExplainerText": {
+    ru: "Активирует кнопку ниже: переход в раздел «Найм», Шаг 1, с предзаполненными полями — юзернейм контрагента из отклика, Вертикаль / Грейд / Должность из данных вакансии.",
+    en: "Activates the button below: takes you to the \"Hire\" section, Step 1, with pre-filled fields — the counterparty's username from the response, Vertical / Grade / Position from the vacancy data.",
+  },
+  "vacancies.responses.today": { ru: "сегодня", en: "today" },
+  "vacancies.responses.daysAgo": { ru: "{days} дн. назад", en: "{days}d ago" },
   "vacancies.form.title": { ru: "Опубликовать вакансию", en: "Post a vacancy" },
   "vacancies.form.editTitle": { ru: "Редактировать вакансию", en: "Edit vacancy" },
   "vacancies.form.authorWorkspaceLabel": { ru: "Публиковать от имени", en: "Post as" },

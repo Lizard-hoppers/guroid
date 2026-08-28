@@ -77,6 +77,13 @@ export function WorkStatusPicker({ value, onChange }) {
   const controls = useAnimation();
   const keys = Object.keys(WORK_STATUS_META);
   const activeIndex = keys.indexOf(value);
+  // Первое позиционирование капли (открытие вкладки Профиль/загрузка
+  // анкеты) не должно анимироваться пружиной — иначе выглядит так, будто
+  // статус только что переключился сам собой (фидбек владельца
+  // 28.08.2026: "анимация переключения в статусе срабатывает" при
+  // загрузке экрана). WOBBLE-пружина остаётся только для РЕАЛЬНОГО
+  // клика пользователя — см. settledRef ниже.
+  const settledRef = useRef(false);
 
   useEffect(() => {
     function measure() {
@@ -92,10 +99,15 @@ export function WorkStatusPicker({ value, onChange }) {
 
   useEffect(() => {
     if (!segWidth) return;
-    if (activeIndex === -1) {
-      controls.start({ opacity: 0, scale: 0.85, transition: { duration: 0.15 } });
+    const target =
+      activeIndex === -1
+        ? { opacity: 0, scale: 0.85 }
+        : { x: activeIndex * step, opacity: 1, scale: 1 };
+    if (!settledRef.current) {
+      controls.set(target);
+      settledRef.current = true;
     } else {
-      controls.start({ x: activeIndex * step, opacity: 1, scale: 1, transition: WOBBLE });
+      controls.start({ ...target, transition: activeIndex === -1 ? { duration: 0.15 } : WOBBLE });
     }
   }, [activeIndex, segWidth, step, controls]);
 

@@ -40,6 +40,28 @@ export function usePositions() {
   return state;
 }
 
+// Умное предупреждение о несовпадении (28.08.2026, макет "14 · Рекрутер —
+// Опубликовать вакансию") — ищет в СВОБОДНОМ названии позиции слово
+// (кроме коротких предлогов/союзов "of"/"and" и т.п. — фильтр по длине)
+// из ЛЮБОГО грейда СПРАВОЧНИКА, кроме того, что выбран чипом сейчас.
+// Например, название "Senior Affiliate Manager" при выбранном грейде
+// "Management" находит слово "Senior" — оно из другого варианта грейда,
+// возможно юзер забыл переключить чип. Раньше эта проверка сравнивала
+// название с последней выбранной ПОДСКАЗКОЙ целиком — слишком общо,
+// не объясняла, ЧЕМ конкретно название разошлось.
+function detectGradeMismatchWord(title, selectedGrade, grades) {
+  if (!title.trim() || !selectedGrade) return null;
+  const titleLower = title.toLowerCase();
+  for (const g of grades) {
+    if (g === selectedGrade) continue;
+    const words = g.split(/[\s/]+/).filter((w) => w.length > 2);
+    for (const w of words) {
+      if (titleLower.includes(w.toLowerCase())) return w;
+    }
+  }
+  return null;
+}
+
 function flattenPositions(professions) {
   const out = [];
   for (const vertical of Object.keys(professions)) {
@@ -176,7 +198,6 @@ function VacancyForm({ editingId, initial, authorWorkspace, canRecruiter, canCom
   const [form, setForm] = useState(initial || EMPTY_FORM);
   const [workspace, setWorkspace] = useState(authorWorkspace || (canRecruiter ? "recruiter" : "company"));
   const [suggestions, setSuggestions] = useState([]);
-  const [lastPicked, setLastPicked] = useState(initial?.position || "");
   const [state, setState] = useState({ loading: false, error: null });
 
   function set(field, value) {
@@ -197,11 +218,10 @@ function VacancyForm({ editingId, initial, authorWorkspace, canRecruiter, canCom
     setForm((f) => ({
       ...f, title: s.label, vertical: s.vertical, grade: s.grade, position: s.label, positionIsOther: false,
     }));
-    setLastPicked(s.label);
     setSuggestions([]);
   }
 
-  const mismatch = lastPicked && form.title && !form.title.toLowerCase().includes(lastPicked.toLowerCase());
+  const mismatchWord = detectGradeMismatchWord(form.title, form.grade, positions.grades);
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -291,12 +311,17 @@ function VacancyForm({ editingId, initial, authorWorkspace, canRecruiter, canCom
           <div className="title-suggestions">
             {suggestions.map((s, i) => (
               <button type="button" key={i} className="title-suggestion" onClick={() => pickSuggestion(s)}>
-                {s.label} <span className="partner-meta">— {s.vertical} · {s.grade}</span>
+                <span>{s.label}</span>
+                <span className="partner-meta">{s.vertical} · {s.grade}</span>
               </button>
             ))}
           </div>
         )}
-        {mismatch && <div className="mismatch-banner">{t("vacancies.form.mismatchWarning")}</div>}
+        {mismatchWord && (
+          <div className="mismatch-banner">
+            ⚠ {t("vacancies.form.mismatchWarning", { word: mismatchWord, grade: form.grade })}
+          </div>
+        )}
 
         <PositionCascadeSelect
           positions={positions}
@@ -345,6 +370,14 @@ function VacancyForm({ editingId, initial, authorWorkspace, canRecruiter, canCom
           ))}
         </div>
 
+        <label>{t("vacancies.form.descriptionLabel")}</label>
+        <textarea
+          rows={4}
+          placeholder={t("vacancies.form.descriptionPlaceholder")}
+          value={form.description}
+          onChange={(e) => set("description", e.target.value)}
+        />
+
         <label>{t("vacancies.form.salaryLabel")}</label>
         <div className="amount-row">
           <input
@@ -381,14 +414,6 @@ function VacancyForm({ editingId, initial, authorWorkspace, canRecruiter, canCom
           />
           {t("vacancies.form.salaryVisibleLabel")}
         </label>
-
-        <label>{t("vacancies.form.descriptionLabel")}</label>
-        <textarea
-          rows={4}
-          placeholder={t("vacancies.form.descriptionPlaceholder")}
-          value={form.description}
-          onChange={(e) => set("description", e.target.value)}
-        />
 
         {!editingId && (
           <>

@@ -2157,6 +2157,10 @@ select {
 }
 
 .title-suggestion {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   text-align: left;
   padding: 8px 10px;
   border-radius: 10px;
@@ -2167,11 +2171,14 @@ select {
   cursor: pointer;
 }
 
+/* 28.08.2026 (макет "14 · Рекрутер — Опубликовать вакансию") — цвет
+   предупреждения сменён с нейтрального золотого на предупреждающий
+   красноватый (var(--danger)), как в макете. */
 .mismatch-banner {
   font-size: 12px;
-  color: var(--gold);
-  background: rgba(170, 246, 74, 0.12);
-  border: 1px solid rgba(170, 246, 74, 0.4);
+  color: var(--danger);
+  background: rgba(224, 101, 90, 0.12);
+  border: 1px solid rgba(224, 101, 90, 0.4);
   border-radius: 10px;
   padding: 8px 10px;
   margin: -6px 0 12px;

@@ -1,14 +1,79 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EditableField, Msg } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import {
   getCompanyAddresses, setCompanyProfileField, setCompanyPrivacyField, submitCompanyAddress,
-  requestCompanyVerification, createCompany,
+  requestCompanyVerification, createCompany, uploadCompanyImage, ApiError,
 } from "../../api.js";
 import { SubscribeScreen } from "../SubscribeScreen.jsx";
 import { useLang } from "../../i18n.jsx";
 import { ensureHttpUrl, initialOf } from "../../utils.js";
 import { haptic } from "../../telegram.js";
+
+// Загрузка лого/обложки из галереи (28.08.2026, фидбек владельца: раньше
+// только вставка готовой ссылки) — реальный файл, POST /api/company/image
+// (multipart), бэкенд сам сохраняет и возвращает обновлённые company-поля.
+// Обёрнутый children кликабелен целиком (и пустое состояние "+", и уже
+// загруженная картинка — заменить тоже можно тапом), input[type=file]
+// спрятан рядом. Подсказка про формат/размер — ОТДЕЛЬНЫМ текстом под
+// зоной загрузки (сама зона тесная, надпись внутри неё нечитаема).
+function ImageUploadArea({ kind, className, hintKey, onUploaded, onError, children, wrap = true }) {
+  const { t } = useLang();
+  const inputRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function onFileChange(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const extra = await uploadCompanyImage(kind, file);
+      onUploaded(extra);
+      haptic("success");
+    } catch (err) {
+      const code = err instanceof ApiError ? err.code : null;
+      const message =
+        code === "FILE_TOO_LARGE" ? t("company.upload.tooLarge") :
+        code === "UNSUPPORTED_FORMAT" ? t("company.upload.unsupported") :
+        t("company.upload.error");
+      if (onError) onError(message);
+      else setError(message);
+      haptic("error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const trigger = (
+    <>
+      <div
+        className={`${className}${busy ? " is-uploading" : ""}`}
+        onClick={() => !busy && inputRef.current?.click()}
+      >
+        {children}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        style={{ display: "none" }}
+        onChange={onFileChange}
+      />
+    </>
+  );
+
+  if (!wrap) return trigger;
+  return (
+    <div>
+      {trigger}
+      {hintKey && <p className="partner-meta company-upload-hint">{t(hintKey)}</p>}
+      {error && <Msg type="error">{error}</Msg>}
+    </div>
+  );
+}
 
 // Верификация крипто-адреса компании (ТЗ 5.5, 25.08.2026) — ручное
 // подтверждение модератором (/admin, см. handlers/admin_guro.py), после
@@ -95,8 +160,6 @@ const FIELD_DEFS = [
     ),
   },
   { field: "description", labelKey: "company.field.description", placeholderKey: "company.field.descriptionPlaceholder", multiline: true },
-  { field: "logo_url", labelKey: "company.field.logoUrl", placeholderKey: "company.field.logoUrlPlaceholder" },
-  { field: "cover_url", labelKey: "company.field.coverUrl", placeholderKey: "company.field.coverUrlPlaceholder" },
 ];
 
 const PRIVACY_FIELDS = ["show_name", "show_vertical", "show_cv", "show_contacts"];
@@ -372,6 +435,13 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
   // переключатель, какой из двух показать. После подписки тир уже
   // зафиксирован на бэкенде (data.company_tier) — переключатель прячется.
   const [tierChoice, setTierChoice] = useState("basic");
+  // Ошибки/подсказки загрузки лого и обложки выведены из ImageUploadArea
+  // (обложка выше .company-header с его margin-top:-30px — если оставить
+  // подсказку МЕЖДУ ними, шапка наедет и перекроет текст; лого вообще
+  // внутри flex-строки с именем/рейтингом) и показываются ПОСЛЕ визитки
+  // целиком, одним блоком на оба поля.
+  const [logoUploadError, setLogoUploadError] = useState(null);
+  const [coverUploadError, setCoverUploadError] = useState(null);
 
   // no_company (27.08.2026, ТЗ "Роли и управление командой") — юзер не
   // Владелец и не Админ ни в одной компании: либо создаёт свою, либо
@@ -422,13 +492,33 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
           верификации + прямоугольная (не круглая) плашка рейтинга +
           вертикаль крупным шрифтом + теги "Тип компании". */}
       <div className="card company-card">
-        <div className="company-cover" style={data.cover_url ? { backgroundImage: `url(${data.cover_url})` } : undefined} />
-        <div className="company-header">
-          {data.logo_url ? (
-            <img className="company-logo" src={data.logo_url} alt="" />
+        <ImageUploadArea
+          kind="cover"
+          className="company-cover"
+          wrap={false}
+          onUploaded={(extra) => onFieldSaved("cover_url", extra.cover_url)}
+          onError={setCoverUploadError}
+        >
+          {data.cover_url ? (
+            <div className="company-cover-filled" style={{ backgroundImage: `url(${data.cover_url})` }} />
           ) : (
-            <div className="company-logo-fallback">{initialOf(data.name)}</div>
+            <div className="company-cover-empty">+ {t("company.upload.coverBtn")}</div>
           )}
+        </ImageUploadArea>
+        <div className="company-header">
+          <ImageUploadArea
+            kind="logo"
+            className="company-logo-upload"
+            wrap={false}
+            onUploaded={(extra) => onFieldSaved("logo_url", extra.logo_url)}
+            onError={setLogoUploadError}
+          >
+            {data.logo_url ? (
+              <img className="company-logo" src={data.logo_url} alt="" />
+            ) : (
+              <div className="company-logo-fallback">{initialOf(data.name)}</div>
+            )}
+          </ImageUploadArea>
           <div className="profile-header-info">
             <h2>
               {data.name || t("common.noName")}
@@ -452,6 +542,10 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
           </div>
         )}
       </div>
+      <p className="partner-meta company-upload-hint">{t("company.upload.coverHint")}</p>
+      <p className="partner-meta company-upload-hint">{t("company.upload.logoHint")}</p>
+      {coverUploadError && <Msg type="error">{coverUploadError}</Msg>}
+      {logoUploadError && <Msg type="error">{logoUploadError}</Msg>}
 
       <SettingsPanel data={data} onFieldSaved={onFieldSaved} onPrivacyChange={onPrivacyChange} />
 

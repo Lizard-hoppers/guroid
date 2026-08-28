@@ -291,6 +291,31 @@ export function setCompanyPrivacyField(field, value) {
   });
 }
 
+// Загрузка лого/обложки файлом (28.08.2026) — FormData, НЕ через общий
+// request(): та жёстко ставит Content-Type: application/json на любое
+// тело, а multipart нужен свой boundary, который браузер проставляет сам
+// ТОЛЬКО если Content-Type вообще не задан руками.
+export async function uploadCompanyImage(kind, file) {
+  const formData = new FormData();
+  formData.append("kind", kind);
+  formData.append("file", file);
+  const res = await fetch("/api/company/image", {
+    method: "POST",
+    headers: { Authorization: `tma ${getInitData()}` },
+    body: formData,
+  });
+  let body = null;
+  try {
+    body = await res.json();
+  } catch {
+    // пустое/не-JSON тело — оставляем null
+  }
+  if (!res.ok) {
+    throw new ApiError(res.status, body?.error || "UNKNOWN", body);
+  }
+  return body;
+}
+
 // Верификация бейджа компании (26.08.2026, ТЗ "Компания. каб") — ручной MVP,
 // эндпоинт только фиксирует запрос, реальная сверка — админом в /admin.
 export function requestCompanyVerification() {

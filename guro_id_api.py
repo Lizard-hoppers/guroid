@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -33,6 +34,30 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("guro_id_api")
 
 WEBAPP_DIST = Path(__file__).resolve().parent / "webapp" / "dist"
+# Загрузка лого/обложки компании (28.08.2026, фидбек владельца: "дай
+# возможность загружать с галереи") — своя папка ВНЕ webapp/dist (тот
+# перезаписывается при каждом npm run build + scp, файлы юзеров туда
+# складывать нельзя), раздаётся отдельным static-роутом ниже.
+COMPANY_UPLOADS_DIR = Path(__file__).resolve().parent / "webapp" / "uploads" / "company"
+# Сигнатуры форматов (без Pillow — его нет в venv, а тащить ради проверки
+# 3 байт в начале файла избыточно) — не доверяем ни имени файла от клиента,
+# ни его Content-Type, только реальным первым байтам.
+_IMAGE_SIGNATURES: tuple[tuple[bytes, str], ...] = (
+    (b"\x89PNG\r\n\x1a\n", "png"),
+    (b"\xff\xd8\xff", "jpg"),
+    (b"RIFF", "webp"),  # уточняется ниже (байты 8-11 == b"WEBP")
+)
+COMPANY_UPLOAD_MAX_BYTES = {"logo": 3 * 1024 * 1024, "cover": 5 * 1024 * 1024}
+
+
+def _sniff_image_ext(data: bytes) -> str | None:
+    for sig, ext in _IMAGE_SIGNATURES:
+        if not data.startswith(sig):
+            continue
+        if ext == "webp" and data[8:12] != b"WEBP":
+            continue
+        return ext
+    return None
 
 
 def _auth(request: web.Request, settings: Settings) -> dict:
@@ -1334,6 +1359,52 @@ async def handle_set_company_profile_field(request: web.Request) -> web.Response
     return web.json_response(extra)
 
 
+async def handle_upload_company_image(request: web.Request) -> web.Response:
+    """Загрузка лого/обложки компании файлом (28.08.2026, фидбек владельца:
+    раньше можно было только вставить готовую ссылку — теперь выбор из
+    галереи прямо в Mini App). Права — как у handle_set_company_profile_
+    field выше (любой участник команды, не только владелец). multipart:
+    поле "kind" (logo|cover) + поле "file". Имя файла на диске НИКОГДА не
+    берётся у клиента (path traversal) — company_id+kind+хэш содержимого,
+    расширение — по реально сработавшей сигнатуре, не по имени/Content-Type
+    из запроса (см. _sniff_image_ext)."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    membership = storage.get_company_membership(user["id"])
+    if membership is None:
+        return web.json_response({"error": "NOT_A_COMPANY_MEMBER"}, status=403)
+    company_id = membership["company_id"]
+
+    kind = None
+    file_bytes = b""
+    reader = await request.multipart()
+    async for part in reader:
+        if part.name == "kind":
+            kind = (await part.text()).strip()
+        elif part.name == "file":
+            file_bytes = await part.read(decode=False)
+
+    if kind not in ("logo", "cover"):
+        return web.json_response({"error": "INVALID_KIND"}, status=400)
+    if not file_bytes:
+        return web.json_response({"error": "EMPTY_FILE"}, status=400)
+    if len(file_bytes) > COMPANY_UPLOAD_MAX_BYTES[kind]:
+        return web.json_response({"error": "FILE_TOO_LARGE"}, status=400)
+    ext = _sniff_image_ext(file_bytes)
+    if ext is None:
+        return web.json_response({"error": "UNSUPPORTED_FORMAT"}, status=400)
+
+    digest = hashlib.sha256(file_bytes).hexdigest()[:20]
+    filename = f"{company_id}_{kind}_{digest}.{ext}"
+    COMPANY_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    (COMPANY_UPLOADS_DIR / filename).write_bytes(file_bytes)
+
+    field = "logo_url" if kind == "logo" else "cover_url"
+    url = f"/uploads/company/{filename}"
+    extra = storage.set_company_extra_field(company_id, field, url)
+    return web.json_response(extra)
+
+
 async def handle_request_company_verification(request: web.Request) -> web.Response:
     """Кнопка "Подать заявку на верификацию" (раздел 2 ТЗ) — MVP: только
     фиксирует время запроса, реальная сверка домена/бренда — вручную
@@ -2440,7 +2511,13 @@ async def handle_crypto_webhook(request: web.Request) -> web.Response:
 
 
 def create_app(settings: Settings) -> web.Application:
-    app = web.Application()
+    # client_max_size (28.08.2026) — aiohttp по умолчанию режет ЛЮБОЕ тело
+    # запроса на 1 МБ, это МЕНЬШЕ, чем собственный лимит обложки компании
+    # (5 МБ, см. COMPANY_UPLOAD_MAX_BYTES) — без явного увеличения реальные
+    # фото с телефона (обычно 2-10 МБ) валились бы сырым 413 до того, как
+    # наш код вообще успевал бы ответить понятным FILE_TOO_LARGE. Запас
+    # сверх 5 МБ — под multipart-обвязку (имя поля, boundary и т.п.).
+    app = web.Application(client_max_size=6 * 1024 * 1024)
     app["settings"] = settings
     app["storage"] = GuroStorage(settings.database_path)
     app["main_storage"] = Storage(settings.database_path)
@@ -2468,6 +2545,7 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/recruiter/profile", handle_set_recruiter_profile_field)
     app.router.add_post("/api/recruiter/privacy", handle_set_recruiter_privacy)
     app.router.add_post("/api/company/profile", handle_set_company_profile_field)
+    app.router.add_post("/api/company/image", handle_upload_company_image)
     app.router.add_post("/api/company/privacy", handle_set_company_privacy)
     app.router.add_post("/api/company/verification/request", handle_request_company_verification)
     # Роли и команда (ТЗ "Роли и управление командой", 27.08.2026).
@@ -2507,6 +2585,13 @@ def create_app(settings: Settings) -> web.Application:
 
         app.router.add_get("/", handle_index)
         app.router.add_static("/assets", WEBAPP_DIST / "assets", show_index=False)
+    # /uploads — папка юзерских файлов, отдельно от webapp/dist (см.
+    # COMPANY_UPLOADS_DIR выше): dist пересобирается и перезаливается на
+    # каждый деплой фронтенда, класть туда чужие загрузки нельзя, потерялись
+    # бы. mkdir тут же — чтобы add_static не падал на первом же старте,
+    # когда папки ещё никто не создал загрузкой.
+    COMPANY_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    app.router.add_static("/uploads/company", COMPANY_UPLOADS_DIR, show_index=False)
     return app
 
 

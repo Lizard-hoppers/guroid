@@ -583,10 +583,19 @@ const STRINGS = {
   "company.field.websitePlaceholder": { ru: "example.com", en: "example.com" },
   "company.field.description": { ru: "Описание", en: "Description" },
   "company.field.descriptionPlaceholder": { ru: "Чем занимается компания", en: "What the company does" },
-  "company.field.logoUrl": { ru: "Логотип (ссылка на картинку, PNG)", en: "Logo (image link, PNG)" },
-  "company.field.logoUrlPlaceholder": { ru: "https://…/logo.png", en: "https://…/logo.png" },
-  "company.field.coverUrl": { ru: "Обложка (ссылка на картинку, PNG)", en: "Cover banner (image link, PNG)" },
-  "company.field.coverUrlPlaceholder": { ru: "https://…/cover.png", en: "https://…/cover.png" },
+  // Загрузка лого/обложки файлом (28.08.2026) — вместо ссылок текстом.
+  "company.upload.coverBtn": { ru: "Добавить обложку", en: "Add cover" },
+  "company.upload.coverHint": {
+    ru: "Обложка: рекомендуем 1080×300, PNG/JPG/WEBP, до 5 МБ.",
+    en: "Cover: recommended 1080×300, PNG/JPG/WEBP, up to 5 MB.",
+  },
+  "company.upload.logoHint": {
+    ru: "Логотип: квадрат, от 256×256, PNG/JPG/WEBP, до 3 МБ.",
+    en: "Logo: square, at least 256×256, PNG/JPG/WEBP, up to 3 MB.",
+  },
+  "company.upload.tooLarge": { ru: "Файл слишком большой.", en: "File is too large." },
+  "company.upload.unsupported": { ru: "Формат не поддерживается — только PNG, JPG или WEBP.", en: "Unsupported format — PNG, JPG, or WEBP only." },
+  "company.upload.error": { ru: "Не получилось загрузить файл.", en: "Couldn't upload the file." },
   "company.settingsBtn": { ru: "Настройки кабинета", en: "Cabinet settings" },
   // Панель "Характеристика" (27.08.2026, ТЗ "экраны по ТЗ от 23.08") —
   // зеркало recruiter.characteristic.*, 2×2 плитки вместо старой строки текста.

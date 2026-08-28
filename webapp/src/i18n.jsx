@@ -406,12 +406,20 @@ const STRINGS = {
     ru: "✓ Вы действуете от лица компании — сделка попадёт в общую историю бренда.",
     en: "✓ You're acting on behalf of the company — the deal will go into the brand's shared history.",
   },
+  // 28.08.2026 (макет "06 · Сделки — шаг 1", Untitled-9): текст был устаревшим
+  // — упоминал "офер и отзыв видны всем чужим", хотя отзыв убран с этого шага
+  // ещё 25.08.2026 (см. review=None в guro_id_api.py, комментарий там же —
+  // факт и оценка теперь два разных шага). Новый текст явно это объясняет
+  // ("без отзыва и оценки... на шаге 2"), заодно добавлена подпись "Шаг 1 из
+  // 2" над этим текстом (confirm.stepLabel) — раньше нигде не было видно,
+  // что подтверждение партнёрства состоит из двух шагов.
+  "confirm.stepLabel": { ru: "Шаг 1 из 2 — фиксация факта сотрудничества", en: "Step 1 of 2 — recording the fact of cooperation" },
   "confirm.hint": {
-    ru: "Укажите юзернейм человека, с которым уже состоялось сотрудничество. Ему придёт запрос на подтверждение от бота — запись появится в профилях обоих только после его ответа. Офер и отзыв видны всем чужим (в этом и смысл — проверить репутацию контакта), суммы — только если включите показ ниже.",
-    en: "Enter the username of someone you've already worked with. They'll get a confirmation request from the bot — the record appears in both profiles only after they respond. The offer and review are visible to everyone (that's the point — checking a contact's reputation), amounts only if you enable showing them below.",
+    ru: "Укажите юзернейм человека, с которым уже состоялось сотрудничество. Ему придёт запрос на подтверждение от бота — запись появится в профилях обоих только после его ответа. Это только фиксация факта: без отзыва и оценки. Оценить сотрудничество можно будет отдельно на шаге 2, после того как оба подтвердят. Суммы видны только если включите показ ниже.",
+    en: "Enter the username of someone you've already worked with. They'll get a confirmation request from the bot — the record appears in both profiles only after they respond. This step only records the fact: no review, no rating. You'll be able to rate the collaboration separately on step 2, once both sides confirm. Amounts are visible only if you enable showing them below.",
   },
   "confirm.usernameLabel": { ru: "Юзернейм контрагента", en: "Counterparty's username" },
-  "confirm.usernamePlaceholder": { ru: "Например: @username", en: "E.g.: @username" },
+  "confirm.usernamePlaceholder": { ru: "Например: @igamingschool", en: "E.g.: @igamingschool" },
   "confirm.ptypeLabel": { ru: "Тип партнёрства", en: "Partnership type" },
   "confirm.ptype.deal": { ru: "Сделка", en: "Deal" },
   "confirm.ptype.hire": { ru: "Найм", en: "Hire" },
@@ -428,15 +436,23 @@ const STRINGS = {
   "confirm.amountReceivedPlaceholder": { ru: "Я получил, $", en: "I received, $" },
   "confirm.amountPaidPlaceholder": { ru: "Я заплатил, $", en: "I paid, $" },
   "confirm.amountVisible": { ru: "Показывать сумму чужим (по умолчанию скрыта)", en: "Show amount to others (hidden by default)" },
-  "confirm.txHashLabel": { ru: "Хэш транзакции (необязательно)", en: "Transaction hash (optional)" },
-  "confirm.txHashPlaceholder": { ru: "Например: 0x71c4…e9a3", en: "E.g.: 0x71c4…e9a3" },
+  // 28.08.2026 (макет "06 · Сделки — шаг 1"): макет рисует ссылку и хэш как
+  // два отдельных поля — сознательно оставлено ОДНО (см. guro_id_api.py::
+  // extract_tx_hash, решение 25.08.2026 — юзер вставляет ЛЮБОЙ формат, поле
+  // само вырезает хэш из ссылки), текст поля обновлён, чтобы явно показать
+  // оба принимаемых формата вместо одного только "хэш".
+  "confirm.txHashLabel": { ru: "Хэш или ссылка на транзакцию (необязательно)", en: "Transaction hash or link (optional)" },
+  "confirm.txHashPlaceholder": {
+    ru: "Например: 0x71c4…e9a3 или https://etherscan.io/tx/0x71c4…e9a3",
+    en: "E.g.: 0x71c4…e9a3 or https://etherscan.io/tx/0x71c4…e9a3",
+  },
   "confirm.txHashHint": {
     ru: "Подтверждает реальность перевода. Виден вместе с суммой — по той же галочке выше.",
     en: "Backs up the transfer as real. Shown together with the amount — same checkbox above.",
   },
   "confirm.txNetworkLabel": { ru: "Сеть транзакции", en: "Transaction network" },
   "confirm.txNetworkPlaceholder": { ru: "Выберите сеть…", en: "Select network…" },
-  "confirm.submit": { ru: "Отправить на подтверждение", en: "Send for confirmation" },
+  "confirm.submit": { ru: "Отправить на подтверждение — шаг 1", en: "Send for confirmation — step 1" },
   "confirm.submitting": { ru: "Отправляем…", en: "Sending…" },
   "confirm.sentOk": { ru: "Заявка отправлена. Ждём подтверждения от контрагента.", en: "Request sent. Waiting for the counterparty to confirm." },
   "confirm.error.SELF_PARTNERSHIP": { ru: "Нельзя подтвердить партнёрство с самим собой.", en: "You can't confirm a partnership with yourself." },

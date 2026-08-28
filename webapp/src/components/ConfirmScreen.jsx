@@ -84,6 +84,7 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
         </button>
       )}
       <h3>{t(forcedType === "hire" ? "confirm.title.hire" : "confirm.title")}</h3>
+      <div className="confirm-step-label">{t("confirm.stepLabel")}</div>
       {asCompany && <div className="company-verify-status is-verified">{t("confirm.asCompanyHint")}</div>}
       <div className="privacy-hint">{t("confirm.hint")}</div>
       <form onSubmit={onSubmit}>

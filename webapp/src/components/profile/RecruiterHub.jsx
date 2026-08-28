@@ -98,19 +98,21 @@ function CharacteristicPanel({ data }) {
       <h3>{t("recruiter.characteristic.title")}</h3>
       <div className="recruiter-metrics-grid">
         <div className="recruiter-metric">
-          <div className="recruiter-metric-value">{data.successful_hires}</div>
+          <div className={`recruiter-metric-value${data.successful_hires === 0 ? " is-neutral" : ""}`}>{data.successful_hires}</div>
           <div className="recruiter-metric-label">{t("recruiter.characteristic.hires")}</div>
         </div>
         <div className="recruiter-metric">
-          <div className="recruiter-metric-value">{data.active_vacancies}</div>
+          <div className={`recruiter-metric-value${data.active_vacancies === 0 ? " is-neutral" : ""}`}>{data.active_vacancies}</div>
           <div className="recruiter-metric-label">{t("recruiter.characteristic.vacancies")}</div>
         </div>
         <div className="recruiter-metric">
-          <div className="recruiter-metric-value">{data.responses_7d}</div>
+          <div className={`recruiter-metric-value${data.responses_7d === 0 ? " is-neutral" : ""}`}>{data.responses_7d}</div>
           <div className="recruiter-metric-label">{t("recruiter.characteristic.responses")}</div>
         </div>
         <div className="recruiter-metric">
-          <div className="recruiter-metric-value">{data.tenure_days ?? "—"}</div>
+          {/* Стаж в роли — не "результат", а факт; всегда нейтральный цвет
+              (29.08.2026, тот же принцип, что и у CompanyHub). */}
+          <div className="recruiter-metric-value is-neutral">{data.tenure_days ?? "—"}</div>
           <div className="recruiter-metric-label">{t("recruiter.characteristic.tenure")}</div>
         </div>
       </div>

@@ -277,7 +277,8 @@ function VerificationCard({ verified, requestedAt }) {
         <div className="company-verify-status is-verified">✓ {t("company.verify.verified")}</div>
       ) : (
         <>
-          <p className="partner-meta">{t("company.verify.hint")}</p>
+          <p className="partner-meta">{t("company.verify.visibilityHint")}</p>
+          <div className="company-verify-note">{t("company.verify.hint")}</div>
           {(requestedAt || sent) && (
             <div className="company-verify-status is-pending">{t("company.verify.pending")}</div>
           )}
@@ -301,19 +302,22 @@ function CharacteristicPanel({ data }) {
       <h3>{t("company.characteristic.title")}</h3>
       <div className="recruiter-metrics-grid">
         <div className="recruiter-metric">
-          <div className="recruiter-metric-value">{data.successful_hires}</div>
+          <div className={`recruiter-metric-value${data.successful_hires === 0 ? " is-neutral" : ""}`}>{data.successful_hires}</div>
           <div className="recruiter-metric-label">{t("company.characteristic.hires")}</div>
         </div>
         <div className="recruiter-metric">
-          <div className="recruiter-metric-value">{data.active_vacancies}</div>
+          <div className={`recruiter-metric-value${data.active_vacancies === 0 ? " is-neutral" : ""}`}>{data.active_vacancies}</div>
           <div className="recruiter-metric-label">{t("company.characteristic.vacancies")}</div>
         </div>
         <div className="recruiter-metric">
-          <div className="recruiter-metric-value">{data.responses_7d}</div>
+          <div className={`recruiter-metric-value${data.responses_7d === 0 ? " is-neutral" : ""}`}>{data.responses_7d}</div>
           <div className="recruiter-metric-label">{t("company.characteristic.responses")}</div>
         </div>
         <div className="recruiter-metric">
-          <div className="recruiter-metric-value">{data.member_count} / {data.member_limit}</div>
+          {/* Состав команды — не "результат", а факт; всегда нейтральный
+              цвет, не только при 1 участнике (только что созданная
+              компания). */}
+          <div className="recruiter-metric-value is-neutral">{data.member_count} / {data.member_limit}</div>
           <div className="recruiter-metric-label">{t("company.characteristic.members")}</div>
         </div>
       </div>

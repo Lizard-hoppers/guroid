@@ -2039,6 +2039,16 @@ select {
   color: var(--gold);
 }
 
+/* 29.08.2026 (макет "17b · Компания — только что создана", Untitled-21,
+   выноска "Шаг 19") — акцентный цвет метрики остаётся наградой за
+   результат, а не подсветкой нуля: значение-ноль (и счётчик участников
+   команды, который вообще не "результат", а состав) подаётся нейтральным
+   цветом текста, не золотым. Тот же принцип применён и в кабинете
+   Рекрутера (CharacteristicPanel там зеркальный, та же CSS-сетка). */
+.recruiter-metric-value.is-neutral {
+  color: var(--text);
+}
+
 .recruiter-metric-label {
   font-size: 11px;
   color: var(--text-dim);
@@ -2361,6 +2371,19 @@ select {
 
 .company-types-chips {
   margin-top: 10px;
+}
+
+/* Инструкция про верификацию по почте — нейтральный бокс, отделяет
+   "как подать заявку" от объясняющего абзаца выше (29.08.2026, макет
+   "17b · Компания — только что создана"). */
+.company-verify-note {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  font-size: 13px;
+  color: var(--text-dim);
 }
 
 .company-verify-status {

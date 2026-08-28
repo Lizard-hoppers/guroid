@@ -794,6 +794,14 @@ const STRINGS = {
   "company.types.b2b_platform": { ru: "B2B платформа/поставщик решений", en: "B2B platform/solutions provider" },
   "company.types.investor_fund": { ru: "Инвестор/фонд", en: "Investor/fund" },
   "company.verify.title": { ru: "Верификация", en: "Verification" },
+  // 29.08.2026 (макет "17b · Компания — только что создана", Untitled-21) —
+  // отдельным абзацем ДО инструкции про почту: раньше нигде явно не
+  // объяснялось, что видимость компании и бейдж верификации — независимые
+  // вещи (видна сразу, бейдж только статус, кабинет и без него рабочий).
+  "company.verify.visibilityHint": {
+    ru: "Компания видна в поиске и на доске сразу после создания — статус выражается только наличием бейджа-галочки. Без бейджа кабинет полностью функционален.",
+    en: "The company is visible in search and on the board right after creation — the badge is only a status marker. The cabinet is fully functional without it.",
+  },
   "company.verify.hint": {
     ru: "Напишите на verify@guroid.app с почты вашего корпоративного домена (не Gmail/публичные сервисы), указав название компании в GURO ID — администратор вручную сверит домен и включит бейдж.",
     en: "Email verify@guroid.app from your corporate domain address (not Gmail/public services), stating your GURO ID company name — an admin will manually check the domain and enable the badge.",

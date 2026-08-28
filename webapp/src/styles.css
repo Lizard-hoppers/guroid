@@ -141,44 +141,12 @@ h3 {
   color: #071510;
 }
 
-/* Контейнер шапки — inline-flex, а не блок, чтобы text-align:center у
-   .header по-прежнему центрировал его целиком. Буквы внутри — отдельные
-   элементы (.brand-letter), каждая со своим layoutId="brand-<id>",
-   ровно те же ID, что у букв в барабане (SlotIntro.jsx/brandLetters.js) —
-   framer-motion ведёт каждую букву индивидуально из барабана сюда. */
 .brand {
   display: inline-flex;
-  align-items: baseline;
   font-family: Lora, serif;
   font-weight: 700;
-  color: var(--gold);
-}
-
-.brand-letter {
-  display: inline-block;
   font-size: 22px;
-}
-
-.brand-letter-space {
-  display: inline-block;
-  width: 6px;
-}
-
-/* Ровно тот же шрифт/цвет/свечение/ширина, что у буквы в барабане
-   (.reel-cell/.reel-window) — когда рамки барабана исчезают (SlotIntro),
-   буквы остаются в тех же координатах, без скачка. Дальнейшее уменьшение
-   до размера .brand-letter (28px -> 22px) происходит ПОЗЖЕ, при shared
-   layout transition на layoutId="brand-<id>" (см. App.jsx). */
-.brand-hero-letter {
-  width: 38px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: Lora, serif;
-  font-weight: 700;
-  font-size: 28px;
   color: var(--gold);
-  text-shadow: 0 0 10px rgba(170, 246, 74, 0.5);
 }
 
 .header .subtitle {
@@ -738,7 +706,10 @@ label {
   font-size: 13px;
 }
 
-.slot-overlay {
+/* Статичная заставка при старте (28.08.2026) — заменила слот-барабаны
+   (SlotIntro/brandLetters, см. git-историю): иконка + название +
+   подзаголовок + "Telegram Mini App", без анимации сборки букв. */
+.splash-overlay {
   position: fixed;
   top: 0;
   right: 0;
@@ -746,89 +717,41 @@ label {
   left: 0;
   z-index: 100;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   background: radial-gradient(circle at 50% 30%, var(--bg-mid), var(--bg-deep) 70%);
 }
 
-/* Единственный центрированный элемент внутри .slot-overlay — барабан и
-   "освобождённая" буква оба position:absolute внутри него (см. правило
-   ниже), поэтому их пересечение во время AnimatePresence-перехода не
-   сдвигает центровку ни одного из них. */
-.slot-stage {
-  position: relative;
-  width: 100%;
-  height: 120px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Абсолютное позиционирование БЕЗ top/left/transform — браузер сам
-   вычисляет "статическую позицию" как если бы это был единственный flex-item
-   в .slot-stage (align-items/justify-content: center выше), то есть
-   центрирует по естественному (shrink-to-fit) размеру элемента, не
-   растягивая его. Явный transform здесь был бы плохой идеей — framer-motion
-   сам управляет transform у "hero" (layoutId) для полёта в шапку, и любой
-   наш CSS-transform перезаписался бы им / конфликтовал. */
-.slot-stage > * {
-  position: absolute;
-}
-
-.slot-row {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 20px 22px;
+.splash-icon {
+  width: 72px;
+  height: 72px;
   border-radius: 20px;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  box-shadow: 0 12px 32px #00000073, inset 0 1px 1px #ffffff1f;
+  box-shadow: 0 12px 32px #00000073;
 }
 
-.slot-gap {
-  width: 16px;
-}
-
-/* Тот же gap/padding, что у .slot-row (позиции букв совпадают с тем, где
-   были окошки барабана — без скачка), но без стеклянной капсулы вокруг:
-   рамки барабана "растворились", видны только сами буквы. */
-.slot-row-bare {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-}
-
-.reel-window {
-  width: 38px;
-  height: 52px;
-  overflow: hidden;
-  position: relative;
-  border-radius: 9px;
-  background: #0006;
-  border: 1px solid rgba(170, 246, 74, 0.3);
-  box-shadow: inset 0 2px 6px #00000080;
-  -webkit-mask-image: linear-gradient(to bottom, transparent, black 22%, black 78%, transparent);
-  mask-image: linear-gradient(to bottom, transparent, black 22%, black 78%, transparent);
-}
-
-.reel-strip {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.reel-cell {
-  height: 52px;
-  min-width: 38px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.splash-title {
   font-family: Lora, serif;
   font-weight: 700;
   font-size: 28px;
   color: var(--gold);
   text-shadow: 0 0 10px rgba(170, 246, 74, 0.5);
+}
+
+.splash-subtitle {
+  color: var(--gold);
+  font-size: 13px;
+}
+
+.splash-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  margin-top: 6px;
 }
 
 .showcase-badge {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { initTelegram } from "./telegram.js";
 import { TabBar } from "./components/TabBar.jsx";
 import { ProfileScreen } from "./components/ProfileScreen.jsx";
@@ -7,8 +7,7 @@ import { SearchScreen } from "./components/SearchScreen.jsx";
 import { ConfirmScreen } from "./components/ConfirmScreen.jsx";
 import { SubscriptionsScreen } from "./components/SubscriptionsScreen.jsx";
 import { VacanciesScreen } from "./components/VacanciesScreen.jsx";
-import { SlotIntro } from "./components/SlotIntro.jsx";
-import { BRAND_WORD_1, BRAND_WORD_2 } from "./brandLetters.js";
+import { SplashScreen } from "./components/SplashScreen.jsx";
 import { LangProvider, useLang } from "./i18n.jsx";
 
 // Переключатель RU/EN в правом верхнем углу (12.08.2026, по просьбе
@@ -150,29 +149,14 @@ function AppShell() {
     workspace === "recruiter" ? { forcedType: "hire" } : {};
 
   return (
-    <LayoutGroup>
-      {/* Заставка со слот-барабанами "GURO ID" — каждая буква letit наверх
-          в шапку СВОИМ layoutId (brandLetters.js), это ТЕ ЖЕ САМЫЕ буквы,
-          что стояли в барабане, а не новый текстовый блок. */}
-      <AnimatePresence>{intro && <SlotIntro key="intro" onDone={() => setIntro(false)} />}</AnimatePresence>
+    <>
+      <AnimatePresence>{intro && <SplashScreen key="intro" onDone={() => setIntro(false)} />}</AnimatePresence>
 
       {!intro && (
         <div className="app">
           <div className="header">
             <LanguageSwitch />
-            <div className="brand">
-              {BRAND_WORD_1.map((l) => (
-                <motion.span key={l.id} layoutId={`brand-${l.id}`} className="brand-letter">
-                  {l.char}
-                </motion.span>
-              ))}
-              <span className="brand-letter-space"> </span>
-              {BRAND_WORD_2.map((l) => (
-                <motion.span key={l.id} layoutId={`brand-${l.id}`} className="brand-letter">
-                  {l.char}
-                </motion.span>
-              ))}
-            </div>
+            <div className="brand">GURO ID</div>
             <motion.div
               className="subtitle"
               initial={{ opacity: 0, y: -4 }}
@@ -222,7 +206,7 @@ function AppShell() {
           <TabBar active={tab} onChange={handleTabChange} />
         </div>
       )}
-    </LayoutGroup>
+    </>
   );
 }
 

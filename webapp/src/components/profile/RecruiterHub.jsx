@@ -219,28 +219,33 @@ export function RecruiterHub({
   return (
     <div>
       {/* Карточка-визитка — визуально ОТЛИЧАЕТСЯ от личного профиля (2.1):
-          полоса-обложка сверху + аватар со скруглённым квадратом (не круг,
-          как у личного профиля) + бейдж роли под аватаром. Не точная копия
-          референс-скетча владельца (тот не был приложен файлом) — простой
-          вариант, чтобы визуально развести два режима, можно поправить,
-          когда придёт готовый макет. */}
+          полоса-обложка сверху с подписью режима + аватар-сквиркл с
+          бирюзовой рамкой + бейдж "HR" на аватаре. Приведено в соответствие
+          с макетом "11 · Рекрутер — главный экран" (28.08.2026) — раньше
+          был приблизительный вариант ("референс-скетч владельца не был
+          приложен файлом", см. git-историю), теперь есть готовый макет. */}
       <div className="card recruiter-card">
-        <div className="recruiter-card-cover" />
+        <div className="recruiter-card-cover">
+          <span className="recruiter-mode-label">{t("recruiter.modeLabel")}</span>
+        </div>
         <div className="profile-header-card recruiter-header">
           {data.logo_url ? (
             <img className="profile-avatar recruiter-avatar" src={data.logo_url} alt="" />
           ) : (
             <div className="profile-avatar-fallback recruiter-avatar">{initialOf(data.name, data.company)}</div>
           )}
+          <span className="recruiter-role-badge">{t("recruiter.roleBadge")}</span>
           <div className="profile-header-info">
             <h2>{data.name || t("common.noName")}</h2>
-            {data.profession && <div className="profile-header-sub">{data.profession}</div>}
-            {data.company && <div className="profile-header-sub">{data.company}</div>}
+            {(data.profession || data.company) && (
+              <div className="profile-header-sub">
+                {[data.profession, data.company].filter(Boolean).join(" · ")}
+              </div>
+            )}
+            {data.vertical && <div className="recruiter-vertical-line">{data.vertical}</div>}
           </div>
           <RatingPreview reputation={data.reputation_score} onOpen={() => onNavigateSub("recruiter-history")} />
         </div>
-        <span className="recruiter-role-badge">{t("recruiter.roleBadge")}</span>
-        {data.vertical && <span className="profile-vertical-badge">{data.vertical}</span>}
       </div>
 
       <SettingsPanel data={data} onFieldSaved={onFieldSaved} onPrivacyChange={onPrivacyChange} />

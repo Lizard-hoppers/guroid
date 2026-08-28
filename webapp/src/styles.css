@@ -13,6 +13,12 @@
   --ok: #6bbf8a;
   --glass-bg: rgba(255, 255, 255, 0.06);
   --glass-border: rgba(170, 246, 74, 0.28);
+  /* Акцент кабинета "Рекрутер" (28.08.2026, макет "11 · Рекрутер —
+     главный экран") — отдельный бирюзовый цвет для рамки аватара/
+     бейджа роли/вертикали/рейтинга, чтобы кабинет визуально читался
+     иначе, чем личный профиль (тот весь на --gold). См. Выноска "Шаг
+     12": "Другой кабинет должен и выглядеть иначе". */
+  --recruiter-cyan: #3ecfea;
 }
 
 * {
@@ -1122,6 +1128,10 @@ label {
   cursor: pointer;
 }
 
+/* Бирюзовое кольцо (28.08.2026, макет "11 · Рекрутер") — единственный
+   потребитель теперь RecruiterHub.jsx, макет не красит кружок по
+   значению рейтинга (было — цветовые пороги 0/1-4/5+, устаревшие ещё с
+   до-v2 формулы, см. git-историю). */
 .rating-preview-circle {
   width: 44px;
   height: 44px;
@@ -1130,66 +1140,12 @@ label {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--gold), #54e4a6);
-  color: #071510;
+  background: var(--bg-deep);
+  border: 2px solid var(--recruiter-cyan);
+  color: var(--recruiter-cyan);
   font-family: Lora, serif;
   font-weight: 700;
   font-size: 17px;
-}
-
-/* Цветовые пороги (15.08.2026): 0 = красный, 1-4 = жёлтый, 5+ = зелёный —
-   рейтинг стартует с нуля, число прямо отражает прогресс. Замок (нет
-   подписки) — по-прежнему нейтральный золотой градиент выше, сюда не
-   попадает. */
-.rating-preview-circle.rep-red {
-  background: linear-gradient(135deg, var(--danger), #a3372e);
-  color: #2a0a06;
-}
-
-.rating-preview-circle.rep-yellow {
-  background: linear-gradient(135deg, #e8b93f, #b3821c);
-  color: #2a1d05;
-}
-
-.rating-preview-circle.rep-green {
-  background: linear-gradient(135deg, var(--ok), #3f8c60);
-  color: #06210f;
-}
-
-.rating-summary-line {
-  display: block;
-  width: 100%;
-  margin-top: 10px;
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.rating-summary-deals {
-  color: var(--text-dim);
-}
-
-.rating-summary-hint {
-  color: var(--gold);
-}
-
-/* Та же цветовая логика, что у кружка (rep-red/rep-yellow/rep-green) —
-   при locked класс не добавляется, остаётся нейтральный золотой выше. */
-.rating-summary-hint.rep-red {
-  color: var(--danger);
-}
-
-.rating-summary-hint.rep-yellow {
-  color: #e8b93f;
-}
-
-.rating-summary-hint.rep-green {
-  color: var(--ok);
 }
 
 /* Мелкая uppercase-подпись раздела ("ВАШ РЕЙТИНГ", "ПЕРВЫЙ ШАГ") — тот же
@@ -1964,33 +1920,60 @@ select {
 .recruiter-card {
   padding-top: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .recruiter-card-cover {
   height: 56px;
   margin: 0 -18px 14px;
-  background: linear-gradient(120deg, #2a1a05, var(--gold-soft), #2a1a05);
+  padding: 8px 18px 0;
+  background: linear-gradient(120deg, var(--gold), #54e4a6);
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* "РЕЖИМ: РЕКРУТЕР" (28.08.2026, макет "11 · Рекрутер") — раньше
+   обложка была просто декоративной полосой без текста. */
+.recruiter-mode-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #071510cc;
 }
 
 .recruiter-header {
   align-items: flex-start;
+  position: relative;
 }
 
 .recruiter-avatar {
   border-radius: 14px !important;
+  border: 2px solid var(--recruiter-cyan) !important;
 }
 
+/* Бейдж "HR" (28.08.2026, макет "11 · Рекрутер") — раньше был плоской
+   плашкой "HR / Рекрутер" ПОСЛЕ всей визитки; теперь короткий "HR",
+   наложен на нижний край аватара, тот же приём, что верифицированный
+   бейдж компании (company-verified-badge), но своим цветом. */
 .recruiter-role-badge {
-  display: inline-block;
-  margin-top: 8px;
-  margin-right: 6px;
-  padding: 2px 10px;
+  position: absolute;
+  left: 0;
+  top: 42px;
+  padding: 1px 8px;
   border-radius: 8px;
-  background: var(--gold);
-  color: #071510;
-  font-size: 11px;
+  background: var(--bg-deep);
+  border: 1px solid var(--recruiter-cyan);
+  color: var(--recruiter-cyan);
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
+}
+
+.recruiter-vertical-line {
+  color: var(--recruiter-cyan);
+  font-size: 13px;
+  margin-top: 2px;
 }
 
 .settings-gear-btn {

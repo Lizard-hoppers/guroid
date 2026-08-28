@@ -185,67 +185,29 @@ export function MetricsRow({ reputation, partnerships, daysInCommunity }) {
   );
 }
 
-// Сводка рейтинга прямо на визитке (14.08.2026, по фидбеку владельца с
-// разбором PDF от 11.08 — кружок с рейтингом и счётчик сделок были в
-// исходном макете НА ГЛАВНОМ экране, редизайн 10.08 унёс их только внутрь
-// "Мой рейтинг", теперь возвращаем сводку на хаб, полная версия остаётся в
-// подэкране как была). Клик открывает "Мой рейтинг" — там же и подробный
-// разбор "Как поднять рейтинг?".
-// Просто кружок с числом — стоит рядом с аватаром в шапке визитки, узкий
-// и не толкает имя/должность/компанию. Текстовая часть (счётчик сделок +
-// подсказка) вынесена в RatingSummaryLine — отдельной строкой НА ВСЮ
-// ширину карточки (14.08.2026: узкая колонка рядом с кружком ломала
-// перенос текста на узких экранах — "0 подтверждённых сделок" наезжало на
-// имя, выглядело неряшливо). Обе половины ведут в один и тот же onOpen.
-// Цветовые пороги кружка (15.08.2026, по прямому запросу владельца —
-// рейтинг теперь стартует с 0, а не с базовых 50, см. guro_constants.py):
-// 0 = красный, 1-4 = жёлтый, 5+ = зелёный. Замок (нет подписки) — отдельный
-// нейтральный золотой стиль, под цветовые пороги не попадает.
-function ratingTier(value) {
-  if (value <= 0) return "rep-red";
-  if (value < 5) return "rep-yellow";
-  return "rep-green";
-}
-
+// Кружок рейтинга кабинета "Рекрутер" (28.08.2026, макет "11 · Рекрутер —
+// главный экран") — раньше был общим с личным профилем, тот же компонент
+// красился по вердикту 0/1-4/5+ (устаревшие пороги ЕЩЁ линейной формулы
+// рейтинга ДО v2, см. git-историю). Личный профиль с тех пор переехал на
+// RatingCard (см. ниже) — тут остался ЕДИНСТВЕННЫЙ потребитель
+// (RecruiterHub.jsx), поэтому цветовые пороги убраны совсем: просто
+// бирюзовое кольцо (--recruiter-cyan), тот же акцент, что у аватара/
+// бейджа "HR"/вертикали в этом кабинете — макет не красит кружок по
+// значению рейтинга вообще.
 export function RatingPreview({ reputation, onOpen }) {
   const { t } = useLang();
   const locked = reputation === null || reputation === undefined;
-  const tierClass = locked ? "" : ` ${ratingTier(reputation)}`;
   return (
     <button type="button" className="rating-preview" onClick={onOpen}>
-      <div className={`rating-preview-circle${tierClass}`}>{locked ? t("hub.ratingLocked") : Math.round(reputation)}</div>
-    </button>
-  );
-}
-
-export function RatingSummaryLine({ reputation, partnerships, isSubscribed, onOpen }) {
-  const { t } = useLang();
-  const locked = reputation === null || reputation === undefined;
-  const showHint = locked || !isSubscribed || (partnerships ?? 0) === 0;
-  // Подсказка "низкий рейтинг" красным при 0, как и кружок (15.08.2026,
-  // владелец: "кружок должен орать что всё плохо, текст тоже должен быть
-  // красный") — при locked оставляем нейтральный золотой, там это не
-  // "у вас плохо", а "оформите подписку, чтобы увидеть".
-  const hintTierClass = !locked ? ` ${ratingTier(reputation)}` : "";
-  return (
-    <button type="button" className="rating-summary-line" onClick={onOpen}>
-      <span className="rating-summary-deals">
-        {locked ? t("hub.dealsLocked") : t("hub.dealsConfirmed", { count: partnerships ?? 0 })}
-      </span>
-      {showHint && (
-        <span className={`rating-summary-hint${hintTierClass}`}>
-          {" "}
-          · {t("hub.lowRatingHint")} · {t("hub.lowRatingCta")}
-        </span>
-      )}
+      <div className="rating-preview-circle">{locked ? t("hub.ratingLocked") : Math.round(reputation)}</div>
     </button>
   );
 }
 
 // Карточка рейтинга на главном экране Профиля (28.08.2026, макет "01 ·
 // Профиль (личный)") — заменяет прежний маленький кружок в шапке визитки
-// (RatingPreview/RatingSummaryLine выше, они остаются как были для
-// кабинета "Рекрутер"). Кольцо-прогресс 0-100 + название уровня из
+// (RatingPreview выше, остался как был, но только для кабинета
+// "Рекрутер"). Кольцо-прогресс 0-100 + название уровня из
 // reputation_tier — бэкенд шлёт Bronze/Silver/Gold/Platinum уже с
 // 25.08.2026 (формула рейтинга v2, см. guro_logic.reputation_tier),
 // фронт эти поля просто не использовал до сих пор.

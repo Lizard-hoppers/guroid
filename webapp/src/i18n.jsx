@@ -67,10 +67,6 @@ const STRINGS = {
   "hub.menu.messages": { ru: "Мои сообщения", en: "My messages" },
   "hub.menu.qr": { ru: "Мой QR", en: "My QR" },
   "hub.ratingLocked": { ru: "🔒", en: "🔒" },
-  "hub.dealsConfirmed": { ru: "{count} подтверждённых сделок", en: "{count} confirmed deals" },
-  "hub.dealsLocked": { ru: "Сделки скрыты", en: "Deals hidden" },
-  "hub.lowRatingHint": { ru: "У вас низкий рейтинг в индустрии", en: "Your industry rating is low" },
-  "hub.lowRatingCta": { ru: "Как исправить?", en: "How to fix?" },
   "hub.daysInCommunity": { ru: "В сообществе {count} {unit}", en: "{count} {unit} in the community" },
   // Карточка рейтинга на главном экране Профиля (28.08.2026, макет
   // "01 · Профиль (личный)") — кольцо-прогресс 0/100 + название уровня,
@@ -643,13 +639,17 @@ const STRINGS = {
   "recruiter.loadError": { ru: "Не удалось загрузить кабинет рекрутера.", en: "Couldn't load the recruiter cabinet." },
 
   // Главный экран кабинета "Рекрутер" (26.08.2026, ТЗ "Гуро рекрутер каб").
-  "recruiter.roleBadge": { ru: "HR / Рекрутер", en: "HR / Recruiter" },
+  // 28.08.2026 (макет "11 · Рекрутер — главный экран"): короткий "HR" —
+  // бейдж теперь маленькая плашка на аватаре, "HR / Рекрутер" туда не
+  // помещался.
+  "recruiter.roleBadge": { ru: "HR", en: "HR" },
+  "recruiter.modeLabel": { ru: "Режим: Рекрутер", en: "Mode: Recruiter" },
   "recruiter.settingsBtn": { ru: "Настройки", en: "Settings" },
   "recruiter.characteristic.title": { ru: "Характеристика", en: "Characteristic" },
   "recruiter.characteristic.hires": { ru: "Успешных наймов", en: "Successful hires" },
   "recruiter.characteristic.vacancies": { ru: "Активных вакансий", en: "Active vacancies" },
   "recruiter.characteristic.responses": { ru: "Откликов за 7 дней", en: "Responses (7 days)" },
-  "recruiter.characteristic.tenure": { ru: "Стаж в роли рекрутера, дней", en: "Days as recruiter" },
+  "recruiter.characteristic.tenure": { ru: "Стаж в роли, дней", en: "Days in role" },
   "recruiter.activity.label": { ru: "Статус", en: "Status" },
   "recruiter.activity.hiring": { ru: "Активно нанимаю", en: "Actively hiring" },
   "recruiter.activity.notHiring": { ru: "Не набираю сейчас", en: "Not hiring right now" },

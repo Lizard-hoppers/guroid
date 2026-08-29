@@ -96,9 +96,16 @@ export function RecruiterResponsesSubscreen({ onBack, onWrite, onConfirmHire }) 
                 {t("vacancies.writeBtn")}
               </button>
             )}
-            <button type="button" className="btn" onClick={() => confirmHire(r)}>
-              {t("vacancies.responses.confirmHireBtn")}
-            </button>
+            {/* 29.08.2026, регресс — тот же баг чинили в VacancyResponses/
+                AllResponses (VacanciesScreen.jsx, макет "16 · Рекрутер —
+                Отклики"): кнопка была видна для ЛЮБОГО статуса отклика, не
+                только "hired". Это третья, отдельная копия того же экрана
+                (доступна из меню кабинета Рекрутера) — фикс сюда не долетел. */}
+            {r.status === "hired" && (
+              <button type="button" className="btn" onClick={() => confirmHire(r)}>
+                {t("vacancies.responses.confirmHireBtn")}
+              </button>
+            )}
           </div>
         </div>
       ))}

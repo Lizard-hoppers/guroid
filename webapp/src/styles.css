@@ -1985,6 +1985,27 @@ select {
   letter-spacing: 0.02em;
 }
 
+/* 29.08.2026, регресс — .recruiter-role-badge (выше) абсолютно
+   спозиционирован СПЕЦИАЛЬНО под наложение на нижний край аватара
+   (единственная его законная роль — "HR" в RecruiterHub). CompanyHub
+   (бейджи тарифа/роли в визитке) и TeamScreen (роль участника в
+   списке) переиспользовали ТОТ ЖЕ класс для обычной инлайн-пилюли —
+   из-за position:absolute оба бейджа CompanyHub рисовались друг на
+   друге в одной точке (второй прятал первый), а в TeamScreen бейдж
+   роли наезжал на строку под ним (position_text). Тот же внешний вид,
+   но в потоке документа — не абсолютно, для этих двух мест. */
+.role-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 8px;
+  background: var(--bg-deep);
+  border: 1px solid var(--recruiter-cyan);
+  color: var(--recruiter-cyan);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 /* "Кабинет: Рекрутер" — бейдж в шапке общих экранов (Вакансии/Поиск
    кандидатов), см. WorkspaceCabinetBadge, Shared.jsx. */
 .workspace-cabinet-badge {

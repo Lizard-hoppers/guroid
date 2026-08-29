@@ -533,10 +533,14 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
             {hasReputation ? Math.round(data.reputation_score) : t("hub.ratingLocked")}
           </div>
         </div>
-        <span className="recruiter-role-badge">{t(`company.tier.${data.company_tier || "basic"}`)}</span>
+        {/* 29.08.2026, регресс: были оба на классе с position:absolute
+            (.recruiter-role-badge) — второй бейдж рисовался прямо поверх
+            первого в одной точке, пряча его. .role-badge — та же пилюля,
+            но в потоке документа, поэтому спокойно стоят рядом. */}
+        <span className="role-badge">{t(`company.tier.${data.company_tier || "basic"}`)}</span>
         {/* Роль в компании (27.08.2026, ТЗ "Роли и управление командой") —
             Владелец/Админ, НЕ должность по жизни (та отдельным текстом). */}
-        <span className="recruiter-role-badge" style={{ marginLeft: 6 }}>{t(`team.role.${data.my_role}`)}</span>
+        <span className="role-badge" style={{ marginLeft: 6 }}>{t(`team.role.${data.my_role}`)}</span>
         {data.my_position && <div className="partner-meta" style={{ marginTop: 4 }}>{data.my_position}</div>}
         {data.vertical && <div className="company-vertical-big">{data.vertical}</div>}
         {(types.length > 0 || data.company_type_other) && (

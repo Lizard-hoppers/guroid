@@ -164,7 +164,11 @@ export function TeamScreen({ onBack }) {
         <div key={m.user_id} className="card">
           <div className="partner-name">
             {m.name || (m.username ? `@${m.username}` : t("common.noName"))}
-            <span className="recruiter-role-badge" style={{ marginLeft: 8 }}>
+            {/* 29.08.2026, регресс: .recruiter-role-badge — position:absolute
+                (задуман под наложение на аватар в RecruiterHub), тут ломал
+                вёрстку — бейдж наезжал на position_text ниже. .role-badge —
+                та же пилюля, но в потоке документа. */}
+            <span className="role-badge" style={{ marginLeft: 8 }}>
               {t(`team.role.${m.role}`)}
             </span>
           </div>

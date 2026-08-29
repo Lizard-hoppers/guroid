@@ -987,32 +987,62 @@ function AllResponses({ onBack, onOpenMessages, onOpenHireConfirm }) {
       {state.responses && state.responses.length === 0 && (
         <div className="partner-meta">{t("vacancies.responses.empty")}</div>
       )}
-      {state.responses?.map((r) => (
-        <div key={r.id} className="card">
-          <div className="partner-name">{r.vacancy_title}</div>
-          <div className="partner-meta">
-            {r.candidate_name || (r.candidate_username ? `@${r.candidate_username}` : t("common.noName"))}
-            {r.candidate_vertical ? ` · ${r.candidate_vertical}` : ""}
-            {typeof r.reputation_score === "number" ? ` · ★ ${r.reputation_score}` : ""}
+      {state.responses?.map((r) => {
+        const days = daysAgo(r.created_at);
+        return (
+          <div key={r.id} className="card">
+            <div className="vacancy-response-head">
+              <div className="partner-name">{r.vacancy_title}</div>
+              {typeof r.reputation_score === "number" && (
+                <div className="rating-preview-circle vacancy-response-rating">{Math.round(r.reputation_score)}</div>
+              )}
+            </div>
+            <div className="vacancy-mine-status-row">
+              <ResponseStatusDot status={r.status} />
+              {days !== null && (
+                <span className="vacancy-mine-counts">
+                  {days === 0 ? t("vacancies.responses.today") : t("vacancies.responses.daysAgo", { days })}
+                </span>
+              )}
+            </div>
+            <div className="partner-meta" style={{ marginTop: 4 }}>
+              {r.candidate_name || (r.candidate_username ? `@${r.candidate_username}` : t("common.noName"))}
+              {r.candidate_vertical ? ` · ${r.candidate_vertical}` : ""}
+            </div>
+            {r.message && <div className="partner-meta" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{r.message}</div>}
+            <select value={r.status} onChange={(e) => setStatus(r.id, e.target.value)} style={{ marginTop: 10 }}>
+              {RESPONSE_STATUSES.map((s) => (
+                <option key={s} value={s}>{t(`vacancies.responses.status.${s}`)}</option>
+              ))}
+            </select>
+            <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
+              {r.candidate_username && (
+                <button type="button" className="btn secondary" onClick={() => onOpenMessages(r.candidate_id)}>
+                  {t("vacancies.writeBtn")}
+                </button>
+              )}
+              {/* 29.08.2026, регресс — тот же баг, что чинили в VacancyResponses
+                  (макет "16 · Рекрутер — Отклики"): кнопка была видна для ЛЮБОГО
+                  статуса, не только "hired". AllResponses — отдельный, почти
+                  идентичный компонент (агрегация по ВСЕМ вакансиям сразу, экран
+                  "Отклики" с доски), фикс тогда сюда не долетел. */}
+              {r.status === "hired" && (
+                <button type="button" className="btn" onClick={() => confirmHire(r)}>
+                  {t("vacancies.responses.confirmHireBtn")}
+                </button>
+              )}
+            </div>
           </div>
-          {r.message && <div className="partner-meta" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{r.message}</div>}
-          <select value={r.status} onChange={(e) => setStatus(r.id, e.target.value)} style={{ marginTop: 10 }}>
-            {RESPONSE_STATUSES.map((s) => (
-              <option key={s} value={s}>{t(`vacancies.responses.status.${s}`)}</option>
-            ))}
-          </select>
-          <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
-            {r.candidate_username && (
-              <button type="button" className="btn secondary" onClick={() => onOpenMessages(r.candidate_id)}>
-                {t("vacancies.writeBtn")}
-              </button>
-            )}
-            <button type="button" className="btn" onClick={() => confirmHire(r)}>
-              {t("vacancies.responses.confirmHireBtn")}
-            </button>
+        );
+      })}
+      {state.responses && state.responses.length > 0 && (
+        <div className="profile-privacy-locked-note vacancy-hire-explainer">
+          <div className="profile-privacy-locked-title vacancy-hire-explainer-title">
+            {t("vacancies.responses.hireExplainerTitle")}
           </div>
+          <div className="privacy-row-note">{t("vacancies.responses.hireExplainerText")}</div>
         </div>
-      ))}
+      )}
     </div>
   );
 }

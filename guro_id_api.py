@@ -617,6 +617,62 @@ def _searchable_text(summary: dict) -> str:
     return " ".join(str(summary.get(f) or "") for f in _DIRECTORY_TEXT_FIELDS).lower()
 
 
+def _light_directory_summary(
+    user_id: int, guro_row, profile_row, partnership_count: int, now: datetime,
+) -> dict:
+    """29.08.2026, аудит производительности — раньше directory-скан звал
+    _profile_summary(storage, user_id) НА КАЖДОГО кандидата: это get_profile
+    + get_or_create_guro_user + list_confirmed_partnerships (и для КАЖДОГО
+    партнёрства ЕЩЁ get_profile контрагента + get_my_rating + get_rating_of)
+    + get_extra_profile + get_cv_extra + list_cv_experience — при 65
+    пользователях и почти пустой истории партнёрств уже сотни запросов на
+    один поиск, а это синхронный код (блокирует event loop aiohttp целиком
+    на время скана, не только для искателя).
+
+    Ни _rank_directory_matches (итоговая карточка результата), ни
+    _searchable_text/_grade_position_ok (сопоставление фильтрам), ни
+    _apply_privacy/_apply_subscription_gate НЕ читают полный список
+    партнёрств/оценок/опыта работы directory-кандидата — только его
+    ПОДМНОЖЕСТВО полей (см. их код). Эта функция строит ТОЧНО такой же по
+    ключам summary-словарь, каким его строит _profile_summary, но из уже
+    оптом загруженных строк (guro_users/profiles одним SELECT на всех,
+    счётчик партнёрств — одним GROUP BY на всех, см. bulk_* в
+    guro_storage.py) — без единого похода в БД на кандидата. Поля,
+    подтверждённо нигде не читаемые на этом пути (полный partners/
+    cv_experience, linkedin/website и т.п. "паспортные" CV-поля вне
+    _DIRECTORY_TEXT_FIELDS) — с безопасными дешёвыми заглушками
+    (пустой список/None), а не настоящими значениями: их код только
+    ОБНУЛЯЕТ по тумблеру приватности, никогда не выводит и не сравнивает.
+    Полная, "тяжёлая" карточка ОДНОГO профиля (открыл конкретную анкету)
+    по-прежнему идёт через _profile_summary — этот путь не менялся."""
+    looking_for = guro_row["looking_for"] or profile_row["request"]
+    is_subscribed = GL.subscription_active(
+        guro_row["subscription_status"], GL.parse_db_datetime(guro_row["subscription_expires_at"]), now,
+    )
+    return {
+        "user_id": user_id,
+        "username": profile_row["username"],
+        "name": profile_row["name"],
+        "company": profile_row["company"],
+        "vertical": profile_row["vertical"],
+        "profession": profile_row["profession"],
+        "looking_for": looking_for,
+        "cv_text": guro_row["cv_text"],
+        "offering": guro_row["offering"],
+        "cv_profession": guro_row["cv_profession"],
+        "cv_skills": guro_row["cv_skills"],
+        "cv_verticals": guro_row["cv_verticals"],
+        "cv_location": guro_row["cv_location"],
+        "work_status": guro_row["work_status"],
+        "reputation_score": round(guro_row["reputation_score"], 1),
+        "reputation_tier": GL.reputation_tier(guro_row["reputation_score"]),
+        "confirmed_partnerships": partnership_count,
+        "partners": [],  # см. докстринг — не читается на этом пути
+        "cv_experience": [],  # см. докстринг — не читается на этом пути
+        "is_subscribed": is_subscribed,
+    }
+
+
 def _scan_directory_candidates(
     storage: GuroStorage, requester_id: int, match_fn, *, require_privacy_open: bool = True,
 ) -> list[tuple[int, dict]]:
@@ -632,18 +688,29 @@ def _scan_directory_candidates(
     публичный. Привилегированный requester (GC.PRIVILEGED_VIEWER_IDS,
     12.08.2026) видит ВСЕХ независимо от require_privacy_open — иначе
     админ-обход приватности не работал бы в directory-поиске/browse, только
-    в точном поиске по юзернейму."""
+    в точном поиске по юзернейму.
+
+    29.08.2026 — данные теперь оптом (3 запроса на весь скан, не 10-20 на
+    кандидата), см. _light_directory_summary."""
     bypass = requester_id in GC.PRIVILEGED_VIEWER_IDS
+    now = datetime.now(timezone.utc)
+    guro_users_by_id = storage.bulk_guro_users_by_id()
+    profiles_by_id = storage.bulk_latest_profiles_by_id()
+    partnership_counts = storage.bulk_confirmed_partnership_counts()
     matches: list[tuple[int, dict]] = []
     for user_id in storage.list_guro_user_ids():
         if user_id == requester_id:
             continue  # сам себя в directory-режимах видеть незачем
-        privacy = storage.get_privacy(user_id)
+        guro_row = guro_users_by_id.get(user_id)
+        profile_row = profiles_by_id.get(user_id)
+        if guro_row is None or profile_row is None:
+            continue  # тот же случай, что _profile_summary is None раньше
+        privacy = {field: bool(guro_row[field]) for field in GC.PRIVACY_FIELDS}
         if require_privacy_open and not bypass and not any(privacy.values()):
-            continue  # ничего не открыто -> нечего показывать, не тратим время на профиль
-        summary = _profile_summary(storage, user_id)
-        if summary is None:
-            continue
+            continue  # ничего не открыто -> нечего показывать
+        summary = _light_directory_summary(
+            user_id, guro_row, profile_row, partnership_counts.get(user_id, 0), now,
+        )
         summary = _apply_privacy(summary, privacy, bypass=bypass)
         summary = _apply_subscription_gate(summary, summary["is_subscribed"], bypass=bypass)
         score = match_fn(summary)

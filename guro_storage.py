@@ -550,6 +550,44 @@ class GuroStorage:
         rows = self._conn.execute("SELECT user_id FROM guro_users").fetchall()
         return [row["user_id"] for row in rows]
 
+    def bulk_guro_users_by_id(self) -> dict[int, sqlite3.Row]:
+        """29.08.2026, аудит производительности — для directory-сканов
+        (guro_id_api._scan_directory_candidates), которые раньше дёргали
+        get_or_create_guro_user/get_privacy/get_extra_profile/get_cv_extra
+        ОТДЕЛЬНО на КАЖДОГО из list_guro_user_ids() (все они и так читают
+        одну и ту же строку guro_users — 3-4 избыточных похода в БД на
+        кандидата). Один SELECT * на всех, дальше словарь user_id->row в
+        памяти."""
+        rows = self._conn.execute("SELECT * FROM guro_users").fetchall()
+        return {row["user_id"]: row for row in rows}
+
+    def bulk_latest_profiles_by_id(self) -> dict[int, sqlite3.Row]:
+        """Тот же приём, что bulk_guro_users_by_id, для profiles (см.
+        get_profile — ORDER BY id DESC LIMIT 1 на пользователя; тут
+        эквивалент одним запросом на всех: подзапрос берёт максимальный id
+        на каждый user_id, внешний JOIN отдаёт саму строку)."""
+        rows = self._conn.execute(
+            "SELECT p.* FROM profiles p "
+            "JOIN (SELECT user_id, MAX(id) AS max_id FROM profiles GROUP BY user_id) latest "
+            "ON p.user_id = latest.user_id AND p.id = latest.max_id"
+        ).fetchall()
+        return {row["user_id"]: row for row in rows}
+
+    def bulk_confirmed_partnership_counts(self) -> dict[int, int]:
+        """Тот же счётчик, что count_confirmed_partnerships, но для ВСЕХ
+        пользователей сразу одним проходом — не считать partnerships с нуля
+        на каждого кандидата directory-скана."""
+        from collections import defaultdict
+        counts: dict[int, int] = defaultdict(int)
+        rows = self._conn.execute(
+            "SELECT initiator_id, confirmer_id FROM partnerships WHERE status=?",
+            (GC.PARTNERSHIP_STATUS_CONFIRMED,),
+        ).fetchall()
+        for row in rows:
+            for uid in {row["initiator_id"], row["confirmer_id"]}:
+                counts[uid] += 1
+        return dict(counts)
+
     def activate_subscription(self, user_id: int, duration_days: int) -> str:
         row = self.get_or_create_guro_user(user_id)
         now = self._now()

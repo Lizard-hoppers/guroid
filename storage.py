@@ -25,6 +25,17 @@ CREATE TABLE IF NOT EXISTS profiles (
     created_at TEXT,
     sheet_synced INTEGER DEFAULT 0
 );
+-- 29.08.2026, аудит производительности — 898 строк и НИ ОДНОГО индекса;
+-- get_profile(user_id) (вызывается практически отовсюду, включая ГОРЯЧИЙ
+-- путь GURO ID directory-поиска) был полным сканом таблицы на каждый
+-- вызов. Составной (user_id, id), не просто (user_id) — покрывает и
+-- одиночный get_profile (ORDER BY id DESC LIMIT 1 на user_id), и bulk-
+-- версию для directory-скана (guro_storage.bulk_latest_profiles_by_id) —
+-- та берёт MAX(id) на КАЖДОГО user_id разом; с одиночным индексом это
+-- было "SCAN + TEMP B-TREE FOR GROUP BY" (12мс/898 строк), с составным —
+-- "SCAN USING COVERING INDEX" без временной сортировки (7мс), и это цена
+-- ОДИН раз за весь скан, не за каждого кандидата.
+CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON profiles(user_id, id);
 
 CREATE TABLE IF NOT EXISTS button_settings (
     key TEXT PRIMARY KEY,

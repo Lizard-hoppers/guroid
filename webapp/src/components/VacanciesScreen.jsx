@@ -659,7 +659,12 @@ function VacancyDetail({ id, onBack, onOpenMessages, onManage, onOpenResponses, 
             <div className="partner-meta" style={{ marginTop: 12 }}>
               {t("vacancies.viewsLabel", { n: v.views_count })} · {t("vacancies.responsesLabel", { n: v.responses_count })}
             </div>
-            <div className="recruiter-quick-actions" style={{ marginTop: 12 }}>
+            {/* 29.08.2026, аудит отступов — было marginTop:12, единственное из
+                семи мест с паттерном "контент -> кнопочный ряд .recruiter-
+                quick-actions" (MyVacancies, VacancyResponses, AllResponses,
+                RecruiterResponsesSubscreen, оба ряда TeamScreen), где везде
+                10px; выровнено под общий паттерн. */}
+            <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
               <button type="button" className="btn secondary" onClick={() => onManage("edit", v)}>
                 {t("vacancies.manage.edit")}
               </button>

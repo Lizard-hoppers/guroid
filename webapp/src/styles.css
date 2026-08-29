@@ -2100,7 +2100,11 @@ select {
 .activity-status-toggle button {
   flex: 1 1 auto;
   padding: 10px;
-  border-radius: 12px;
+  /* 29.08.2026, аудит скруглений — было 12px, единственный из пяти
+     сегментированных переключателей похожей высоты (workspace-switch,
+     work-status-option, tristate-option, rate-widget-buttons — везде
+     10px); выровнено под общий паттерн. */
+  border-radius: 10px;
   border: 1px solid var(--glass-border);
   background: var(--glass-bg);
   color: var(--text-dim);

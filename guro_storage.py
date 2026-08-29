@@ -32,6 +32,18 @@ CREATE TABLE IF NOT EXISTS partnerships (
     created_at TEXT,
     confirmed_at TEXT
 );
+-- 29.08.2026, аудит производительности — таблица росла без единого
+-- индекса, каждый запрос (история партнёрств, ожидающие оценки, счётчики
+-- по статусу/типу, дневные лимиты) был полным сканом. initiator_id/
+-- confirmer_id раздельно (не составной) — под паттерн "WHERE ... AND
+-- (initiator_id=? OR confirmer_id=?)", который встречается почти везде
+-- (SQLite использует OR-optimization по отдельным индексам на каждой
+-- стороне OR, составной индекс тут не подошёл бы). Индекс по company_id —
+-- см. _init() ниже (колонка добавляется миграцией _ensure_column ПОСЛЕ
+-- этой статической схемы, тут её ещё не существует).
+CREATE INDEX IF NOT EXISTS idx_partnerships_initiator ON partnerships(initiator_id);
+CREATE INDEX IF NOT EXISTS idx_partnerships_confirmer ON partnerships(confirmer_id);
+CREATE INDEX IF NOT EXISTS idx_partnerships_status ON partnerships(status);
 
 -- Оценки партнёрства, Шаг 2 (ТЗ 6.1, 25.08.2026) — КАЖДАЯ сторона независимо
 -- оценивает КОНТРАГЕНТА (rater_id ставит оценку про ratee_id). Обе оценки
@@ -84,6 +96,12 @@ CREATE TABLE IF NOT EXISTS guro_threads (
     last_message_at TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_guro_threads_pair ON guro_threads(user_a, user_b);
+-- 29.08.2026, аудит производительности — "Мои сообщения" (список тредов)
+-- фильтрует WHERE user_a=? OR user_b=?; составной индекс выше покрывает
+-- только сторону user_a (leftmost prefix), для user_b без своего индекса
+-- запрос уходит в полный скан таблицы. Отдельный индекс под вторую
+-- половину OR (SQLite умеет OR-optimization по отдельным индексам).
+CREATE INDEX IF NOT EXISTS idx_guro_threads_user_b ON guro_threads(user_b);
 
 CREATE TABLE IF NOT EXISTS guro_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -345,6 +363,10 @@ class GuroStorage:
         # (для истории компании как единого целого, тот же раздел).
         self._ensure_column("guro_vacancies", "published_by_user_id", "INTEGER")
         self._ensure_column("partnerships", "company_id", "INTEGER")
+        # 29.08.2026, аудит производительности — column добавлена этой же
+        # миграцией выше, поэтому индекс на неё не может жить в статической
+        # _SCHEMA (там колонки ещё нет на старой БД).
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_partnerships_company ON partnerships(company_id)")
         # Бэк-филл: КАЖДАЯ существующая компания (single-owner до этого
         # раунда) должна иметь строку "Владелец" в guro_company_members
         # СРАЗУ на старте, а не лениво при следующем заходе в /api/me — иначе

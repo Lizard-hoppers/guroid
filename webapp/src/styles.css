@@ -909,13 +909,6 @@ label {
   white-space: nowrap;
 }
 
-.project-desc {
-  font-size: 12.5px;
-  color: var(--text-dim);
-  margin-top: 4px;
-  line-height: 1.45;
-}
-
 /* "Шаг 1 из 2" на форме подтверждения партнёрства (28.08.2026, макет "06 ·
    Сделки — шаг 1") — до этого нигде не было видно, что подтверждение
    состоит из двух шагов (факт -> оценка). */
@@ -2108,7 +2101,13 @@ select {
   border: 1px solid var(--glass-border);
   background: var(--glass-bg);
   color: var(--text-dim);
-  font-size: 13px;
+  /* 29.08.2026, аудит шрифтов — было 13px. .workspace-switch button тоже
+     13px, но там это осознанно (font-weight:600, главная навигация между
+     кабинетами) — у activity-status-toggle вес обычный (400), как у
+     work-status-option/tristate-option/rate-widget-buttons, с которыми
+     оно и есть один визуальный ряд "простых" переключателей — везде
+     12px, кроме этого; выровнено. */
+  font-size: 12px;
 }
 
 .activity-status-toggle button.is-active.hiring {

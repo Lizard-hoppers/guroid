@@ -54,6 +54,16 @@ class Settings:
     # (альтернатива Stars). Пусто = крипто-оплата выключена (эндпойнты
     # отдают 503), см. guro_crypto.py про получение токена.
     cryptobot_api_token: str = ""
+    # 29.08.2026 (владелец: "прикрутить новый ключ, 5 платежей на него и
+    # 1 на старый, по кругу") — второй токен/приложение CryptoBot. Новые
+    # инвойсы распределяются между cryptobot_api_token_new (вес 5) и
+    # cryptobot_api_token (вес 1) кольцом, см. guro_id_api._pick_crypto_
+    # token; позиция кольца — персистентный счётчик в guro_config (см.
+    # GC.CRYPTO_TOKEN_CYCLE_KEY), переживает рестарт процесса. Вебхук
+    # проверяет подпись по ОБОИМ токенам (см. handle_crypto_webhook) — при
+    # оплате неизвестно заранее, каким токеном был создан именно этот
+    # инвойс. Пусто = ведёт себя как раньше, только cryptobot_api_token.
+    cryptobot_api_token_new: str = ""
     # Юзернейм бота без @ — нужен серверу для сборки QR-дипссылок GURO ID
     # (`t.me/<bot_username>?start=guro_<id>`), без лишнего вызова getMe().
     bot_username: str = "GamblingCommunitybot"
@@ -124,6 +134,7 @@ class Settings:
                 "GURO_ID_WEBAPP_URL", "https://guro-app.193.111.62.16.sslip.io/"
             ).strip(),
             cryptobot_api_token=os.environ.get("CRYPTOBOT_API_TOKEN", "").strip(),
+            cryptobot_api_token_new=os.environ.get("CRYPTOBOT_API_TOKEN_NEW", "").strip(),
             bot_username=os.environ.get("BOT_USERNAME", "GamblingCommunitybot").strip()
             or "GamblingCommunitybot",
             tronscan_api_key=os.environ.get("TRONSCAN_API_KEY", "").strip(),

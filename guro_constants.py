@@ -337,6 +337,11 @@ COMPANY_TYPES = (
 STARS_TO_USD_RATE = 0.015
 CRYPTO_ASSET = "USDT"
 
+# 29.08.2026 — позиция кольца распределения новых крипто-инвойсов между
+# двумя токенами CryptoBot (см. config.cryptobot_api_token_new и
+# guro_id_api._pick_crypto_token). Ключ в guro_config (get_config/set_config).
+CRYPTO_TOKEN_CYCLE_KEY = "crypto_token_cycle.position"
+
 PARTNERSHIP_STATUS_PENDING = "pending"
 PARTNERSHIP_STATUS_CONFIRMED = "confirmed"
 PARTNERSHIP_STATUS_DECLINED = "declined"

@@ -3555,6 +3555,63 @@ async def _run_guro_id_api_sim():
                                                     hmac.new(secret, b'{"update_type": "other"}', hashlib.sha256).hexdigest()})
                 check(resp.status == 200, "crypto webhook с чужим update_type -> 200, но без побочных эффектов")
 
+                # --- 29.08.2026: два токена CryptoBot, кольцо 5:1 -----------------
+                # (владелец: "прикрутить новый ключ, 5 платежей на него и 1 на
+                # старый, по кругу") — старый токен уже "fake-crypto-token" (см.
+                # выше), добавляем второй и проверяем сам паттерн распределения,
+                # персистентность позиции кольца через "рестарт" (новый объект
+                # GuroStorage на тот же файл) и проверку подписи вебхука ОБОИМИ
+                # токенами.
+                from guro_storage import GuroStorage as _GuroStorage
+
+                app["settings"].cryptobot_api_token_new = "fake-crypto-token-new"
+                app["storage"].set_config(GC.CRYPTO_TOKEN_CYCLE_KEY, 0)  # детерминированный старт кольца
+
+                used_tokens = []
+
+                async def _fake_create_invoice_multi(api_token, **kw):
+                    used_tokens.append(api_token)
+                    return {"invoice_id": 43, "pay_url": "https://t.me/CryptoBot?start=fakeinv2"}
+
+                with mock.patch.object(guro_id_api.GCR, "create_invoice", _fake_create_invoice_multi):
+                    for _ in range(7):
+                        resp = await client.post("/api/subscribe/crypto", headers=auth_100, json={"plan": "monthly"})
+                        check(resp.status == 200, "POST /api/subscribe/crypto (кольцо 5:1) -> 200")
+
+                check(used_tokens == ["fake-crypto-token-new"] * 5 + ["fake-crypto-token"] + ["fake-crypto-token-new"],
+                      "кольцо 5:1 — 5 инвойсов новому токену, 1 старому, затем снова новому (7 звонков подряд)")
+
+                # "рестарт процесса" — новый объект GuroStorage на тот же файл,
+                # позиция кольца должна пережить его (не сброситься в 0).
+                _restarted_storage = _GuroStorage(app["settings"].database_path)
+                check(_restarted_storage.get_config(GC.CRYPTO_TOKEN_CYCLE_KEY, -1) == 1,
+                      "позиция кольца переживает рестарт процесса (после 7 вызовов ожидаем позицию 1 из 6)")
+
+                # вебхук: подпись СТАРЫМ токеном по-прежнему проходит, даже когда
+                # настроен ещё и новый (заранее не известно, каким токеном создан
+                # именно этот инвойс — см. handle_crypto_webhook).
+                webhook_body_old = _json.dumps({
+                    "update_type": "invoice_paid",
+                    "payload": {"payload": "guro_id_subscription:monthly:301"},
+                }).encode()
+                sig_old = hmac.new(secret, webhook_body_old, hashlib.sha256).hexdigest()
+                resp = await client.post("/api/crypto/webhook", data=webhook_body_old,
+                                          headers={"crypto-pay-api-signature": sig_old})
+                check(resp.status == 200, "webhook подписанный СТАРЫМ токеном проходит и при настроенном новом")
+                check(app["storage"].is_subscribed(301), "подписка активирована по вебхуку со старым токеном")
+
+                # и подпись НОВЫМ токеном тоже проходит.
+                secret_new = hashlib.sha256(b"fake-crypto-token-new").digest()
+                webhook_body_new = _json.dumps({
+                    "update_type": "invoice_paid",
+                    "payload": {"payload": "guro_id_subscription:monthly:302"},
+                }).encode()
+                sig_new = hmac.new(secret_new, webhook_body_new, hashlib.sha256).hexdigest()
+                resp = await client.post("/api/crypto/webhook", data=webhook_body_new,
+                                          headers={"crypto-pay-api-signature": sig_new})
+                check(resp.status == 200, "webhook подписанный НОВЫМ токеном тоже проходит")
+                check(app["storage"].is_subscribed(302), "подписка активирована по вебхуку с новым токеном")
+
                 # --- Фаза 3 (12.08.2026): кабинет рекрутера ---------------------
                 resp = await client.get("/api/me?workspace=recruiter", headers=auth_100)
                 check(resp.status == 200, "GET /api/me?workspace=recruiter -> 200 (не требует своей анкеты)")

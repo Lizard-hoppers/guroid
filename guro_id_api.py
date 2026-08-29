@@ -2516,7 +2516,10 @@ async def handle_get_plans(request: web.Request) -> web.Response:
             "crypto_price_usd": round(cfg["stars_price"] * GC.STARS_TO_USD_RATE, 2),
             "crypto_asset": GC.CRYPTO_ASSET,
         }
-    return web.json_response({"plans": plans, "crypto_enabled": bool(settings.cryptobot_api_token)})
+    return web.json_response({
+        "plans": plans,
+        "crypto_enabled": bool(settings.cryptobot_api_token or settings.cryptobot_api_token_new),
+    })
 
 
 async def handle_subscribe(request: web.Request) -> web.Response:
@@ -2542,13 +2545,42 @@ async def handle_subscribe(request: web.Request) -> web.Response:
     return web.json_response({"invoice_link": link})
 
 
+def _crypto_token_sequence(settings) -> list[tuple[str, str]]:
+    """29.08.2026 (владелец: "прикрутить новый ключ, 5 платежей на него и
+    1 на старый, по кругу") — кольцо распределения НОВЫХ инвойсов между
+    двумя приложениями CryptoBot. Оба токена настроены — 5 инвойсов на
+    cryptobot_api_token_new, 1 на cryptobot_api_token (старый), затем
+    сначала. Настроен только один — тривиальное кольцо из одного звена
+    (тот же эффект, что и до этой правки)."""
+    if settings.cryptobot_api_token_new and settings.cryptobot_api_token:
+        return (
+            [(settings.cryptobot_api_token_new, "new")] * 5
+            + [(settings.cryptobot_api_token, "old")]
+        )
+    token = settings.cryptobot_api_token_new or settings.cryptobot_api_token
+    return [(token, "single")] if token else []
+
+
+def _pick_crypto_token(settings, storage: GuroStorage) -> tuple[str, str] | None:
+    """Возвращает (token, label) следующего звена кольца — позиция
+    персистентна (guro_config), переживает рестарт процесса guro-id-api."""
+    sequence = _crypto_token_sequence(settings)
+    if not sequence:
+        return None
+    pos = storage.get_config(GC.CRYPTO_TOKEN_CYCLE_KEY, 0) % len(sequence)
+    storage.set_config(GC.CRYPTO_TOKEN_CYCLE_KEY, (pos + 1) % len(sequence))
+    return sequence[pos]
+
+
 async def handle_subscribe_crypto(request: web.Request) -> web.Response:
     """Альтернатива Stars — оплата подписки в крипте через CryptoBot (Crypto
     Pay API). Подтверждение приходит асинхронно вебхуком (handle_crypto_
     webhook), а не сразу в ответе, в отличие от Stars-инвойса."""
-    settings = request.app["settings"]
-    if not settings.cryptobot_api_token:
+    settings, storage = request.app["settings"], request.app["storage"]
+    picked = _pick_crypto_token(settings, storage)
+    if picked is None:
         return web.json_response({"error": "CRYPTO_NOT_CONFIGURED"}, status=503)
+    token, token_label = picked
     user = _auth(request, settings)
     body = await request.json()
     plan_triplet = _plan_or_none(body)
@@ -2560,7 +2592,7 @@ async def handle_subscribe_crypto(request: web.Request) -> web.Response:
 
     try:
         invoice = await GCR.create_invoice(
-            settings.cryptobot_api_token,
+            token,
             asset=GC.CRYPTO_ASSET,
             amount=amount,
             description=f"{title} ({cfg['label'].lower()})",
@@ -2568,8 +2600,8 @@ async def handle_subscribe_crypto(request: web.Request) -> web.Response:
             paid_btn_url=settings.community_invite_url,
         )
     except GCR.CryptoBotError:
-        logger.exception("guro_id: не удалось создать crypto-инвойс для user_id=%s product=%s plan=%s",
-                          user["id"], product, plan)
+        logger.exception("guro_id: не удалось создать crypto-инвойс (token=%s) для user_id=%s product=%s plan=%s",
+                          token_label, user["id"], product, plan)
         return web.json_response({"error": "CRYPTO_INVOICE_FAILED"}, status=502)
 
     pay_url = invoice.get("pay_url") or invoice.get("bot_invoice_url") or invoice.get("mini_app_invoice_url")
@@ -2583,12 +2615,18 @@ async def handle_crypto_webhook(request: web.Request) -> web.Response:
     бесплатно. Определяем продукт по префиксу payload (Фаза 3) —
     guro_id_subscription: / guro_id_recruiter_subscription:."""
     settings, storage = request.app["settings"], request.app["storage"]
-    if not settings.cryptobot_api_token:
+    # 29.08.2026 — с двумя токенами (см. _pick_crypto_token) заранее не
+    # известно, каким из них создан ИМЕННО этот инвойс (у каждого
+    # приложения CryptoBot свой вебхук-URL в его собственном дашборде, но
+    # оба указывают на этот же адрес) — подпись проверяем по очереди
+    # обоими настроенными токенами, подходит хотя бы один — вебхук наш.
+    tokens = [t for t in (settings.cryptobot_api_token_new, settings.cryptobot_api_token) if t]
+    if not tokens:
         return web.Response(status=503)
 
     raw_body = await request.read()
     signature = request.headers.get("crypto-pay-api-signature", "")
-    if not GCR.verify_webhook_signature(settings.cryptobot_api_token, raw_body, signature):
+    if not any(GCR.verify_webhook_signature(t, raw_body, signature) for t in tokens):
         logger.warning("guro_id: crypto webhook с неверной подписью, игнорирую")
         return web.Response(status=403)
 

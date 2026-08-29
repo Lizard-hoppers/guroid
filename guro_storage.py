@@ -307,6 +307,10 @@ class GuroStorage:
         # "10 · Подписка") — для progress bar "осталось N дней" на фронте,
         # см. activate_subscription.
         self._ensure_column("guro_users", "subscription_cycle_days", "INTEGER")
+        # 29.08.2026 — см. activate_subscription(personal_cut=...): эта
+        # подписка оплачена на личный кошелёк владельца (кольцо 5:1 между
+        # двумя токенами CryptoBot), исключена из dashboard_stats().
+        self._ensure_column("guro_users", "subscription_personal_cut", "INTEGER DEFAULT 0")
         # Фаза 2 (11.08.2026) — офер/суммы/отзыв в форме подтверждения
         # партнёрства (см. PDF-фидбек владельца). amount_visible=0 по
         # умолчанию (суммы приватны, owner решает при создании — opt-in,
@@ -588,7 +592,17 @@ class GuroStorage:
                 counts[uid] += 1
         return dict(counts)
 
-    def activate_subscription(self, user_id: int, duration_days: int) -> str:
+    def activate_subscription(self, user_id: int, duration_days: int, *, personal_cut: bool = False) -> str:
+        """personal_cut (29.08.2026, владелец: "платёж на старый кошелёк —
+        моя личная доля, в статистике участвовать не должна") — эта КОНКРЕТНАЯ
+        оплата ушла на личный, не "бизнесовый" кошелёк владельца (см.
+        guro_id_api._pick_crypto_token/handle_crypto_webhook, кольцо 5:1
+        между двумя токенами CryptoBot). Подписка активируется РОВНО ТАК ЖЕ,
+        как обычно — платящий получает полноценный доступ; флаг только
+        исключает эту подписку из dashboard_stats().active_subscriptions
+        (см. ниже). Переустанавливается на КАЖДОЙ активации (в т.ч. в False
+        при обычной оплате) — статистика всегда отражает, чем оплачен
+        ТЕКУЩИЙ цикл, а не унаследованное значение с прошлого."""
         row = self.get_or_create_guro_user(user_id)
         now = self._now()
         current_expires = GL.parse_db_datetime(row["subscription_expires_at"])
@@ -601,8 +615,11 @@ class GuroStorage:
         # дней" на фронте (доля от cycle_days, не от произвольного "года").
         self._conn.execute(
             "UPDATE guro_users SET subscription_status=?, subscription_expires_at=?, "
-            "subscription_cycle_days=?, updated_at=? WHERE user_id=?",
-            (GC.SUBSCRIPTION_ACTIVE, GL.format_db_datetime(expires_at), duration_days, self._now_str(), user_id),
+            "subscription_cycle_days=?, subscription_personal_cut=?, updated_at=? WHERE user_id=?",
+            (
+                GC.SUBSCRIPTION_ACTIVE, GL.format_db_datetime(expires_at), duration_days,
+                1 if personal_cut else 0, self._now_str(), user_id,
+            ),
         )
         self._conn.commit()
         return GL.format_db_datetime(expires_at)
@@ -1868,8 +1885,11 @@ class GuroStorage:
         rep_row = self._conn.execute(
             "SELECT AVG(reputation_score) AS avg_rep, COUNT(*) AS n FROM guro_users"
         ).fetchone()
+        # subscription_personal_cut=1 (29.08.2026, см. activate_subscription)
+        # — оплачено на личный кошелёк владельца, не в бизнес-статистику.
         active_subs = self._conn.execute(
-            "SELECT COUNT(*) FROM guro_users WHERE subscription_status=? AND subscription_expires_at > ?",
+            "SELECT COUNT(*) FROM guro_users WHERE subscription_status=? AND subscription_expires_at > ? "
+            "AND subscription_personal_cut != 1",
             (GC.SUBSCRIPTION_ACTIVE, self._now_str()),
         ).fetchone()[0]
         return {

@@ -3612,6 +3612,31 @@ async def _run_guro_id_api_sim():
                 check(resp.status == 200, "webhook подписанный НОВЫМ токеном тоже проходит")
                 check(app["storage"].is_subscribed(302), "подписка активирована по вебхуку с новым токеном")
 
+                # 29.08.2026 (владелец: "платёж на старый кошелёк — моя личная
+                # доля, в статистике участвовать не должна") — 301 (старый
+                # токен) подписан ПОЛНОЦЕННО (см. is_subscribed выше), но не
+                # должен попадать в dashboard_stats().active_subscriptions;
+                # 302 (новый токен) — обычная запись, считается как всегда.
+                _row301 = _sq.connect(db_path).execute(
+                    "SELECT subscription_personal_cut FROM guro_users WHERE user_id=301").fetchone()
+                check(_row301[0] == 1, "user_id=301 (старый токен) помечен subscription_personal_cut=1")
+                _row302 = _sq.connect(db_path).execute(
+                    "SELECT subscription_personal_cut FROM guro_users WHERE user_id=302").fetchone()
+                check(_row302[0] == 0, "user_id=302 (новый токен) НЕ помечен personal_cut")
+
+                _stats_before = app["storage"].dashboard_stats()
+                # переактивируем 301 через Stars (personal_cut=False по
+                # умолчанию) — обычная оплата ДОЛЖНА снять флаг и снова
+                # попасть в статистику (флаг отражает ТЕКУЩИЙ цикл, не
+                # унаследованное значение).
+                app["storage"].activate_subscription(301, 30)
+                _stats_after = app["storage"].dashboard_stats()
+                check(_stats_after["active_subscriptions"] == _stats_before["active_subscriptions"] + 1,
+                      "обычная реактивация (Stars, без personal_cut) СНИМАЕТ флаг — 301 снова в статистике")
+                _row301b = _sq.connect(db_path).execute(
+                    "SELECT subscription_personal_cut FROM guro_users WHERE user_id=301").fetchone()
+                check(_row301b[0] == 0, "флаг personal_cut сброшен после обычной реактивации")
+
                 # --- Фаза 3 (12.08.2026): кабинет рекрутера ---------------------
                 resp = await client.get("/api/me?workspace=recruiter", headers=auth_100)
                 check(resp.status == 200, "GET /api/me?workspace=recruiter -> 200 (не требует своей анкеты)")

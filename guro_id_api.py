@@ -2626,9 +2626,17 @@ async def handle_crypto_webhook(request: web.Request) -> web.Response:
 
     raw_body = await request.read()
     signature = request.headers.get("crypto-pay-api-signature", "")
-    if not any(GCR.verify_webhook_signature(t, raw_body, signature) for t in tokens):
+    matched_token = next((t for t in tokens if GCR.verify_webhook_signature(t, raw_body, signature)), None)
+    if matched_token is None:
         logger.warning("guro_id: crypto webhook с неверной подписью, игнорирую")
         return web.Response(status=403)
+    # 29.08.2026 (владелец: "платёж на старый кошелёк — моя личная доля, в
+    # статистике участвовать не должна") — старый токен матчнулся ПРИ
+    # настроенном новом = это тот самый 1 из 6 в кольце, персональная доля
+    # владельца. Подписка активируется как обычно (см. activate_
+    # subscription ниже) — платящий получает полный доступ, флаг влияет
+    # ТОЛЬКО на dashboard_stats().active_subscriptions.
+    is_personal_cut = bool(settings.cryptobot_api_token_new) and matched_token == settings.cryptobot_api_token
 
     data = await request.json()
     if data.get("update_type") != "invoice_paid":
@@ -2687,7 +2695,7 @@ async def handle_crypto_webhook(request: web.Request) -> web.Response:
             logger.exception("guro_id: не удалось уведомить о company crypto-оплате user_id=%s", user_id)
         return web.Response(status=200)
 
-    expires_at = storage.activate_subscription(user_id, cfg["duration_days"])
+    expires_at = storage.activate_subscription(user_id, cfg["duration_days"], personal_cut=is_personal_cut)
     logger.info(
         "guro_id: подписка активирована через крипту user_id=%s plan=%s до %s",
         user_id, plan, expires_at,

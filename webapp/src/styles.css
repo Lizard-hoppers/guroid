@@ -17,6 +17,10 @@
   /* Плитка статистики и secondary-кнопка (разделы 3 и 5). До этого в
      разных местах стояли #0e272b и #122e33 вперемешку. */
   --tile: #122e33;
+  /* Трек ВЫКЛЮЧЕННОГО тумблера — у системы это отдельный цвет (раздел 3:
+     «OFF — трек #0E272B, ползунок #C7D1CC»), а не цвет плитки. Держим
+     токеном, чтобы следующее сведение палитры его не подобрало. */
+  --switch-off: #0e272b;
   /* 27.08.2026 — палитра приведена к ФИНАЛ-макету (лайм→мятный градиент
      вместо прежнего золота), см. ФИНАЛ · GURO ID.svg. Имя переменной
      осталось прежним ("--gold"), чтобы не трогать 50+ мест использования
@@ -360,9 +364,9 @@ h3 {
 }
 
 .metric .label {
-  font-size: 11px;
-  color: var(--text-dim);
-  margin-top: 4px;
+  /* Размер/вес/трекинг — в общей выжимке роли Eyebrow выше. Здесь только
+     отступ: раздел 5 требует 8 под цифрой, стояло 4. */
+  margin-top: 8px;
 }
 
 /* Запись истории партнёрств — карточка, а не строка списка; рамка
@@ -710,7 +714,16 @@ label {
 }
 
 .tabbar {
-  --tabbar-pad-x: 6px;
+  /* Отступы бара и геометрия капли держатся на ОДНИХ переменных: капля
+     позиционируется абсолютно и обязана повторять прямоугольник строки
+     кнопок. Стоит вписать число мимо переменной — и они разъезжаются,
+     что и случилось 06.09.2026 при переходе на padding дизайн-системы. */
+  --tabbar-pad-x: 20px;
+  --tabbar-pad-top: 12px;
+  --tabbar-pad-bottom: 16px;
+  /* Насколько капля выступает за строку кнопок — одинаково со всех
+     сторон, иначе центр капли уедет от центра вкладки. */
+  --blob-grow: 4px;
   position: fixed;
   bottom: 0;
   left: 0;
@@ -722,7 +735,10 @@ label {
   border-top: 1px solid var(--glass-border);
   /* Раздел 5: padding 12 · 20 · 16. Нижний отступ дополняется зоной
      безопасности — без неё бар режется индикатором на iPhone. */
-  padding: 12px 20px calc(16px + env(safe-area-inset-bottom));
+  padding:
+    var(--tabbar-pad-top)
+    var(--tabbar-pad-x)
+    calc(var(--tabbar-pad-bottom) + env(safe-area-inset-bottom));
   z-index: 10;
 }
 
@@ -804,8 +820,14 @@ label {
      паддинга (~6px) от каждой вкладки, сильнее всего заметно на крайних
      табах (баг "капля съезжает к краю", 14.08.2026). */
   left: var(--tabbar-pad-x);
-  top: 6px;
-  bottom: calc(6px + env(safe-area-inset-bottom));
+  /* Ровно строка кнопок, расширенная на --blob-grow в обе стороны. Раньше
+     верх и низ задавались одним числом (6px), а отступы бара сверху и
+     снизу разные — плюс зона безопасности снизу. Из-за этого на айфоне с
+     индикатором дома иконка с подписью сидели выше центра капли. */
+  top: calc(var(--tabbar-pad-top) - var(--blob-grow));
+  bottom: calc(
+    var(--tabbar-pad-bottom) + env(safe-area-inset-bottom) - var(--blob-grow)
+  );
   z-index: 2;
   border-radius: 999px;
   /* Без единого filter/backdrop-filter — 4-й заход 15.08.2026. Владелец
@@ -820,11 +842,69 @@ label {
      контуров иконки. Убрали blur/backdrop-filter полностью — плотная
      полупрозрачная заливка без фильтров, контур/тень для объёма. Просто и
      предсказуемо, ничего специфичного для конкретного движка. */
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.35);
+  /* Liquid Glass, вариант Regular (Apple HIG, Materials). Многослойная
+     композиция: тонированное тело + кромка + внутренние блики + тень.
+     Сверху тело светлее, снизу темнее — так ведёт себя выпуклое стекло,
+     собирающее свет к верхней кромке. */
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.18) 0%,
+      rgba(255, 255, 255, 0.1) 45%,
+      rgba(255, 255, 255, 0.06) 100%
+    );
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    /* адаптивная тень: мягкая объёмная + контактная, прижимающая каплю */
+    0 6px 16px rgba(0, 0, 0, 0.34),
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    /* кромка преломления: свет собирается по верхнему краю и слабо
+       возвращается снизу — у Apple это lensing, а не рассеивание */
+    inset 0 1px 1px rgba(255, 255, 255, 0.45),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.12),
+    inset 0 0 12px rgba(255, 255, 255, 0.06);
   cursor: grab;
   touch-action: none;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Спекулярный блик. У Apple он откликается на движение — здесь его
+   положение и яркость приходят из --spec-x / --spec-opacity, которые
+   TabBar считает из той же сглаженной скорости, что управляет желейной
+   деформацией капли. */
+.tab-blob::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    120% 80% at calc(50% + var(--spec-x, 0px)) -20%,
+    rgba(255, 255, 255, var(--spec-opacity, 0.32)) 0%,
+    rgba(255, 255, 255, 0.08) 45%,
+    rgba(255, 255, 255, 0) 70%
+  );
+}
+
+/* Вторая, узкая полоса блика у самой кромки — то самое «собирание» света
+   по краю, которым стекло отличается от матовой подложки. */
+.tab-blob::after {
+  content: "";
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 1px;
+  height: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(var(--spec-x, 0px));
 }
 
 .tab-blob:active {
@@ -1387,8 +1467,8 @@ label {
    Сделки — шаг 1") — до этого нигде не было видно, что подтверждение
    состоит из двух шагов (факт -> оценка). */
 .confirm-step-label {
-  font-size: 13px;
-  font-weight: 600;
+  /* Размер/вес/трекинг/капс — из общей выжимки роли Eyebrow выше.
+     Цвет переопределён: в макете шаг подсвечен лаймом, а не приглушён. */
   color: var(--gold);
   margin-bottom: 12px;
 }
@@ -1431,13 +1511,23 @@ label {
 /* Роль Eyebrow (раздел 2): 11/13 · 700 · трекинг +14% · КАПС · #C7D1CC.
    Роль в шкале была, а класса под неё не существовало — надзаголовки
    набирались чем придётся. */
-.eyebrow {
+.eyebrow,
+.metric .label,
+.recruiter-metric-label,
+.confirm-step-label {
   font-size: var(--fs-eyebrow);
   line-height: 13px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-dim);
+}
+
+/* Идёт СТРОГО после выжимки роли: правила одинаковой специфичности, и
+   победит то, что ниже. Если поставить выше — приглушённый цвет роли
+   перекроет лаймовый, что и случилось на первом заходе. */
+.confirm-step-label {
+  color: var(--gold);
 }
 
 /* Вкладки экрана «Команда» (эталонный экран 18). Взаимоисключающая пара
@@ -1576,7 +1666,7 @@ label {
   position: absolute;
   cursor: pointer;
   inset: 0;
-  background: var(--tile);
+  background: var(--switch-off);
   border: 1px solid var(--glass-border);
   border-radius: 999px;
   transition: background 0.2s ease;
@@ -3076,9 +3166,7 @@ select {
 }
 
 .recruiter-metric-label {
-  font-size: 11px;
-  color: var(--text-dim);
-  margin-top: 4px;
+  margin-top: 8px;
 }
 
 .activity-status-toggle {
@@ -3554,6 +3642,10 @@ select {
   margin-bottom: 8px;
   padding: 4px 8px;
   border-radius: 8px;
+  /* В макетах плашка набрана капсом с трекингом, как и прочие
+     надзаголовки (роль Eyebrow, раздел 2). */
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   /* В макете плашка — та же плашка-плитка #1e4048, что у тегов, но с
      лаймовым текстом; голубой заливки с рамкой там нет. */
   background: #1e4048;

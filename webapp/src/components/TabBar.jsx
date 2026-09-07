@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { motion, useAnimation, useMotionValue, useSpring, useTransform, useVelocity } from "framer-motion";
+import {
+  motion, useAnimation, useMotionTemplate, useMotionValue, useSpring, useTransform, useVelocity,
+} from "framer-motion";
 import { useLang } from "../i18n.jsx";
 
 function IconUser(props) {
@@ -86,6 +88,18 @@ export function TabBar({ active, onChange }) {
   const smoothVelocity = useSpring(xVelocity, { damping: 70, stiffness: 100 });
   const scaleX = useTransform(smoothVelocity, [-3000, 0, 3000], [1.1, 1, 1.1], { clamp: true });
   const skewX = useTransform(smoothVelocity, [-3000, 0, 3000], [-3, 0, 3], { clamp: true });
+  // Спекулярный блик, откликающийся на движение (Apple HIG, Materials:
+  // «specular highlights respond to device motion»). Блик отстаёт от
+  // движения — смещается ПРОТИВ хода капли, как отражение на стекле,
+  // и разгорается тем сильнее, чем быстрее она едет.
+  const specX = useTransform(smoothVelocity, [-3000, 0, 3000], [14, 0, -14], { clamp: true });
+  const specOpacity = useTransform(
+    smoothVelocity, [-3000, -600, 0, 600, 3000], [0.52, 0.36, 0.3, 0.36, 0.52], { clamp: true },
+  );
+  // Готовим строку на ВЕРХНЕМ уровне компонента: сама капля отрисовывается
+  // условно (tabWidth > 0), и вызов хука внутри той ветки сделал бы его
+  // условным — React такого не допускает.
+  const specXCss = useMotionTemplate`${specX}px`;
 
   useEffect(() => {
     // ВАЖНО: не offsetWidth(bar)/5 — .tabbar имеет собственный горизонтальный
@@ -142,7 +156,14 @@ export function TabBar({ active, onChange }) {
       {tabWidth > 0 && (
         <motion.div
           className="tab-blob"
-          style={{ width: tabWidth, x, scaleX, skewX }}
+          style={{
+            width: tabWidth,
+            x,
+            scaleX,
+            skewX,
+            "--spec-x": specXCss,
+            "--spec-opacity": specOpacity,
+          }}
           animate={controls}
           drag="x"
           dragConstraints={barRef}

@@ -110,6 +110,29 @@ def partnership_base_weight(ptype: str, repeat_index: int) -> float:
     return base * repeat_decay_factor(repeat_index)
 
 
+def tx_within_age_limit(tx_time: datetime | None, now: datetime) -> bool:
+    """ТЗ «Hash_Uniqueness», раздел 5 — транзакция не старше 12 месяцев на
+    момент создания партнёрства. Дата неизвестна (эксплорер не отдал) ->
+    True: отсутствие даты не повод лишать человека подтверждения, проверять
+    просто нечего."""
+    if tx_time is None:
+        return True
+    return (now - tx_time).days <= GC.TX_MAX_AGE_DAYS
+
+
+def amounts_match(declared: float | None, onchain: float | None) -> bool:
+    """Сошлись ли заявленная и ончейн суммы в пределах допуска (ТЗ
+    «Верификация транзакций», раздел 3): ±2% или ±$5, что больше.
+
+    Обе величины обязательны: если сверять не с чем (нет одной из сумм),
+    это НЕ совпадение — вызывающий код в таком случае оставляет состояние
+    «не проверено», а не «подтверждено»."""
+    if declared is None or onchain is None:
+        return False
+    tolerance = max(abs(declared) * GC.TX_AMOUNT_TOLERANCE_PCT, GC.TX_AMOUNT_TOLERANCE_ABS)
+    return abs(declared - onchain) <= tolerance
+
+
 def crypto_bonus_multiplier(verified: bool, company_match: bool) -> float:
     """5.4/5.5 — множитель к базовым очкам за верифицированный ончейн хеш;
     выше, если адрес совпал с верифицированным адресом компании (5.5,

@@ -14,7 +14,7 @@ export function OnboardingScreen() {
     <div>
       <div className="card">
         <div className="profile-header-card onboarding-mock-card">
-          <div className="profile-avatar-fallback onboarding-mock-avatar">🏃</div>
+          <div className="profile-avatar-fallback onboarding-mock-avatar">А</div>
           <div className="profile-header-info">
             <h2 className="onboarding-mock-placeholder">Name?</h2>
             <div className="profile-header-sub onboarding-mock-placeholder">Position?</div>

@@ -4,8 +4,9 @@ import {
 } from "../../api.js";
 import { Msg, Spinner } from "../Shared.jsx";
 import { useLang } from "../../i18n.jsx";
+import { IconWarning } from "../Icons.jsx";
 import { haptic } from "../../telegram.js";
-import { formatDate } from "../../utils.js";
+import { formatDate, initialOf } from "../../utils.js";
 
 // Экран "Команда" (ТЗ "Роли и управление командой", раздел 3.2, 27.08.2026)
 // — таб "Запросы" (только Владельцу, сервер сам не отдаёт requests не-
@@ -15,9 +16,11 @@ import { formatDate } from "../../utils.js";
 // управляет составом команды).
 export function TeamScreen({ onBack }) {
   const { t } = useLang();
-  const [tab, setTab] = useState("members");
   const [state, setState] = useState({ loading: true, data: null, error: null });
   const [actionError, setActionError] = useState(null);
+  // Вкладка экрана (эталонный экран 18). Открываемся на «Запросах»:
+  // владелец заходит сюда прежде всего разбирать заявки.
+  const [tab, setTab] = useState("requests");
 
   function load() {
     setState((s) => ({ ...s, loading: true, error: null }));
@@ -27,9 +30,6 @@ export function TeamScreen({ onBack }) {
   }
 
   useEffect(load, []);
-  useEffect(() => {
-    if (state.data?.requests?.length > 0) setTab("requests");
-  }, [state.data]);
 
   async function onApprove(requestId) {
     setActionError(null);
@@ -101,6 +101,8 @@ export function TeamScreen({ onBack }) {
   // сама кнопка "Принять" сразу неактивна, как на макете.
   const atLimit = isOwner && data.member_count >= data.member_limit;
 
+  const pendingCount = data.requests ? data.requests.length : 0;
+
   return (
     <div>
       <button type="button" className="subscreen-back" onClick={onBack}>
@@ -111,16 +113,6 @@ export function TeamScreen({ onBack }) {
           <h3>{t("team.title")}</h3>
           <span className="team-counter-badge">{t("team.counter", { count: data.member_count, limit: data.member_limit })}</span>
         </div>
-        {isOwner && (
-          <div className="workspace-switch" style={{ marginTop: 10 }}>
-            <button type="button" className={tab === "requests" ? "is-active" : ""} onClick={() => setTab("requests")}>
-              {t("team.tabRequests")}{data.requests?.length > 0 ? ` ${data.requests.length}` : ""}
-            </button>
-            <button type="button" className={tab === "members" ? "is-active" : ""} onClick={() => setTab("members")}>
-              {t("team.tabMembers")} {data.member_count}
-            </button>
-          </div>
-        )}
         {isOwner && typeof data.approvals_left_today === "number" && (
           <div className="partner-meta" style={{ marginTop: 6 }}>
             {t("team.approvalsLeftToday", { n: data.approvals_left_today })}
@@ -130,61 +122,135 @@ export function TeamScreen({ onBack }) {
 
       <Msg type="error">{actionError}</Msg>
 
+      {/* Вкладки, а не две секции стопкой (эталонный экран 18 и ТЗ «Роли и
+          команда», раздел 3.2). «Запросы» — только владельцу: участник
+          заявки не одобряет, и вкладка ему пустует без смысла. */}
+      {isOwner && (
+        <div className="team-tabs">
+          <button
+            type="button"
+            className={`team-tab${tab === "requests" ? " is-active" : ""}`}
+            onClick={() => setTab("requests")}
+          >
+            {t("team.requestsTitle")}
+            {pendingCount > 0 && <span className="chip">{pendingCount}</span>}
+          </button>
+          <button
+            type="button"
+            className={`team-tab${tab === "members" ? " is-active" : ""}`}
+            onClick={() => setTab("members")}
+          >
+            {t("team.membersTitle")}
+            <span className="chip">{data.member_count}</span>
+          </button>
+        </div>
+      )}
+
       {isOwner && tab === "requests" && (
-        <>
+        <div className="card">
+          <h3>{t("team.requestsTitle")}</h3>
           {(!data.requests || data.requests.length === 0) && (
             <div className="partner-meta">{t("team.requestsEmpty")}</div>
           )}
           {data.requests?.map((r) => (
             <div key={r.id} className="card">
-              <div className="partner-name">
-                {r.name || (r.username ? `@${r.username}` : t("common.noName"))}
-                {r.position_text ? ` — ${r.position_text}` : ""}
-              </div>
-              <div className="partner-meta">{formatDate(r.created_at)}</div>
-              <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
-                <button type="button" className="btn" onClick={() => onApprove(r.id)} disabled={atLimit}>
-                  {t("team.approveBtn")}
-                </button>
-                <button type="button" className="btn secondary" onClick={() => onReject(r.id)}>
-                  {t("team.rejectBtn")}
-                </button>
+              <div className="team-member-row">
+                <div className="avatar-dot">{initialOf(r.name, r.username)}</div>
+                <div className="team-member-main">
+                  <div className="partner-name">
+                    {r.name || (r.username ? `@${r.username}` : t("common.noName"))}
+                  </div>
+                  <div className="partner-meta">
+                    {r.position_text ? `${r.position_text} · ` : ""}
+                    {formatDate(r.created_at)}
+                  </div>
+                  <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
+                    <button
+                      type="button"
+                      className="btn secondary accent-lime"
+                      onClick={() => onApprove(r.id)}
+                      disabled={atLimit}
+                    >
+                      {t("team.approveBtn")}
+                    </button>
+                    <button type="button" className="btn secondary" onClick={() => onReject(r.id)}>
+                      {t("team.rejectBtn")}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           ))}
           {atLimit && data.requests?.length > 0 && (
             <div className="mismatch-banner">
-              ⚠️ {t("team.limitReachedBanner", { limit: data.member_limit, proLimit: 20 })}
-            </div>
-          )}
-        </>
-      )}
-
-      {(tab === "members" || !isOwner) && data.members.map((m) => (
-        <div key={m.user_id} className="card">
-          <div className="partner-name">
-            {m.name || (m.username ? `@${m.username}` : t("common.noName"))}
-            {/* 29.08.2026, регресс: .recruiter-role-badge — position:absolute
-                (задуман под наложение на аватар в RecruiterHub), тут ломал
-                вёрстку — бейдж наезжал на position_text ниже. .role-badge —
-                та же пилюля, но в потоке документа. */}
-            <span className="role-badge" style={{ marginLeft: 8 }}>
-              {t(`team.role.${m.role}`)}
-            </span>
-          </div>
-          {m.position_text && <div className="partner-meta">{m.position_text}</div>}
-          {isOwner && m.role !== "owner" && (
-            <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
-              <button type="button" className="btn secondary" onClick={() => onRemove(m.user_id, m.name || m.username)}>
-                {t("team.removeBtn")}
-              </button>
-              <button type="button" className="btn secondary" onClick={() => onTransfer(m.user_id, m.name || m.username)}>
-                {t("team.transferBtn")}
-              </button>
+              <IconWarning style={{ color: "var(--amber)" }} />{" "}
+          {t("team.limitReachedBanner", { limit: data.member_limit, proLimit: 20 })}
             </div>
           )}
         </div>
-      ))}
+      )}
+
+      {(!isOwner || tab === "members") && (
+      <div className="card">
+        <h3>
+          {t("team.membersTitle")}
+          {" · "}
+          {t("team.membersCounter", { count: data.member_count, limit: data.member_limit })}
+        </h3>
+        {data.members.map((m) => (
+          <div key={m.user_id} className="card">
+            <div className="team-member-row">
+              <div className="avatar-dot">{initialOf(m.name, m.username)}</div>
+              <div className="team-member-main">
+                <div className="partner-name">
+                  {m.name || (m.username ? `@${m.username}` : t("common.noName"))}
+                  {/* 29.08.2026, регресс: .recruiter-role-badge —
+                      position:absolute (задуман под наложение на аватар в
+                      RecruiterHub), тут ломал вёрстку. .role-badge — та же
+                      пилюля, но в потоке документа. */}
+                  <span
+                    className={`role-badge${m.role === "owner" ? " role-badge--owner" : ""}`}
+                    style={{ marginLeft: 8 }}
+                  >
+                    {t(`team.role.${m.role}`)}
+                  </span>
+                </div>
+                {m.position_text && <div className="partner-meta">{m.position_text}</div>}
+                {data.my_user_id === m.user_id && (
+                  <span className="role-badge role-badge--you">{t("team.isYou")}</span>
+                )}
+                {isOwner && m.role !== "owner" && (
+                  <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
+                    <button type="button" className="btn secondary" onClick={() => onRemove(m.user_id, m.name || m.username)}>
+                      {t("team.removeBtn")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn secondary accent-cyan"
+                      onClick={() => onTransfer(m.user_id, m.name || m.username)}
+                    >
+                      {t("team.transferBtn")}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      )}
+
+      {/* Пояснение из эталонного экрана 18. ТЗ называет это принципиально
+          важным: ролей всего две, и реальная должность человека прав не
+          добавляет — иначе непонятно, почему у аффилейт-менеджера и HR
+          одинаковые возможности. */}
+      <div className="card">
+        <h3>{t("team.rolesTitle")}</h3>
+        <div className="privacy-hint">{t("team.rolesOwner")}</div>
+        <div className="privacy-hint" style={{ marginBottom: 0 }}>
+          {t("team.rolesAdmin")}
+        </div>
+      </div>
     </div>
   );
 }

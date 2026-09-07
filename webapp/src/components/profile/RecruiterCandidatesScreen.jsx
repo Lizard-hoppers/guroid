@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { search, searchCandidates, searchByUserId, getCandidatesCount, ApiError } from "../../api.js";
+import { searchCandidates, searchByUserId, getCandidatesCount, ApiError } from "../../api.js";
 import { DirectoryRow } from "../SearchScreen.jsx";
 import { usePositions } from "../VacanciesScreen.jsx";
 import { Msg, MetricsRow, IdentityLine, WorkStatusBadge, Spinner, CharacteristicButton, WorkspaceCabinetBadge } from "../Shared.jsx";
@@ -56,20 +56,16 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
     };
   }, [username, vertical, grade, position, lookingOnly]);
 
-  async function runFilterSearch() {
+  // Один запрос на оба случая (06.09.2026): раньше текст уходил в личный
+  // поиск по юзернейму, который на описание отвечал 404 — отсюда жалоба
+  // «свободное описание не работает». Теперь текст и чипы уходят вместе,
+  // и сервер сам решает, юзернейм это или описание.
+  async function runSearch() {
     setState({ loading: true, data: null, error: null });
     try {
-      const data = await searchCandidates({ vertical, grade, position, looking: lookingOnly, top: topRating });
-      setState({ loading: false, data, error: null });
-    } catch (error) {
-      setState({ loading: false, data: null, error });
-    }
-  }
-
-  async function runUsernameSearch() {
-    setState({ loading: true, data: null, error: null });
-    try {
-      const data = await search(username.trim());
+      const data = await searchCandidates({
+        vertical, grade, position, looking: lookingOnly, top: topRating, q: username.trim(),
+      });
       setState({ loading: false, data, error: null });
     } catch (error) {
       setState({
@@ -86,11 +82,7 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
   // юзернейм или самостоятельный запрос), иначе используются чипы-фильтры.
   function onSubmit(e) {
     e.preventDefault();
-    if (username.trim()) {
-      runUsernameSearch();
-    } else {
-      runFilterSearch();
-    }
+    runSearch();
   }
 
   async function openCandidate(userId) {
@@ -225,16 +217,22 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
       {state.error && state.error !== "notFound" && <Msg type="error">{t("search.genericError")}</Msg>}
 
       {state.data?.mode === "profile" && (
-        <div className="directory-results">
+        <div className="directory-results directory-results--tiles">
           <DirectoryRow r={state.data} onOpen={openCandidate} showAvatar showRating />
         </div>
       )}
       {state.data?.mode === "list" && (
         <>
-          <div className="partner-meta">{t("recruiter.candidates.foundCount", { n: state.data.results.length })}</div>
+          <div className="partner-meta">
+            {/* Кнопка обещает число по счётчику, а список режется лимитом
+                показа — молчать об этом нельзя (стр. 5 отчёта). */}
+            {state.data.truncated
+              ? t("recruiter.candidates.foundTruncated", { n: state.data.results.length })
+              : t("recruiter.candidates.foundCount", { n: state.data.results.length })}
+          </div>
           {state.data.results.length === 0 && <div className="partner-meta">{t("search.emptyList")}</div>}
           {state.data.results.length > 0 && (
-            <div className="directory-results">
+            <div className="directory-results directory-results--tiles">
               {state.data.results.map((r) => (
                 <DirectoryRow key={r.user_id} r={r} onOpen={openCandidate} showAvatar showRating />
               ))}

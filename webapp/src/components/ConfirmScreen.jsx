@@ -4,6 +4,7 @@ import { Msg, Spinner, PartnersList } from "./Shared.jsx";
 import { RatePartnershipScreen } from "./RatePartnershipScreen.jsx";
 import { haptic } from "../telegram.js";
 import { useLang } from "../i18n.jsx";
+import { IconCheck, IconCross, IconWarning } from "./Icons.jsx";
 import { formatDate } from "../utils.js";
 
 // Список "Ждут вашей оценки" (28.08.2026, макет "07 · Сделки — шаг 2") —
@@ -61,9 +62,9 @@ function PartnershipHistoryScreen({ partners, onBack }) {
       </button>
       <h3>{t("confirm.history.title")}</h3>
       <p className="partner-meta">
-        ✅ {counts.success || 0} {t("confirm.history.successLabel")}
-        {" · "}⚠ {counts.nuance || 0} {t("confirm.history.nuanceLabel")}
-        {" · "}❌ {counts.problematic || 0} {t("confirm.history.problematicLabel")}
+        <IconCheck style={{ color: "var(--gold)" }} /> {counts.success || 0} {t("confirm.history.successLabel")}
+        {" · "}<IconWarning style={{ color: "var(--amber)" }} /> {counts.nuance || 0} {t("confirm.history.nuanceLabel")}
+        {" · "}<IconCross style={{ color: "var(--danger)" }} /> {counts.problematic || 0} {t("confirm.history.problematicLabel")}
         {" · "}{t("confirm.history.allTime")}
       </p>
       <div className="privacy-hint">{t("confirm.history.hint")}</div>
@@ -76,9 +77,46 @@ const ERROR_KEYS = {
   SELF_PARTNERSHIP: "confirm.error.SELF_PARTNERSHIP",
   RATE_LIMITED: "confirm.error.RATE_LIMITED",
   NO_CONFIRMER_PROFILE: "confirm.error.NO_CONFIRMER_PROFILE",
-  INVALID_TYPE: "confirm.error.generic",
-  INVALID_NETWORK: "confirm.error.generic",
+  // Раньше эти две вели на общий текст «Не получилось отправить заявку»,
+  // и человек не понимал, что именно поправить (05.09.2026, отчёт
+  // тестирования). Теперь у каждой свой текст.
+  INVALID_TYPE: "confirm.error.INVALID_TYPE",
+  INVALID_NETWORK: "confirm.error.INVALID_NETWORK",
+  COMPANY_SUBSCRIPTION_REQUIRED: "confirm.error.COMPANY_SUBSCRIPTION_REQUIRED",
+  TX_HASH_REQUIRED: "confirm.error.TX_HASH_REQUIRED",
+  // Занятый хеш (ТЗ «Hash_Uniqueness», раздел 3). Случай A разбирается
+  // отдельно ниже — ему нужны имя контрагента и дата, а эта карта умеет
+  // только код -> ключ.
+  TX_HASH_ALREADY_USED: "confirm.error.TX_HASH_ALREADY_USED",
+  TX_HASH_USED_BY_OWN: "confirm.error.TX_HASH_USED_BY_OWN",
 };
+
+// Случай A из раздела 3 ТЗ «Hash_Uniqueness»: имя контрагента и дата
+// приходят вместе с кодом отказа — подставляем их в текст. Если сервер их
+// почему-то не прислал, остаётся общая формулировка без подробностей.
+function formatSubmitError(error, t) {
+  const code = error instanceof ApiError ? error.code : null;
+  if (code === "TX_HASH_USED_BY_OWN") {
+    const username = error.details?.partner_username;
+    const date = error.details?.partnership_date;
+    if (username && date) {
+      return t("confirm.error.TX_HASH_USED_BY_OWN", {
+        partner: `@${username}`,
+        date: formatPartnershipDate(date),
+      });
+    }
+    return t("confirm.error.TX_HASH_USED_BY_OWN_SHORT");
+  }
+  return t((code && ERROR_KEYS[code]) || "confirm.error.generic");
+}
+
+// Дата приходит строкой из БД; показываем её так же, как в истории
+// партнёрств — днём и месяцем, без времени.
+function formatPartnershipDate(raw) {
+  const parsed = new Date(String(raw).replace(" ", "T"));
+  if (Number.isNaN(parsed.getTime())) return String(raw);
+  return parsed.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+}
 
 const EMPTY_FORM = {
   confirmerUsername: "",
@@ -89,8 +127,12 @@ const EMPTY_FORM = {
   amountReceived: "",
   amountPaid: "",
   amountVisible: false,
+  // Безоплатное партнёрство (ТЗ раздел 9.1): факт сотрудничества был,
+  // прямого платежа между сторонами — нет. Доступно для ОБОИХ типов.
+  noPayment: false,
   txHash: "",
   txNetwork: "",
+  isFlaggedFraud: false,
 };
 
 // forcedType/onBack (26.08.2026, ТЗ "Гуро рекрутер каб", раздел 3-4) —
@@ -170,7 +212,7 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
   const errorText = state.error
     ? state.error instanceof ApiError && state.error.code === "DAILY_REQUEST_LIMIT_REACHED"
       ? t("confirm.error.DAILY_REQUEST_LIMIT_REACHED", { date: formatDate(state.error.details?.resets_at) })
-      : t((state.error instanceof ApiError && ERROR_KEYS[state.error.code]) || "confirm.error.generic")
+      : formatSubmitError(state.error, t)
     : null;
 
   if (rating) {
@@ -196,8 +238,16 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
 
   return (
     <div>
-      {showPendingRatings && pendingRatings === null && <Spinner>{t("messages.loading")}</Spinner>}
-      {showPendingRatings && <PendingRatingsList items={pendingRatings} onOpen={setRating} />}
+      {/* Спиннер стоит НА МЕСТЕ будущего списка и заменяется им. Раньше
+          рисовались оба сразу: спиннер отдельным блоком НАД списком, и
+          когда данные приходили, он исчезал — всё нижележащее прыгало
+          вверх на его высоту. */}
+      {showPendingRatings &&
+        (pendingRatings === null ? (
+          <Spinner>{t("messages.loading")}</Spinner>
+        ) : (
+          <PendingRatingsList items={pendingRatings} onOpen={setRating} />
+        ))}
       {showPendingRatings && (
         <div className="card">
           <button type="button" className="profile-menu-item" onClick={() => setShowHistory(true)}>
@@ -217,7 +267,7 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
         {asCompany && <div className="company-verify-status is-verified">{t("confirm.asCompanyHint")}</div>}
         <div className="privacy-hint">{t("confirm.hint")}</div>
         <form onSubmit={onSubmit}>
-        <label>{t("confirm.usernameLabel")}</label>
+        <label>{t("confirm.usernameLabel")} *</label>
         <input
           type="text"
           placeholder={t("confirm.usernamePlaceholder")}
@@ -227,7 +277,7 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
         {!forcedType && (
           <>
             <label>{t("confirm.ptypeLabel")} *</label>
-            <div className="vertical-chips">
+            <div className="vertical-chips vertical-chips--accent">
               <button
                 type="button"
                 className={`vertical-chip${form.ptype === "deal" ? " is-selected" : ""}`}
@@ -246,7 +296,7 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
             <p className="partner-meta">{t("confirm.ptypeHint")}</p>
           </>
         )}
-        <label>{t("confirm.verticalLabel")}</label>
+        <label>{t("confirm.verticalLabel")} *</label>
         <input
           type="text"
           placeholder={t("confirm.verticalLabel")}
@@ -260,14 +310,28 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
           value={form.geo}
           onChange={(e) => set("geo", e.target.value)}
         />
-        <label>{t("confirm.offerLabel")}</label>
+        <label>{t("confirm.offerLabel")} *</label>
         <input
           type="text"
           placeholder={t("confirm.offerPlaceholder")}
           value={form.offer}
           onChange={(e) => set("offer", e.target.value)}
         />
-        <label>{t("confirm.amountLabel")}</label>
+        {/* Над денежным блоком, чтобы человек увидел его ДО того, как
+            начнёт заполнять суммы (ТЗ раздел 13). */}
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={form.noPayment}
+            onChange={(e) => set("noPayment", e.target.checked)}
+          />
+          {t("confirm.noPaymentLabel")}
+        </label>
+        <div className="privacy-hint">{t("confirm.noPaymentHint")}</div>
+
+        {!form.noPayment && (
+          <>
+        <label>{t("confirm.amountLabel")} *</label>
         <div className="amount-row">
           <input
             type="number"
@@ -284,6 +348,9 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
             onChange={(e) => set("amountPaid", e.target.value)}
           />
         </div>
+        <div className="privacy-hint" style={{ marginTop: 8 }}>
+          {t("confirm.amountRequiredHint")}
+        </div>
         <label className="checkbox-row">
           <input
             type="checkbox"
@@ -292,16 +359,24 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
           />
           {t("confirm.amountVisible")}
         </label>
-        <label>{t("confirm.txHashLabel")}</label>
+        <label>{t("confirm.txHashLabel")} *</label>
         <input
           type="text"
           placeholder={t("confirm.txHashPlaceholder")}
           value={form.txHash}
           onChange={(e) => set("txHash", e.target.value)}
         />
-        <div className="privacy-hint" style={{ marginTop: -6, marginBottom: 10 }}>
+        {/* Отступ положительный: раньше тут стоял marginTop: -6 и подсказка
+            наезжала на поле ввода. */}
+        <div className="privacy-hint" style={{ marginTop: 8 }}>
           {t("confirm.txHashHint")}
         </div>
+        {/* Требование объясняется ДО того, как человек упрётся в неактивную
+            кнопку: сама по себе звёздочка не говорит, почему без хеша
+            нельзя («рекрутер каб.pdf», стр. 4). */}
+        {!form.noPayment && !form.txHash.trim() && (
+          <div className="tx-required-note">{t("confirm.txHashRequired")}</div>
+        )}
         {form.txHash.trim() && (
           <>
             <label>{t("confirm.txNetworkLabel")}</label>
@@ -313,12 +388,37 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
             </select>
           </>
         )}
+          </>
+        )}
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={form.isFlaggedFraud}
+            onChange={(e) => set("isFlaggedFraud", e.target.checked)}
+          />
+          {t("confirm.flagFraudLabel")}
+        </label>
         <button
           className="btn"
           type="submit"
           disabled={
-            state.loading || !form.confirmerUsername.trim() ||
-            (!!form.txHash.trim() && !form.txNetwork)
+            state.loading ||
+            // Обязательные поля (05.09.2026): всё, кроме гео и хэша/ссылки.
+            // Тип партнёрства не проверяем — у него есть значение по
+            // умолчанию и пустым он не бывает.
+            !form.confirmerUsername.trim() ||
+            !form.vertical.trim() ||
+            !form.offer.trim() ||
+            // Сумма односторонняя: хватает любого одного из двух полей.
+            // У безоплатного партнёрства денег нет вовсе — проверку суммы
+            // и хеша выключаем целиком (ТЗ раздел 9.1).
+            (!form.noPayment &&
+              !String(form.amountReceived).trim() &&
+              !String(form.amountPaid).trim()) ||
+            (!form.noPayment && !!form.txHash.trim() && !form.txNetwork) ||
+            // «Нет хеша — сделки не было» («рекрутер каб.pdf», стр. 4).
+            // У безоплатного партнёрства перевода нет вовсе — не требуем.
+            (!form.noPayment && !form.txHash.trim())
           }
         >
           {state.loading ? t("confirm.submitting") : t("confirm.submit")}

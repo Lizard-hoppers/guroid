@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, useAnimation } from "framer-motion";
-import { formatDate, initialOf } from "../utils.js";
+import { formatDate } from "../utils.js";
 import { ApiError, deleteRating, ratePartnership, setProfileField, setWorkStatus } from "../api.js";
 import { haptic } from "../telegram.js";
 import { useLang } from "../i18n.jsx";
+import { IconCheck, IconCross, IconLock, IconWarning } from "./Icons.jsx";
 
 // Статус трудоустройства (10.08.2026) — публичный маркер вроде "Open to
 // Work" в LinkedIn, виден ВСЕМ бесплатно (даже без подписки), не тумблер
@@ -31,15 +32,18 @@ export function WorkStatusBadge({ status }) {
   );
 }
 
+// 04.09.2026 — все три статуса одного цвета (лайм) по просьбе владельца:
+// в сегментированном переключателе состояние и так читается позицией
+// капли, разный цвет для "Уже работаю" был лишним.
 const WORK_STATUS_BLOB_FILL = {
-  looking: "rgba(107, 191, 138, 0.22)",
-  neutral: "rgba(255, 255, 255, 0.14)",
-  working: "rgba(224, 101, 90, 0.22)",
+  looking: "rgba(170, 246, 74, 0.22)",
+  neutral: "rgba(170, 246, 74, 0.22)",
+  working: "rgba(170, 246, 74, 0.22)",
 };
 const WORK_STATUS_BLOB_BORDER = {
-  looking: "rgba(107, 191, 138, 0.55)",
-  neutral: "rgba(212, 175, 55, 0.28)",
-  working: "rgba(224, 101, 90, 0.55)",
+  looking: "rgba(170, 246, 74, 0.55)",
+  neutral: "rgba(170, 246, 74, 0.55)",
+  working: "rgba(170, 246, 74, 0.55)",
 };
 
 // Та же мягкая пружина, что у капли в таббаре (TabBar.jsx, WOBBLE) — один
@@ -168,20 +172,29 @@ export function Spinner({ children }) {
 function Metric({ label, value }) {
   return (
     <div className="metric">
-      <div className="value">{value === null || value === undefined ? "🔒" : value}</div>
+      <div className="value">
+        {value === null || value === undefined ? <IconLock /> : value}
+      </div>
       <div className="label">{label}</div>
     </div>
   );
 }
 
-export function MetricsRow({ reputation, partnerships, daysInCommunity }) {
+export function MetricsRow({ reputation, partnerships, daysInCommunity, showVisibilityHint = false }) {
   const { t } = useLang();
   return (
-    <div className="metrics-row">
-      <Metric label={t("metric.rating")} value={reputation} />
-      <Metric label={t("metric.partnerships")} value={partnerships} />
-      <Metric label={t("metric.daysInCommunity")} value={daysInCommunity} />
-    </div>
+    <>
+      <div className="metrics-row">
+        <Metric label={t("metric.rating")} value={reputation} />
+        <Metric label={t("metric.partnerships")} value={partnerships} />
+        <Metric label={t("metric.daysInCommunity")} value={daysInCommunity} />
+      </div>
+      {showVisibilityHint && (
+        <div className="hint-block">
+          <IconLock /> {t("identity.visibilityHint")}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -199,7 +212,9 @@ export function RatingPreview({ reputation, onOpen }) {
   const locked = reputation === null || reputation === undefined;
   return (
     <button type="button" className="rating-preview" onClick={onOpen}>
-      <div className="rating-preview-circle">{locked ? t("hub.ratingLocked") : Math.round(reputation)}</div>
+      <div className="rating-preview-circle">
+        {locked ? <IconLock /> : Math.round(reputation)}
+      </div>
     </button>
   );
 }
@@ -278,9 +293,11 @@ export function RatingCard({ reputation, tier, partnerships, daysInCommunity }) 
 // ТОЛЬКО когда обе стороны оценили или истёк таймаут (rating_revealed) —
 // anti-retaliation целиком на бэкенде, тут просто рендерим то, что пришло.
 const RATING_META = {
-  success: { emoji: "✅", labelKey: "rating.verdict.success" },
-  nuance: { emoji: "⚠️", labelKey: "rating.verdict.nuance" },
-  problematic: { emoji: "❌", labelKey: "rating.verdict.problematic" },
+  // Icon вместо emoji (07.09.2026, дизайн-система, раздел 6): один смысл —
+  // одна иконка, и в тексте, и в чипе рисуется одним набором.
+  success: { Icon: IconCheck, color: "var(--gold)", labelKey: "rating.verdict.success" },
+  nuance: { Icon: IconWarning, color: "var(--amber)", labelKey: "rating.verdict.nuance" },
+  problematic: { Icon: IconCross, color: "var(--danger)", labelKey: "rating.verdict.problematic" },
 };
 
 // onCancel передан только в РЕЖИМЕ РЕДАКТИРОВАНИЯ уже поставленной оценки
@@ -329,13 +346,13 @@ function RateWidget({ partnershipId, onRated, onCancel }) {
       <div className="partner-meta">{t("rating.ratePrompt")}</div>
       <div className="rate-widget-buttons">
         <button type="button" disabled={busy} onClick={() => submit("success")}>
-          ✅ {t("rating.verdict.success")}
+          <IconCheck style={{ color: "var(--gold)" }} /> {t("rating.verdict.success")}
         </button>
         <button type="button" disabled={busy} onClick={() => submit("nuance")}>
-          ⚠️ {t("rating.verdict.nuance")}
+          <IconWarning style={{ color: "var(--amber)" }} /> {t("rating.verdict.nuance")}
         </button>
         <button type="button" disabled={busy} onClick={() => setPendingComment(true)}>
-          ❌ {t("rating.verdict.problematic")}
+          <IconCross style={{ color: "var(--danger)" }} /> {t("rating.verdict.problematic")}
         </button>
       </div>
       {onCancel && (
@@ -355,6 +372,172 @@ function RateWidget({ partnershipId, onRated, onCancel }) {
 // пришло — без своей логики видимости. allowRating (25.08.2026) — ТОЛЬКО
 // для списка СВОИХ партнёрств (RatingSubscreen) — просмотр чужого списка
 // через SearchScreen никогда не показывает кнопки оценки (не участник сделки).
+// Зона загрузки картинки из галереи (28.08.2026; 05.09.2026 вынесена сюда
+// из CompanyHub — тем же компонентом грузится логотип кабинета Рекрутер).
+// Сама функция загрузки приходит пропом `upload`: у компании это
+// uploadCompanyImage со своим видом (logo/cover), у рекрутера —
+// uploadRecruiterImage, вид там всегда один.
+// Обёрнутый children кликабелен целиком (и пустое состояние, и уже
+// загруженная картинка — заменить тоже можно тапом), input[type=file]
+// спрятан рядом. Подсказка про формат/размер — ОТДЕЛЬНЫМ текстом под
+// зоной: сама зона тесная, надпись внутри неё нечитаема.
+export function ImageUploadArea({ upload, className, hintKey, onUploaded, onError, children, wrap = true }) {
+  const { t } = useLang();
+  const inputRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function onFileChange(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const extra = await upload(file);
+      onUploaded(extra);
+      haptic("success");
+    } catch (err) {
+      const code = err instanceof ApiError ? err.code : null;
+      const message =
+        code === "FILE_TOO_LARGE" ? t("company.upload.tooLarge") :
+        code === "UNSUPPORTED_FORMAT" ? t("company.upload.unsupported") :
+        t("company.upload.error");
+      if (onError) onError(message);
+      else setError(message);
+      haptic("error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Нативная связка label -> input вместо программного inputRef.click()
+  // (06.09.2026, «компания.pdf», стр. 1: «выбрал файл — выкинуло из
+  // приложения»). Синтетический клик по спрятанному display:none инпуту
+  // разрывает цепочку пользовательской активации, вебвью Telegram теряет
+  // фокус и сворачивает мини-приложение. По клику по label выборщик
+  // открывает сам браузер, JS в цепочке нет.
+  const trigger = (
+    <>
+      <label className={`${className}${busy ? " is-uploading" : ""} upload-trigger`}>
+        {children}
+        {/* Не display:none: так инпут выпадает из дерева отрисовки, и часть
+            движков перестаёт его активировать по label. Прячем размером. */}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="upload-input"
+          disabled={busy}
+          onChange={onFileChange}
+        />
+      </label>
+    </>
+  );
+
+  if (!wrap) return trigger;
+  return (
+    <div>
+      {trigger}
+      {hintKey && <p className="partner-meta company-upload-hint">{t(hintKey)}</p>}
+      {error && <Msg type="error">{error}</Msg>}
+    </div>
+  );
+}
+
+// Ссылка на транзакцию в эксплорере (ТЗ раздел 6). Для известных сетей —
+// прямо на страницу транзакции, иначе универсальный поиск blockchair.
+const TX_EXPLORERS = {
+  tron: (h) => `https://tronscan.org/#/transaction/${h}`,
+  ethereum: (h) => `https://etherscan.io/tx/${h}`,
+  bsc: (h) => `https://bscscan.com/tx/${h}`,
+};
+
+function explorerUrl(network, hash) {
+  const build = TX_EXPLORERS[network];
+  return build ? build(hash) : `https://blockchair.com/search?q=${encodeURIComponent(hash)}`;
+}
+
+// Многоточие ПОСЕРЕДИНЕ: хвост хеша так же важен для сверки глазами, как и
+// начало, поэтому обычный overflow с обрезкой справа тут не годится.
+function shortHash(hash) {
+  return hash.length <= 24 ? hash : `${hash.slice(0, 10)}…${hash.slice(-10)}`;
+}
+
+// Три состояния проверки + сам хеш (ТЗ разделы 2, 6, 10, 11).
+function TxVerification({ partner }) {
+  const { t } = useLang();
+  const [copied, setCopied] = useState(false);
+  const declared = partner.amount_received ?? partner.amount_paid ?? null;
+  const hasAmount = declared !== null;
+  // У безоплатного партнёрства состояния нет — писать «сумма со слов
+  // сторон» не о чем. Суммы скрыты приватностью — тоже молчим.
+  if (!hasAmount) return null;
+
+  const state = partner.tx_state || "none";
+
+  async function copyHash() {
+    try {
+      await navigator.clipboard.writeText(partner.tx_hash);
+      setCopied(true);
+      haptic("light");
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      haptic("error");
+    }
+  }
+
+  return (
+    <div className="tx-block">
+      {state === "verified" && (
+        <div className="tx-state tx-state--verified">
+          <IconCheck /> {t("partner.tx.verified")}
+        </div>
+      )}
+      {state === "mismatch" && (
+        <div className="tx-state tx-state--mismatch">
+          <div>
+            <IconWarning /> {t("partner.tx.mismatch")}
+          </div>
+          <div className="tx-state-amounts">
+            {t("partner.tx.declared")}: ${declared}
+            {partner.tx_amount != null ? ` · ${t("partner.tx.onchain")}: $${partner.tx_amount}` : ""}
+          </div>
+        </div>
+      )}
+      {state === "none" && (
+        <div className="tx-state tx-state--none">
+          {/* Без этой оговорки состояние выглядит необъяснимым: хеш
+              приложен, транзакция настоящая, сумма сходится — а
+              подтверждения нет (ТЗ «Hash_Uniqueness», раздел 5). */}
+          {partner.tx_verify_error === "TX_TOO_OLD"
+            ? t("partner.tx.tooOld")
+            : t("partner.tx.none")}
+        </div>
+      )}
+
+      {partner.tx_hash && (
+        <div className="tx-hash-row">
+          <span className="tx-hash-value">{shortHash(partner.tx_hash)}</span>
+          <button type="button" className="tx-hash-copy" onClick={copyHash}>
+            {copied ? t("partner.tx.copied") : t("partner.tx.copy")}
+          </button>
+        </div>
+      )}
+      {partner.tx_hash && (
+        <a
+          className="tx-explorer-link"
+          href={explorerUrl(partner.tx_network, partner.tx_hash)}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {t("partner.tx.explorer")}
+        </a>
+      )}
+    </div>
+  );
+}
+
 export function PartnerRow({ partner, allowRating = false }) {
   const { t } = useLang();
   const [myRating, setMyRating] = useState(partner.my_rating);
@@ -395,17 +578,35 @@ export function PartnerRow({ partner, allowRating = false }) {
     : (allowRating ? t("partner.wordsYours") : t("partner.wordsInitiator"));
 
   return (
-    <div className="partner-row">
-      <div className="avatar-dot">{initialOf(partner.name, partner.username)}</div>
-      <div className="partner-info">
-        <div className="partner-name">{displayName}</div>
-        <div className="partner-meta">
-          {partner.username && partner.name ? `@${partner.username} · ` : ""}
-          {formatDate(partner.confirmed_at)}
-          {partner.ptype === "hire" ? ` · ${t("confirm.ptype.hire")}` : ""}
-          {partner.vertical ? ` · ${partner.vertical}` : ""}
-          {partner.geo ? ` · ${partner.geo}` : ""}
+    <div className={`partner-row${myRating ? ` partner-row--${myRating}` : ""}`}>
+      {/* Шапка карточки: слева имя и мета, справа — бейдж своей оценки
+          (макет "07 · История партнёрств"). Раньше оценка шла строкой
+          "Моя оценка: …" внутри тела, а слева стояла аватарка-кружок,
+          которой в макете нет. */}
+      <div className="partner-row-head">
+        <div className="partner-info">
+          <div className="partner-name">{displayName}</div>
+          <div className="partner-meta">
+            {partner.username && partner.name ? `@${partner.username} · ` : ""}
+            {formatDate(partner.confirmed_at)}
+            {partner.ptype === "hire" ? ` · ${t("confirm.ptype.hire")}` : ""}
+            {partner.vertical ? ` · ${partner.vertical}` : ""}
+            {partner.geo ? ` · ${partner.geo}` : ""}
+          </div>
         </div>
+        {myRating && !editingRating && (
+          <span className={`partner-verdict partner-verdict--${myRating}`}>
+            {(() => {
+              const { Icon, color } = RATING_META[myRating];
+              return <Icon style={{ color }} />;
+            })()}{" "}
+            {t(RATING_META[myRating].labelKey)}
+          </span>
+        )}
+        {!partner.counts_toward_rating && (
+          <span className="badge-unrated">{t("partner.notRated")}</span>
+        )}
+      </div>
         {partner.offer && (
           <div className="partner-offer">
             <span className="partner-words-label">{wordsLabel}: </span>
@@ -424,12 +625,7 @@ export function PartnerRow({ partner, allowRating = false }) {
         {/* Хэш транзакции (16.08.2026) — привязан к той же видимости, что
             сумма (amount_visible на бэкенде, guro_id_api._profile_summary) —
             это подтверждение именно суммы, отдельного тумблера не заводили. */}
-        {partner.tx_hash && (
-          <div className="partner-meta partner-tx-hash">
-            {t("partner.txHash")}: <span className="partner-tx-hash-value">{partner.tx_hash}</span>
-            {partner.tx_verified ? ` · ${t("partner.txVerified")}` : ""}
-          </div>
-        )}
+        <TxVerification partner={partner} />
         {/* review — legacy-поле (см. handle_create_partnership, 25.08.2026:
             новые сделки его больше не собирают), но старые записи ещё
             встречаются и несут ту же атрибуцию (писал ИНИЦИАТОР). */}
@@ -439,31 +635,27 @@ export function PartnerRow({ partner, allowRating = false }) {
             «{partner.review}»
           </div>
         )}
-        {myRating && !editingRating && (
-          <div className="partner-meta">
-            {t("rating.myRating")}: {RATING_META[myRating].emoji} {t(RATING_META[myRating].labelKey)}
-            {allowRating && (
-              <>
-                {" · "}
-                <button type="button" className="rate-inline-link" onClick={() => setEditingRating(true)}>
-                  {t("rating.editLink")}
-                </button>
-                {" · "}
-                <button
-                  type="button"
-                  className="rate-inline-link"
-                  disabled={deletingRating}
-                  onClick={handleDeleteRating}
-                >
-                  {t("rating.deleteLink")}
-                </button>
-              </>
-            )}
+        {/* Сам вердикт теперь в бейдже шапки — тут остаются только действия. */}
+        {myRating && !editingRating && allowRating && (
+          <div className="partner-row-actions">
+            <button type="button" className="rate-inline-link" onClick={() => setEditingRating(true)}>
+              {t("rating.editLink")}
+            </button>
+            {" · "}
+            <button
+              type="button"
+              className="rate-inline-link rate-inline-link--danger"
+              disabled={deletingRating}
+              onClick={handleDeleteRating}
+            >
+              {t("rating.deleteLink")}
+            </button>
           </div>
         )}
         {otherMeta && (
-          <div className="partner-meta">
-            {t("rating.otherRating")}: {otherMeta.emoji} {t(otherMeta.labelKey)}
+          <div className="partner-offer">
+            <span className="partner-words-label">{t("rating.otherRating")}:</span>
+            <otherMeta.Icon style={{ color: otherMeta.color }} /> {t(otherMeta.labelKey)}
             {partner.other_rating_comment && ` — «${partner.other_rating_comment}»`}
           </div>
         )}
@@ -473,7 +665,9 @@ export function PartnerRow({ partner, allowRating = false }) {
             !rating_revealed отличает это от случая "окно 14 дней истекло,
             собеседник так и не оценил" — тогда сообщение было бы враньём. */}
         {myRating && !otherMeta && !partner.rating_revealed && (
-          <div className="partner-meta">🔒 {t("rating.otherHidden")}</div>
+          <div className="partner-meta">
+          <IconLock /> {t("rating.otherHidden")}
+        </div>
         )}
         {allowRating && (!myRating || editingRating) && (
           <RateWidget
@@ -482,8 +676,63 @@ export function PartnerRow({ partner, allowRating = false }) {
             onCancel={myRating ? () => setEditingRating(false) : null}
           />
         )}
+    </div>
+  );
+}
+
+// Счётчики оборота (ТЗ «Верификация транзакций», разделы 7-8, 12).
+// В подтверждённую сумму попадают ТОЛЬКО сделки с проверенной ончейн
+// транзакцией — накрутить такую цифру нельзя, не совершив реальный
+// перевод на эту сумму. Заявленное без подтверждения идёт отдельной
+// строкой и намеренно приглушено, чтобы не смешивалось с проверенным.
+function formatMoney(value) {
+  return `$${Math.round(value || 0).toLocaleString("ru-RU").replace(/\u00a0/g, " ")}`;
+}
+
+export function TurnoverCard({ turnover }) {
+  const { t } = useLang();
+  if (!turnover) return null;
+  const unverified = (turnover.unverified_received || 0) + (turnover.unverified_paid || 0);
+
+  const empty = !turnover.received && !turnover.paid && !unverified;
+
+  return (
+    <div className="card">
+      <h3>{t("turnover.title")}</h3>
+      {/* Слово «ончейн» стоит здесь, а не у каждой цифры: оно объясняет
+          природу обеих сумм разом и не рвёт узкую ячейку на две строки. */}
+      <div className="turnover-hint">{t("turnover.hint")}</div>
+      <div className="turnover-row">
+        <TurnoverCell label={t("turnover.received")} value={turnover.received} />
+        <TurnoverCell label={t("turnover.paid")} value={turnover.paid} />
       </div>
-      {!partner.counts_toward_rating && <span className="badge-unrated">{t("partner.notRated")}</span>}
+      {unverified > 0 && (
+        <div className="turnover-unverified">
+          {t("turnover.unverified", { amount: formatMoney(unverified) })}
+        </div>
+      )}
+      {/* У новичка ноль будет всегда — подаём его как начало пути, а не как
+          упрёк (ТЗ раздел 12). */}
+      {empty && <div className="turnover-empty">{t("turnover.empty")}</div>}
+    </div>
+  );
+}
+
+function TurnoverCell({ label, value }) {
+  const { t } = useLang();
+  return (
+    <div className="turnover-cell">
+      <div className="turnover-label">{label}</div>
+      <div className={`turnover-value${value ? "" : " turnover-value--zero"}`}>
+        {formatMoney(value)}
+      </div>
+      {/* Пометка ровно у цифры — она объясняет, почему сумме можно верить.
+          У нуля её нет: подтверждать нечего. */}
+      {value > 0 && (
+        <div className="turnover-note">
+          <IconCheck /> {t("turnover.confirmed")}
+        </div>
+      )}
     </div>
   );
 }
@@ -704,14 +953,13 @@ export function CharacteristicButton({ profile }) {
   const [open, setOpen] = useState(false);
   const hasOffers = !!(profile.looking_for || profile.offering);
   return (
-    <div>
+    <div className="characteristic-wrap">
       <button
         type="button"
-        className="btn secondary"
-        style={{ marginTop: 8 }}
+        className="btn outline-accent"
         onClick={() => setOpen((v) => !v)}
       >
-        🪪 {open ? t("characteristic.hide") : t("characteristic.button")}
+        {open ? t("characteristic.hide") : t("characteristic.button")}
       </button>
       {open && (
         <>

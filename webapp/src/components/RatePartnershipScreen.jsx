@@ -3,6 +3,7 @@ import { ratePartnership, ApiError } from "../api.js";
 import { Msg } from "./Shared.jsx";
 import { haptic } from "../telegram.js";
 import { useLang } from "../i18n.jsx";
+import { IconCheck, IconCross, IconLock, IconWarning } from "./Icons.jsx";
 import { formatDate } from "../utils.js";
 
 // Оценка партнёрства, Шаг 2 из 2 (28.08.2026, макет "07 · Сделки — шаг 2
@@ -71,27 +72,27 @@ export function RatePartnershipScreen({ partnership, onBack, onDone }) {
 
       <form onSubmit={onSubmit}>
         <label>{t("confirm.rate.verdictLabel")} *</label>
-        <div className="vertical-chips">
+        <div className="vertical-chips vertical-chips--accent">
           <button
             type="button"
             className={`vertical-chip${verdict === "success" ? " is-selected" : ""}`}
             onClick={() => setVerdict("success")}
           >
-            ✅ {t("rating.verdict.success")}
+            <IconCheck /> {t("rating.verdict.success")}
           </button>
           <button
             type="button"
             className={`vertical-chip${verdict === "nuance" ? " is-selected" : ""}`}
             onClick={() => setVerdict("nuance")}
           >
-            ⚠️ {t("confirm.rate.verdictBtn.nuance")}
+            <IconWarning /> {t("confirm.rate.verdictBtn.nuance")}
           </button>
           <button
             type="button"
             className={`vertical-chip${verdict === "problematic" ? " is-selected" : ""}`}
             onClick={() => setVerdict("problematic")}
           >
-            ❌ {t("confirm.rate.verdictBtn.problematic")}
+            <IconCross /> {t("confirm.rate.verdictBtn.problematic")}
           </button>
         </div>
         <p className="partner-meta">{t("confirm.rate.commentRule")}</p>
@@ -104,8 +105,8 @@ export function RatePartnershipScreen({ partnership, onBack, onDone }) {
           onChange={(e) => setComment(e.target.value)}
         />
 
-        <div className="privacy-hint" style={{ marginTop: 10 }}>
-          {t("confirm.rate.footerNote")}
+        <div className="hint-block" style={{ marginTop: 12 }}>
+          <IconLock /> {t("confirm.rate.footerNote")}
         </div>
 
         <button className="btn" type="submit" disabled={state.loading || !verdict}>

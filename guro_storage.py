@@ -197,6 +197,20 @@ CREATE TABLE IF NOT EXISTS guro_vacancy_responses (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_guro_vacancy_responses_pair
     ON guro_vacancy_responses(vacancy_id, candidate_id);
+
+-- Закладки вакансий (03.09.2026, прототип владельца GURO_ID_Mini_App-2 —
+-- кнопка "☆ Сохранить вакансию" на премиальной карточке). Уникальный
+-- индекс на пару делает toggle идемпотентным: повторное сохранение той же
+-- вакансии не может создать дубль.
+CREATE TABLE IF NOT EXISTS guro_vacancy_bookmarks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    vacancy_id INTEGER,
+    created_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_guro_vacancy_bookmarks_pair
+    ON guro_vacancy_bookmarks(user_id, vacancy_id);
+CREATE INDEX IF NOT EXISTS idx_guro_vacancy_bookmarks_user ON guro_vacancy_bookmarks(user_id);
 CREATE INDEX IF NOT EXISTS idx_guro_vacancy_responses_vacancy ON guro_vacancy_responses(vacancy_id);
 CREATE INDEX IF NOT EXISTS idx_guro_vacancy_responses_candidate ON guro_vacancy_responses(candidate_id);
 
@@ -325,13 +339,30 @@ class GuroStorage:
         # перевод в крипте") — та же видимость, что у суммы (amount_visible),
         # отдельного тумблера не заводили, это доказательство именно суммы.
         self._ensure_column("partnerships", "tx_hash", "TEXT")
+        # Один хеш = одно партнёрство (ТЗ «Hash_Uniqueness», разделы 1-2).
+        # Индекс частичный по двум причинам: NULL пропускаем, потому что
+        # безоплатных партнёрств без хеша может быть сколько угодно;
+        # отклонённые — потому что иначе один отказ контрагента навсегда
+        # сжигал бы хеш, и ту же сделку нельзя было бы переоформить
+        # заново. Ожидающие подтверждения под уникальность попадают:
+        # иначе десять заявок с одним хешем ушли бы одним махом.
+        self._conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_partnerships_tx_hash_unique "
+            "ON partnerships(tx_hash) WHERE tx_hash IS NOT NULL AND status <> 'declined'"
+        )
         # Фаза 3 (12.08.2026) — витрина кабинета рекрутера, тот же набор
         # тумблеров приватности, что у личного профиля (PRIVACY_FIELDS),
         # применённый к ДРУГОЙ таблице — коллизий нет.
         for field in GC.RECRUITER_EXTRA_FIELDS:
             self._ensure_column("guro_recruiter_profiles", field, "TEXT")
+        # 06.09.2026 («рекрутер каб.pdf», стр. 2) — default=1, а не 0.
+        # Витрина рекрутера нужна, чтобы его находили; выключенная по
+        # умолчанию, она делает оплаченный кабинет невидимым в поиске, пока
+        # владелец сам не дойдёт до экрана приватности. Тот же довод, что у
+        # личного профиля 28.08.2026. Существующие строки переводит
+        # migrate_recruiter_privacy_default.py.
         for field in GC.PRIVACY_FIELDS:
-            self._ensure_column("guro_recruiter_profiles", field, "INTEGER DEFAULT 0")
+            self._ensure_column("guro_recruiter_profiles", field, "INTEGER DEFAULT 1")
         # Главный экран кабинета "Рекрутер" (26.08.2026, ТЗ "Гуро рекрутер
         # каб"): статус активности (2.4), стаж считается от ПЕРВОЙ реальной
         # оплаты (first_activated_at), НЕ от первого open-a вкладки (тот
@@ -350,8 +381,11 @@ class GuroStorage:
         # выше, применённый к третьей таблице.
         for field in GC.COMPANY_EXTRA_FIELDS:
             self._ensure_column("guro_company_profiles", field, "TEXT")
+        # 06.09.2026 («компания.pdf», стр. 3) — default=1, как и у кабинета
+        # рекрутера днём раньше: витрина нужна, чтобы компанию находили.
+        # Существующие строки переводит migrate_company_privacy_default.py.
         for field in GC.PRIVACY_FIELDS:
-            self._ensure_column("guro_company_profiles", field, "INTEGER DEFAULT 0")
+            self._ensure_column("guro_company_profiles", field, "INTEGER DEFAULT 1")
         # Верификация (ТЗ "Компания. каб", раздел 2, 26.08.2026) — ручная,
         # бейдж включает админ (см. handlers/admin_guro.py), видимость/
         # функциональность компании НЕ зависят от статуса верификации.
@@ -415,8 +449,21 @@ class GuroStorage:
         # заполнении tx_hash, т.к. ETH/BSC неотличимы по формату хеша.
         self._ensure_column("partnerships", "tx_network", "TEXT")
         self._ensure_column("partnerships", "tx_verified", "INTEGER DEFAULT 0")
+        # Три состояния ончейн-проверки и сумма ИЗ САМОЙ транзакции (ТЗ
+        # «Верификация транзакций», разделы 2-3, 06.09.2026). Старый
+        # tx_verified оставлен: на нём висит расчёт рейтинга, и теперь он
+        # поднимается только вместе с состоянием verified.
+        self._ensure_column("partnerships", "tx_state", f"TEXT DEFAULT '{GC.TX_STATE_NONE}'")
+        self._ensure_column("partnerships", "tx_amount", "REAL")
         self._ensure_column("partnerships", "tx_company_match", "INTEGER DEFAULT 0")
         self._ensure_column("partnerships", "tx_verify_error", "TEXT")
+        # Анти-фрод флаг (02.09.2026, макет "06 · Сделка — шаг 1", User Flow) —
+        # инициатор может пометить сделку как проблемную ещё на шаге создания
+        # (до подтверждения контрагентом), независимо от вердикта "❌ Проблема"
+        # на шаге 2 (rate_partnership) — тот ставится ПОСЛЕ подтверждения,
+        # этот доступен сразу. Пока только сохраняется, без отдельного UI
+        # для модерации — видно вручную через SQL/будущий /admin, если понадобится.
+        self._ensure_column("partnerships", "is_flagged_fraud", "INTEGER DEFAULT 0")
         # "Найм" (ТЗ 6, п.3) — очки отложены, пока кандидат не сменит
         # work_status на "работаю" (см. respond_partnership/guro_partnership_sync.py).
         self._ensure_column("partnerships", "hire_status_pending", "INTEGER DEFAULT 0")
@@ -1343,7 +1390,9 @@ class GuroStorage:
         amount_paid: float | None = None, review: str | None = None, amount_visible: bool = False,
         tx_hash: str | None = None, ptype: str = GC.PARTNERSHIP_TYPE_DEAL,
         tx_network: str | None = None, tx_verified: bool = False, tx_company_match: bool = False,
+        tx_state: str = GC.TX_STATE_NONE, tx_amount: float | None = None,
         tx_verify_error: str | None = None, company_id: int | None = None,
+        is_flagged_fraud: bool = False,
     ) -> sqlite3.Row:
         """Поднимает ValueError с понятным кодом-строкой при нарушении правил
         (see ТЗ п.4/п.8): NO_CONFIRMER_PROFILE / SELF_PARTNERSHIP / RATE_LIMITED /
@@ -1378,14 +1427,66 @@ class GuroStorage:
             "INSERT INTO partnerships (initiator_id, confirmer_id, status, vertical, geo, "
             "counts_toward_rating, created_at, offer, amount_received, amount_paid, review, "
             "amount_visible, tx_hash, ptype, tx_network, tx_verified, tx_company_match, "
-            "tx_verify_error, company_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "tx_verify_error, company_id, is_flagged_fraud, tx_state, tx_amount) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (initiator_id, confirmer_id, GC.PARTNERSHIP_STATUS_PENDING, vertical, geo,
              0, GL.format_db_datetime(now), offer, amount_received, amount_paid,
              review, 1 if amount_visible else 0, tx_hash, ptype, tx_network,
-             1 if tx_verified else 0, 1 if tx_company_match else 0, tx_verify_error, company_id),
+             1 if tx_verified else 0, 1 if tx_company_match else 0, tx_verify_error, company_id,
+             1 if is_flagged_fraud else 0, tx_state, tx_amount),
         )
         self._conn.commit()
         return self._conn.execute("SELECT * FROM partnerships WHERE id=?", (cur.lastrowid,)).fetchone()
+
+    def find_partnership_by_tx_hash(self, tx_hash: str) -> sqlite3.Row | None:
+        """Партнёрство, уже занявшее этот хеш (ТЗ «Hash_Uniqueness»,
+        раздел 2). Отклонённые не в счёт — см. комментарий у индекса."""
+        return self._conn.execute(
+            "SELECT * FROM partnerships WHERE tx_hash = ? AND status <> ? LIMIT 1",
+            (tx_hash, GC.PARTNERSHIP_STATUS_DECLINED),
+        ).fetchone()
+
+    def turnover_stats(self, user_id: int) -> dict:
+        """Счётчики оборота (ТЗ «Верификация транзакций», разделы 7-8).
+
+        Считаются только ПОДТВЕРЖДЁННЫЕ партнёрства и только там, где
+        инициатор включил показ суммы. В «подтверждённый» оборот идут лишь
+        сделки со состоянием verified — то есть с реальной транзакцией в
+        блокчейне, сумма которой сошлась с заявленной. Остальное копится
+        отдельно и показывается приглушённо.
+
+        Суммы вводит инициатор от себя, поэтому для второй стороны они
+        зеркалятся: полученное инициатором = оплаченное контрагентом.
+        """
+        row = self._conn.execute(
+            """
+            SELECT
+              COALESCE(SUM(CASE WHEN tx_state = ? THEN
+                CASE WHEN initiator_id = ? THEN COALESCE(amount_received, 0)
+                     ELSE COALESCE(amount_paid, 0) END END), 0) AS verified_received,
+              COALESCE(SUM(CASE WHEN tx_state = ? THEN
+                CASE WHEN initiator_id = ? THEN COALESCE(amount_paid, 0)
+                     ELSE COALESCE(amount_received, 0) END END), 0) AS verified_paid,
+              COALESCE(SUM(CASE WHEN tx_state IS NULL OR tx_state <> ? THEN
+                CASE WHEN initiator_id = ? THEN COALESCE(amount_received, 0)
+                     ELSE COALESCE(amount_paid, 0) END END), 0) AS unverified_received,
+              COALESCE(SUM(CASE WHEN tx_state IS NULL OR tx_state <> ? THEN
+                CASE WHEN initiator_id = ? THEN COALESCE(amount_paid, 0)
+                     ELSE COALESCE(amount_received, 0) END END), 0) AS unverified_paid
+            FROM partnerships
+            WHERE status = ? AND amount_visible = 1
+              AND (initiator_id = ? OR confirmer_id = ?)
+            """,
+            (GC.TX_STATE_VERIFIED, user_id, GC.TX_STATE_VERIFIED, user_id,
+             GC.TX_STATE_VERIFIED, user_id, GC.TX_STATE_VERIFIED, user_id,
+             GC.PARTNERSHIP_STATUS_CONFIRMED, user_id, user_id),
+        ).fetchone()
+        return {
+            "received": round(row["verified_received"], 2),
+            "paid": round(row["verified_paid"], 2),
+            "unverified_received": round(row["unverified_received"], 2),
+            "unverified_paid": round(row["unverified_paid"], 2),
+        }
 
     def get_partnership(self, partnership_id: int) -> sqlite3.Row | None:
         return self._conn.execute("SELECT * FROM partnerships WHERE id=?", (partnership_id,)).fetchone()
@@ -1946,6 +2047,35 @@ class GuroStorage:
             self.log_vacancy_other_position(vacancy["id"], vertical, grade, position)
         return vacancy
 
+    def toggle_vacancy_bookmark(self, user_id: int, vacancy_id: int) -> bool | None:
+        """Ставит/снимает закладку, возвращает НОВОЕ состояние (True —
+        сохранено). None — вакансии не существует (чтобы ручка отдала 404,
+        а не молча создавала закладку на мусорный id)."""
+        if self.get_vacancy(vacancy_id) is None:
+            return None
+        row = self._conn.execute(
+            "SELECT id FROM guro_vacancy_bookmarks WHERE user_id=? AND vacancy_id=?",
+            (user_id, vacancy_id),
+        ).fetchone()
+        if row is None:
+            self._conn.execute(
+                "INSERT INTO guro_vacancy_bookmarks (user_id, vacancy_id, created_at) VALUES (?,?,?)",
+                (user_id, vacancy_id, self._now_str()),
+            )
+            self._conn.commit()
+            return True
+        self._conn.execute("DELETE FROM guro_vacancy_bookmarks WHERE id=?", (row["id"],))
+        self._conn.commit()
+        return False
+
+    def bookmarked_vacancy_ids(self, user_id: int) -> set[int]:
+        """Все закладки пользователя одним запросом — чтобы список вакансий
+        не делал по запросу на карточку (N+1)."""
+        rows = self._conn.execute(
+            "SELECT vacancy_id FROM guro_vacancy_bookmarks WHERE user_id=?", (user_id,),
+        ).fetchall()
+        return {r["vacancy_id"] for r in rows}
+
     def log_vacancy_other_position(self, vacancy_id: int, vertical: str | None, grade: str | None, text: str) -> None:
         """"Другое" в поле Должность (раздел 3, п.4 ТЗ) — не попадает сразу
         в справочник, копится тут для последующего централизованного review."""
@@ -1977,7 +2107,7 @@ class GuroStorage:
     def list_vacancies(
         self, *, lang: str | None = None, vertical: str | None = None, grade: str | None = None,
         position: str | None = None, query: str | None = None, company_type: str | None = None,
-        limit: int = GC.VACANCY_LIST_LIMIT,
+        limit: int = GC.VACANCY_LIST_LIMIT, only_ids: set[int] | None = None,
     ) -> tuple[list[sqlite3.Row], bool]:
         """Доска вакансий (раздел 3.2, "устойчивость к неточному
         тегированию") — если задан query (текстовый поиск), запись
@@ -1989,9 +2119,17 @@ class GuroStorage:
         не текст для нечёткого поиска). Сортировка: вакансии
         верифицированных компаний — выше остальных (раздел 4 ТЗ), внутри
         группы — по дате. Возвращает (результаты, truncated)."""
+        # only_ids (03.09.2026) — фильтр доски по закладкам. Пустое
+        # множество означает "закладок нет вообще": выходим сразу, иначе
+        # получился бы невалидный SQL "IN ()".
+        if only_ids is not None and not only_ids:
+            return [], False
         now_str = self._now_str()
         sql = self._VACANCY_SELECT + " WHERE v.status=? AND (v.expires_at IS NULL OR v.expires_at > ?)"
         params: list = [GC.VACANCY_STATUS_ACTIVE, now_str]
+        if only_ids is not None:
+            sql += f" AND v.id IN ({','.join('?' * len(only_ids))})"
+            params.extend(sorted(only_ids))
         if lang:
             sql += " AND v.lang=?"
             params.append(lang)
@@ -2195,7 +2333,9 @@ class GuroStorage:
         sql += " ORDER BY r.created_at DESC"
         return self._conn.execute(sql, params).fetchall()
 
-    def count_responses_since(self, author_id: int, since_dt: datetime) -> int:
+    def count_responses_since(
+        self, author_id: int, since_dt: datetime, *, workspace: str | None = None,
+    ) -> int:
         """"Откликов за 7 дней" (панель "Характеристика", 2.3 / раздел 3 ТЗ
         "Компания. каб") — та же агрегация свои+компания, что у
         list_responses_for_owner (см. выше), просто COUNT с отсечкой по дате
@@ -2205,11 +2345,26 @@ class GuroStorage:
         responses), просто забыли прокинуть сюда при её появлении."""
         membership = self.get_company_membership(author_id)
         author_ids = (author_id, membership["company_id"]) if membership else (author_id, author_id)
-        row = self._conn.execute(
+        # 06.09.2026 («компания.pdf», стр. 2): по author_id кабинеты не
+        # различаются — у владельца-одиночки company_id равен его же
+        # user_id, и отклик на вакансию рекрутера засчитывался компании.
+        # Разделяет их только author_workspace.
+        sql = (
             "SELECT COUNT(*) AS n FROM guro_vacancy_responses r "
             "JOIN guro_vacancies v ON v.id = r.vacancy_id "
-            "WHERE v.author_id IN (?, ?) AND r.created_at >= ?",
-            (*author_ids, GL.format_db_datetime(since_dt)),
+            "WHERE v.author_id IN (?, ?) AND r.created_at >= ?"
+        )
+        params: list = [*author_ids, GL.format_db_datetime(since_dt)]
+        if workspace == "company":
+            sql += " AND v.author_workspace = 'company'"
+        elif workspace == "recruiter":
+            # Всё, что не компания: вакансии кабинета рекрутера и
+            # опубликованные из личного профиля до его появления. Так ни
+            # один отклик не теряется и не считается дважды.
+            sql += " AND (v.author_workspace IS NULL OR v.author_workspace <> 'company')"
+        row = self._conn.execute(
+            sql,
+            tuple(params),
         ).fetchone()
         return row["n"]
 

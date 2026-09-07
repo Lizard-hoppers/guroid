@@ -4,6 +4,7 @@ import { Msg } from "./Shared.jsx";
 import { openInvoice, openTelegramLink, haptic } from "../telegram.js";
 import { formatDate, pluralRu } from "../utils.js";
 import { useLang } from "../i18n.jsx";
+import { IconCheck, IconStar } from "./Icons.jsx";
 
 const COMPARE_ROWS = [
   "subscribe.compare.workStatus",
@@ -36,6 +37,29 @@ const RECRUITER_COMPARE_ROWS = [
   "subscribe.compareRecruiter.rating",
   "subscribe.compareRecruiter.showcase",
   "subscribe.compareRecruiter.visibility",
+];
+
+// Чек-листы "что даёт подписка" для кабинетов (05.09.2026, просьба
+// владельца — привести к формату базовой подписки). Наличие benefits
+// заодно включает продление: см. showRenewal ниже.
+const RECRUITER_BENEFITS = [
+  "subscribe.benefitRecruiter.showcase",
+  "subscribe.benefitRecruiter.vacancies",
+  "subscribe.benefitRecruiter.candidates",
+  "subscribe.benefitRecruiter.hire",
+];
+
+const COMPANY_BASIC_BENEFITS = [
+  "subscribe.benefitCompany.brand",
+  "subscribe.benefitCompany.recruiter",
+  "subscribe.benefitCompany.teamBasic",
+];
+
+const COMPANY_PRO_BENEFITS = [
+  "subscribe.benefitCompany.brand",
+  "subscribe.benefitCompany.recruiter",
+  "subscribe.benefitCompany.teamPro",
+  "subscribe.benefitCompany.limitsPro",
 ];
 
 // Кабинет "Компания" (Фаза 5, 16-17.08.2026) — та же цепочка, третий product.
@@ -72,6 +96,7 @@ const PRODUCT_CONFIG = {
     titleKey: "subscribe.titleRecruiter",
     hintKey: "subscribe.hintRecruiter",
     compareRows: RECRUITER_COMPARE_ROWS,
+    benefits: RECRUITER_BENEFITS,
   },
   // company_basic/company_pro (27.08.2026, ТЗ "Тарифы и лимиты") — ДВА тира
   // одного кабинета "Компания", каждый свой "product" (см. _PRODUCT_PLANS в
@@ -84,6 +109,7 @@ const PRODUCT_CONFIG = {
     titleKey: "subscribe.titleCompanyBasic",
     hintKey: "subscribe.hintCompanyBasic",
     compareRows: COMPANY_COMPARE_ROWS,
+    benefits: COMPANY_BASIC_BENEFITS,
   },
   company_pro: {
     workspace: "company",
@@ -92,32 +118,41 @@ const PRODUCT_CONFIG = {
     titleKey: "subscribe.titleCompanyPro",
     hintKey: "subscribe.hintCompanyPro",
     compareRows: COMPANY_COMPARE_ROWS,
+    benefits: COMPANY_PRO_BENEFITS,
   },
 };
 
-export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
+// me/plans — необязательные: если их передали сверху (см.
+// SubscriptionsScreen, где на экране сразу несколько блоков), компонент
+// сеть не трогает вовсе. Без них грузит себя сам — так его рендерят
+// кабинеты Рекрутер и Компания, где блок на экране один.
+export function SubscribeScreen({ product = "guro_id", onSubscribed, me: meProp, plans: plansProp }) {
   const { t, lang } = useLang();
   const cfg = PRODUCT_CONFIG[product] ?? PRODUCT_CONFIG.guro_id;
-  const [me, setMe] = useState(null);
-  const [plansData, setPlansData] = useState(null);
+  const [meSelf, setMeSelf] = useState(null);
+  const [plansSelf, setPlansSelf] = useState(null);
+  const me = meProp !== undefined ? meProp : meSelf;
+  const plansData = plansProp !== undefined ? plansProp : plansSelf;
   const [selected, setSelected] = useState("monthly");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [justPaid, setJustPaid] = useState(false);
 
   useEffect(() => {
+    if (meProp !== undefined) return; // статус пришёл сверху
     getMe({ workspace: cfg.workspace })
-      .then(setMe)
+      .then(setMeSelf)
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [justPaid]);
+  }, [justPaid, meProp]);
 
   useEffect(() => {
+    if (plansProp !== undefined) return; // тарифы пришли сверху
     getPlans({ product })
-      .then(setPlansData)
+      .then(setPlansSelf)
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product]);
+  }, [product, plansProp]);
 
   useEffect(() => {
     if (justPaid) onSubscribed?.();
@@ -166,13 +201,14 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
   const plan = plansData?.plans?.[selected];
   const compareRows = cfg.compareRows;
   const freeIndex = FREE_ROW_INDEX[product] ?? -1;
-  // Экран продления (28.08.2026, макет "10 · Подписка") — пока построен
-  // только для product="guro_id" (единственный отревьюженный макет): даже
-  // с активной подпиской остаётся видна выгода + пикер тарифов + оплата,
-  // чтобы продлить ЗАРАНЕЕ, не дожидаясь истечения (см. guro_logic.py::
-  // subscription_expires_at — продление теперь прибавляет к остатку, не
-  // сбрасывает его). recruiter/company пока не трогал — там как было
-  // (isSubscribed прячет всё, кроме статуса).
+  // Экран продления (28.08.2026, макет "10 · Подписка"): даже с активной
+  // подпиской остаются видны выгода, пикер тарифов и оплата, чтобы
+  // продлить ЗАРАНЕЕ, не дожидаясь истечения (см. guro_logic.py::
+  // subscription_expires_at — продление прибавляет к остатку, не
+  // сбрасывает его). 05.09.2026 распространено на кабинеты рекрутера и
+  // компании: раньше у них не было benefits, из-за чего showRenewal
+  // оставался false и после оформления всё, кроме статуса, пряталось —
+  // продлить из раздела «Подписка» было нельзя.
   const showRenewal = !!cfg.benefits;
   const showPlans = !isSubscribed || showRenewal;
 
@@ -215,7 +251,7 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
           </div>
           {cfg.benefits.map((key) => (
             <div className="subscribe-benefit-row" key={key}>
-              <span>✅</span>
+              <IconCheck style={{ color: "var(--gold)" }} />
               <span>{t(key)}</span>
             </div>
           ))}
@@ -251,9 +287,13 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed }) {
                   {p.stars_price_full && <span className="plan-card-value-badge">{t("subscribe.bestValueBadge")}</span>}
                   <div className="plan-card-label">{p.label}</div>
                   {p.stars_price_full && (
-                    <span className="plan-card-price-full">{p.stars_price_full} ⭐</span>
+                    <span className="plan-card-price-full">
+                      {p.stars_price_full} <IconStar />
+                    </span>
                   )}
-                  <div className="plan-card-price-main">{p.stars_price} ⭐</div>
+                  <div className="plan-card-price-main">
+                    {p.stars_price} <IconStar />
+                  </div>
                   {p.stars_price_full && (
                     <div className="plan-card-badge">
                       {t("subscribe.economy", { amount: p.stars_price_full - p.stars_price })}

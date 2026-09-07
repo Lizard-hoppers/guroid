@@ -1,79 +1,16 @@
-import { useEffect, useRef, useState } from "react";
-import { EditableField, Msg } from "../Shared.jsx";
+import { useEffect, useState } from "react";
+import { EditableField, ImageUploadArea, Msg, TurnoverCard } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import {
   getCompanyAddresses, setCompanyProfileField, setCompanyPrivacyField, submitCompanyAddress,
-  requestCompanyVerification, createCompany, uploadCompanyImage, ApiError,
+  requestCompanyVerification, createCompany, uploadCompanyImage,
+  checkCompanyName, requestJoinCompany, ApiError,
 } from "../../api.js";
 import { SubscribeScreen } from "../SubscribeScreen.jsx";
 import { useLang } from "../../i18n.jsx";
+import { IconCheck, IconGear, IconLock } from "../Icons.jsx";
 import { ensureHttpUrl, initialOf } from "../../utils.js";
 import { haptic } from "../../telegram.js";
-
-// Загрузка лого/обложки из галереи (28.08.2026, фидбек владельца: раньше
-// только вставка готовой ссылки) — реальный файл, POST /api/company/image
-// (multipart), бэкенд сам сохраняет и возвращает обновлённые company-поля.
-// Обёрнутый children кликабелен целиком (и пустое состояние "+", и уже
-// загруженная картинка — заменить тоже можно тапом), input[type=file]
-// спрятан рядом. Подсказка про формат/размер — ОТДЕЛЬНЫМ текстом под
-// зоной загрузки (сама зона тесная, надпись внутри неё нечитаема).
-function ImageUploadArea({ kind, className, hintKey, onUploaded, onError, children, wrap = true }) {
-  const { t } = useLang();
-  const inputRef = useRef(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-
-  async function onFileChange(e) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const extra = await uploadCompanyImage(kind, file);
-      onUploaded(extra);
-      haptic("success");
-    } catch (err) {
-      const code = err instanceof ApiError ? err.code : null;
-      const message =
-        code === "FILE_TOO_LARGE" ? t("company.upload.tooLarge") :
-        code === "UNSUPPORTED_FORMAT" ? t("company.upload.unsupported") :
-        t("company.upload.error");
-      if (onError) onError(message);
-      else setError(message);
-      haptic("error");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const trigger = (
-    <>
-      <div
-        className={`${className}${busy ? " is-uploading" : ""}`}
-        onClick={() => !busy && inputRef.current?.click()}
-      >
-        {children}
-      </div>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/webp"
-        style={{ display: "none" }}
-        onChange={onFileChange}
-      />
-    </>
-  );
-
-  if (!wrap) return trigger;
-  return (
-    <div>
-      {trigger}
-      {hintKey && <p className="partner-meta company-upload-hint">{t(hintKey)}</p>}
-      {error && <Msg type="error">{error}</Msg>}
-    </div>
-  );
-}
 
 // Верификация крипто-адреса компании (ТЗ 5.5, 25.08.2026) — ручное
 // подтверждение модератором (/admin, см. handlers/admin_guro.py), после
@@ -274,7 +211,9 @@ function VerificationCard({ verified, requestedAt }) {
     <div className="card">
       <h3>{t("company.verify.title")}</h3>
       {verified ? (
-        <div className="company-verify-status is-verified">✓ {t("company.verify.verified")}</div>
+        <div className="company-verify-status is-verified">
+          <IconCheck /> {t("company.verify.verified")}
+        </div>
       ) : (
         <>
           <p className="partner-meta">{t("company.verify.visibilityHint")}</p>
@@ -333,9 +272,11 @@ function SettingsPanel({ data, onFieldSaved, onPrivacyChange }) {
   const [open, setOpen] = useState(false);
   return (
     <div>
-      <button type="button" className="settings-gear-btn" onClick={() => setOpen((v) => !v)}>
-        ⚙️ {t("company.settingsBtn")} {open ? "︿" : "﹀"}
-      </button>
+      <div className="settings-gear-row">
+        <button type="button" className="settings-gear-btn" onClick={() => setOpen((v) => !v)}>
+          <IconGear /> {t("company.settingsBtn")}
+        </button>
+      </div>
       {open && (
         <>
           <div className="card">
@@ -353,6 +294,16 @@ function SettingsPanel({ data, onFieldSaved, onPrivacyChange }) {
                 renderValue={f.renderValue}
               />
             ))}
+            {/* Требования продублированы сюда, потому что подсказки под
+                визиткой по просьбе владельца исчезают после загрузки — а
+                смотрит он их как раз потом, когда захочет заменить
+                картинку («компания.pdf», стр. 1). */}
+            <div className="privacy-hint company-upload-note">
+              {t("company.upload.coverHint")}
+            </div>
+            <div className="privacy-hint company-upload-note">
+              {t("company.upload.logoHint")}
+            </div>
           </div>
           <CompanyTypesField
             value={data.company_types}
@@ -383,23 +334,76 @@ function CreateCompanyCard({ onCreated }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [similar, setSimilar] = useState(null);
+  // Найденные одноимённые компании (ТЗ 3.0.1). Пока они есть, кнопка
+  // создания уступает место кнопке присоединения.
+  const [matches, setMatches] = useState([]);
+  const [position, setPosition] = useState("");
+  const [joined, setJoined] = useState(false);
 
-  async function submit(e) {
+  // Проверяем по мере ввода: узнать о занятом названии нужно ДО нажатия
+  // кнопки, иначе человек оплатит тариф, который ему не нужен. Задержка —
+  // чтобы не дёргать сервер на каждую букву.
+  useEffect(() => {
+    const q = name.trim();
+    if (!q) {
+      setMatches([]);
+      return undefined;
+    }
+    let alive = true;
+    const timer = setTimeout(() => {
+      checkCompanyName(q)
+        .then((d) => alive && setMatches(d.matches || []))
+        .catch(() => alive && setMatches([]));
+    }, 400);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [name]);
+
+  async function submit(e, confirmDifferent = false) {
     e.preventDefault();
     if (!name.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      const summary = await createCompany({ name: name.trim() });
-      if (summary.similar_companies?.length > 0) {
-        setSimilar(summary.similar_companies.map((c) => c.name));
-      }
+      // createCompany отправляет объект как есть, поэтому имя поля должно
+      // совпадать с тем, что читает сервер.
+      const summary = await createCompany({
+        name: name.trim(),
+        confirm_different: confirmDifferent,
+      });
       haptic("success");
       onCreated(summary);
-    } catch {
+    } catch (err) {
       haptic("error");
-      setError(t("company.create.error"));
+      // Сервер тоже не даст создать дубль — на случай, если проверка по
+      // вводу не успела или её обошли мимо формы.
+      if (err instanceof ApiError && err.code === "COMPANY_NAME_TAKEN") {
+        setMatches(err.details?.matches || []);
+      } else {
+        setError(t("company.create.error"));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function join(companyId) {
+    setBusy(true);
+    setError(null);
+    try {
+      await requestJoinCompany(companyId, position.trim() || null);
+      haptic("success");
+      setJoined(true);
+    } catch (err) {
+      haptic("error");
+      const code = err instanceof ApiError ? err.code : null;
+      setError(
+        code === "ALREADY_REQUESTED" ? t("company.join.alreadyRequested")
+        : code === "ALREADY_IN_COMPANY" ? t("company.join.alreadyMember")
+        : t("company.join.error"),
+      );
     } finally {
       setBusy(false);
     }
@@ -417,17 +421,66 @@ function CreateCompanyCard({ onCreated }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <button className="btn" type="submit" disabled={busy || !name.trim()} style={{ marginTop: 10 }}>
-          {busy ? t("company.create.submitting") : t("company.create.submit")}
-        </button>
+        {/* Пока найдена одноимённая компания, создание уступает место
+            присоединению (ТЗ 3.0.1): платить за свой тариф незачем. */}
+        {matches.length === 0 && (
+          <button className="btn" type="submit" disabled={busy || !name.trim()} style={{ marginTop: 10 }}>
+            {busy ? t("company.create.submitting") : t("company.create.submit")}
+          </button>
+        )}
       </form>
-      {similar && (
-        <div className="mismatch-banner" style={{ marginTop: 10 }}>
-          {t("company.create.similarWarning", { names: similar.join(", ") })}
+
+      {matches.length > 0 && !joined && (
+        <div style={{ marginTop: 12 }}>
+          {/* Не ошибка пользователя, а новость с готовым выходом — поэтому
+              не красная плашка ошибки. */}
+          <div className="company-taken-note">{t("company.create.taken")}</div>
+          {matches.map((m) => (
+            <div key={m.company_id} className="company-match-row">
+              <div className="company-match-info">
+                <div className="partner-name">
+                  {m.name}
+                  {m.verified && (
+                    <span className="chip" style={{ marginLeft: 8 }}>
+                      <IconCheck />
+                    </span>
+                  )}
+                </div>
+                {m.vertical && <div className="partner-meta">{m.vertical}</div>}
+              </div>
+              <button
+                type="button"
+                className="btn"
+                disabled={busy}
+                onClick={() => join(m.company_id)}
+              >
+                {t("company.create.joinBtn")}
+              </button>
+            </div>
+          ))}
+          <label style={{ marginTop: 10 }}>{t("company.create.positionLabel")}</label>
+          <input
+            type="text"
+            placeholder={t("company.create.positionPlaceholder")}
+            value={position}
+            onChange={(e) => setPosition(e.target.value)}
+          />
+          {/* Пункт 5 того же раздела: одноимённые компании бывают разными
+              юрлицами. Выход есть, но он осознанный, а не по умолчанию. */}
+          <button
+            type="button"
+            className="btn secondary"
+            style={{ marginTop: 12 }}
+            disabled={busy}
+            onClick={(e) => submit(e, true)}
+          >
+            {t("company.create.differentCompany")}
+          </button>
         </div>
       )}
+
+      {joined && <Msg type="ok">{t("company.create.joinSent")}</Msg>}
       <Msg type="error">{error}</Msg>
-      <p className="partner-meta" style={{ marginTop: 14 }}>{t("company.create.joinHint")}</p>
     </div>
   );
 }
@@ -490,6 +543,10 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
 
   return (
     <div>
+      {/* "Настройки" стоят НАД визиткой — как в кабинете Рекрутера. Раньше
+          на двух почти одинаковых экранах кнопка была в разных местах. */}
+      <SettingsPanel data={data} onFieldSaved={onFieldSaved} onPrivacyChange={onPrivacyChange} />
+
       {/* Визитка — визуально ОТЛИЧАЕТСЯ и от личного профиля, и от кабинета
           Рекрутер (раздел 3 ТЗ, "с одного взгляда, не читая текст"):
           полноразмерный баннер + квадратный логотип поверх него + бейдж
@@ -497,7 +554,7 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
           вертикаль крупным шрифтом + теги "Тип компании". */}
       <div className="card company-card">
         <ImageUploadArea
-          kind="cover"
+          upload={(file) => uploadCompanyImage("cover", file)}
           className="company-cover"
           wrap={false}
           onUploaded={(extra) => onFieldSaved("cover_url", extra.cover_url)}
@@ -511,7 +568,7 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
         </ImageUploadArea>
         <div className="company-header">
           <ImageUploadArea
-            kind="logo"
+            upload={(file) => uploadCompanyImage("logo", file)}
             className="company-logo-upload"
             wrap={false}
             onUploaded={(extra) => onFieldSaved("logo_url", extra.logo_url)}
@@ -526,11 +583,15 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
           <div className="profile-header-info">
             <h2>
               {data.name || t("common.noName")}
-              {data.verified && <span className="company-verified-badge" title={t("company.verify.verified")}>✓</span>}
+              {data.verified && (
+                <span className="company-verified-badge">
+            <IconCheck /> {t("company.verify.verified")}
+          </span>
+              )}
             </h2>
           </div>
           <div className="company-rating-badge">
-            {hasReputation ? Math.round(data.reputation_score) : t("hub.ratingLocked")}
+            {hasReputation ? Math.round(data.reputation_score) : <IconLock />}
           </div>
         </div>
         {/* 29.08.2026, регресс: были оба на классе с position:absolute
@@ -550,16 +611,22 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
           </div>
         )}
       </div>
-      <p className="partner-meta company-upload-hint">{t("company.upload.coverHint")}</p>
-      <p className="partner-meta company-upload-hint">{t("company.upload.logoHint")}</p>
+      {/* Подсказка про формат нужна, только пока картинку не поставили —
+          дальше это шум под визиткой. Обложка и логотип независимы. */}
+      {!data.cover_url && (
+        <p className="partner-meta company-upload-hint">{t("company.upload.coverHint")}</p>
+      )}
+      {!data.logo_url && (
+        <p className="partner-meta company-upload-hint">{t("company.upload.logoHint")}</p>
+      )}
       {coverUploadError && <Msg type="error">{coverUploadError}</Msg>}
       {logoUploadError && <Msg type="error">{logoUploadError}</Msg>}
 
-      <SettingsPanel data={data} onFieldSaved={onFieldSaved} onPrivacyChange={onPrivacyChange} />
-
       <CharacteristicPanel data={data} />
+      <TurnoverCard turnover={data.turnover} />
 
       <div className="card recruiter-quick-actions is-stacked">
+        <h3>{t("company.quickActions.title")}</h3>
         <button type="button" className="btn" onClick={() => onNavigateTab("vacancies")}>
           {t("company.quickPublish")}
         </button>

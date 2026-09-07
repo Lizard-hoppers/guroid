@@ -48,15 +48,14 @@ export function ContactsSubscreen({ profile, privacy, onPrivacyChange, onFieldSa
       <div className="card">
         <h3>{t("contacts.title")}</h3>
         <div className="partner-meta">{t("contacts.telegram")}: @{profile.username}</div>
-        {profile.linkedin ? (
-          <div className="partner-meta" style={{ marginTop: 8 }}>
-            LinkedIn: {profile.linkedin}
-          </div>
-        ) : (
-          <div className="editable-field-empty" style={{ marginTop: 8 }}>
-            {t("contacts.linkedinEmpty")}
-          </div>
-        )}
+        <EditableField
+          field="linkedin"
+          label={t("contacts.linkedinLabel")}
+          placeholder="linkedin.com/in/username"
+          value={profile.linkedin}
+          onSaved={(v) => onFieldSaved("linkedin", v)}
+          renderValue={(v) => <a href={ensureHttpUrl(v)} target="_blank" rel="noopener noreferrer">{v}</a>}
+        />
         <EditableField
           field="website"
           label={t("contacts.websiteLabel")}

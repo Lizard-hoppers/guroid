@@ -6,8 +6,10 @@ import { ProfileScreen } from "./components/ProfileScreen.jsx";
 import { SearchScreen } from "./components/SearchScreen.jsx";
 import { ConfirmScreen } from "./components/ConfirmScreen.jsx";
 import { SubscriptionsScreen } from "./components/SubscriptionsScreen.jsx";
+import { prefetchVacancyCaps } from "./components/VacanciesScreen.jsx";
 import { VacanciesScreen } from "./components/VacanciesScreen.jsx";
-import { SplashScreen } from "./components/SplashScreen.jsx";
+import { SlotIntro } from "./components/SlotIntro.jsx";
+import { BRAND_GRADIENT_1, BRAND_GRADIENT_2 } from "./brandLetters.js";
 import { LangProvider, useLang } from "./i18n.jsx";
 
 // Переключатель RU/EN в правом верхнем углу (12.08.2026, по просьбе
@@ -78,6 +80,16 @@ function readDeepLinkThread() {
   return new URLSearchParams(window.location.search).get("thread");
 }
 
+// Отклик на вакансию (06.09.2026) — уведомление ведёт на
+// `?responses=<vacancy_id>`, чтобы рекрутер попадал сразу к откликам той
+// самой вакансии, а не искал её среди своих.
+function readDeepLinkResponses() {
+  if (typeof window === "undefined") return null;
+  const raw = new URLSearchParams(window.location.search).get("responses");
+  const id = Number(raw);
+  return raw && Number.isFinite(id) ? id : null;
+}
+
 function AppShell() {
   const { t } = useLang();
   const [intro, setIntro] = useState(true);
@@ -85,6 +97,7 @@ function AppShell() {
   const initialWorkspaceRef = useRef(readDeepLinkWorkspace());
   const targetConsumedRef = useRef(false);
   const initialThreadRef = useRef(readDeepLinkThread());
+  const initialResponsesRef = useRef(readDeepLinkResponses());
   // messageTargetId — не только начальный deep-link, но и рантайм-переход
   // из кнопки "Написать" в поиске (см. openMessages ниже), поэтому это
   // обычный state, а не ref с отдельным consumed-флагом, как у ?target=.
@@ -103,7 +116,9 @@ function AppShell() {
   // "Сделки" знать, от чьего лица действовать (см. confirmProps ниже) —
   // раньше эта вкладка вообще не подозревала о выборе воркспейса в Профиле.
   const [workspace, setWorkspace] = useState("personal");
-  const [tab, setTab] = useState(initialTargetRef.current ? "search" : "profile");
+  const [tab, setTab] = useState(
+    initialResponsesRef.current ? "vacancies" : initialTargetRef.current ? "search" : "profile",
+  );
   // Направление перехода между экранами — вперёд (вправо-налево, как
   // раньше) или назад (зеркально, влево-направо), в зависимости от того,
   // левее или правее текущего таб в TAB_ORDER тот, на который переключаемся.
@@ -111,9 +126,16 @@ function AppShell() {
 
   useEffect(() => {
     initTelegram();
+    // Права на публикацию нужны вкладке "Вакансии" ещё до её открытия —
+    // запрашиваем заранее, параллельно со стартом, чтобы первый заход не
+    // ждал сеть (см. prefetchVacancyCaps).
+    prefetchVacancyCaps();
     // Сразу чистим query string — иначе обновление/повторный заход в этот
     // же сеанс WebApp заново триггерил бы deep-link на каждый ре-маунт.
-    if ((initialTargetRef.current || initialThreadRef.current) && window.history?.replaceState) {
+    if (
+      (initialTargetRef.current || initialThreadRef.current || initialResponsesRef.current)
+      && window.history?.replaceState
+    ) {
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
@@ -123,6 +145,12 @@ function AppShell() {
     const newIndex = TAB_ORDER.indexOf(next);
     setDirection(newIndex >= oldIndex ? 1 : -1);
     setTab(next);
+    // Новый раздел всегда открываем сверху. Без этого прокрутка остаётся
+    // от прежнего экрана: ушёл вниз по длинному списку, переключился на
+    // короткий — браузер упирает её в новый максимум, и страница прыгает
+    // сама. Именно instant, не smooth: плавная прокрутка накладывалась бы
+    // на анимацию смены экрана.
+    window.scrollTo({ top: 0, behavior: "instant" });
   }
 
   // Кнопка "Написать" на разблокированном профиле в Поиске — переключает на
@@ -150,13 +178,34 @@ function AppShell() {
 
   return (
     <>
-      <AnimatePresence>{intro && <SplashScreen key="intro" onDone={() => setIntro(false)} />}</AnimatePresence>
+      <AnimatePresence>{intro && <SlotIntro key="intro" onDone={() => setIntro(false)} />}</AnimatePresence>
 
       {!intro && (
         <div className="app">
           <div className="header">
             <LanguageSwitch />
-            <div className="brand">GURO ID</div>
+            {/* Заголовок собран из ОТДЕЛЬНЫХ букв с теми же layoutId, что
+                у букв в барабане заставки: framer-motion перевозит каждую
+                букву из своей ячейки в её место здесь, а не показывает
+                новый текст (см. SlotIntro.jsx). */}
+            <div className="brand">
+              {[...BRAND_GRADIENT_1, null, ...BRAND_GRADIENT_2].map((l, i) =>
+                l === null ? (
+                  <span key="gap" className="brand-letter">
+                    &nbsp;
+                  </span>
+                ) : (
+                  <motion.span
+                    key={l.id}
+                    layoutId={`brand-${l.id}`}
+                    className="brand-letter"
+                    style={{ backgroundImage: `linear-gradient(90deg, ${l.from}, ${l.to})` }}
+                  >
+                    {l.char}
+                  </motion.span>
+                ),
+              )}
+            </div>
             <motion.div
               className="subtitle"
               initial={{ opacity: 0, y: -4 }}
@@ -189,6 +238,9 @@ function AppShell() {
                       : undefined
                   }
                   deepLinkWorkspace={initialWorkspaceRef.current || undefined}
+                  deepLinkResponsesId={
+                    tab === "vacancies" ? initialResponsesRef.current || undefined : undefined
+                  }
                   onConsumeDeepLink={() => {
                     targetConsumedRef.current = true;
                   }}

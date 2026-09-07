@@ -82,7 +82,11 @@ export function RecruiterResponsesSubscreen({ onBack, onWrite, onConfirmHire }) 
           <div className="partner-meta">
             {r.candidate_name || (r.candidate_username ? `@${r.candidate_username}` : t("common.noName"))}
             {r.candidate_vertical ? ` · ${r.candidate_vertical}` : ""}
-            {typeof r.reputation_score === "number" ? ` · ★ ${r.reputation_score}` : ""}
+            {/* Звезда снята: она выдавала рабочий рейтинг (шкала 0-100) за оценку
+                  из пяти — та же путаница, о которой владелец писал про «★ 1.7». */}
+              {typeof r.reputation_score === "number"
+                ? ` · ${t("vacancies.posterRating", { n: Math.round(r.reputation_score) })}`
+                : ""}
           </div>
           {r.message && <div className="partner-meta" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{r.message}</div>}
           <select value={r.status} onChange={(e) => setStatus(r.id, e.target.value)} style={{ marginTop: 10 }}>

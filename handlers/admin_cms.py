@@ -778,6 +778,9 @@ def build_admin_cms(admin_ids: tuple[int, ...] = ()) -> ConversationHandler:
         CallbackQueryHandler(BC.bc_audience_vertical_menu, pattern=r"^acms_bc_aud:vertical$"),
         CallbackQueryHandler(BC.bc_audience_grade_menu, pattern=r"^acms_bc_aud:grade$"),
         CallbackQueryHandler(BC.bc_audience_country_menu, pattern=r"^acms_bc_aud:country$"),
+        # Сегмент «без подписки GURO ID» (06.09.2026, отчёт владельца,
+        # стр. 11): без регистрации кнопка просто ничего не делала бы.
+        CallbackQueryHandler(BC.bc_audience_unpaid, pattern=r"^acms_bc_aud:unpaid$"),
         CallbackQueryHandler(BC.bc_pick_vertical, pattern=r"^acms_bc_vert:\d+$"),
         CallbackQueryHandler(BC.bc_pick_grade, pattern=r"^acms_bc_grade:\d+$"),
         CallbackQueryHandler(BC.bc_pick_country, pattern=r"^acms_bc_country:\d+$"),

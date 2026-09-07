@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import {
   getMe, getPositions, getVacancies, getMyVacancies, getVacancy, createVacancy, editVacancy,
   pauseVacancy, resumeVacancy, extendVacancy, closeVacancy, respondVacancy,
-  getVacancyResponses, getMyResponses, updateResponseStatus, ApiError,
+  getVacancyResponses, getMyResponses, updateResponseStatus, toggleVacancyBookmark, ApiError,
 } from "../api.js";
 import { Msg, Spinner, WorkspaceCabinetBadge } from "./Shared.jsx";
 import { useLang } from "../i18n.jsx";
+import { IconBuilding, IconBriefcase, IconCheck, IconCross, IconEye, IconReply, IconStar, IconWarning } from "./Icons.jsx";
 import { haptic } from "../telegram.js";
 import { formatDate, initialOf } from "../utils.js";
 
@@ -31,7 +32,11 @@ export function usePositions() {
   useEffect(() => {
     let cancelled = false;
     getPositions()
-      .then((d) => !cancelled && setState({ loading: false, grades: d.grades, professions: d.professions }))
+      // grades/professions подстрахованы: ответ с 200, но без этих полей
+      // роняет экран поиска кандидатов на .map (поймано стендом 06.09.2026).
+      .then((d) => !cancelled && setState({
+        loading: false, grades: d.grades || [], professions: d.professions || {},
+      }))
       .catch(() => !cancelled && setState({ loading: false, grades: [], professions: {} }));
     return () => {
       cancelled = true;
@@ -94,26 +99,43 @@ function StatusBadge({ status, closedReason }) {
   );
 }
 
-// 28.08.2026 (макет "16 · Рекрутер — Отклики", Untitled-20) — точка-
-// индикатор статуса отклика, тот же визуальный паттерн, что StatusBadge
-// у вакансии выше, но своя палитра под 6 статусов мини-ATS (у макета
-// видно только 3 примера — "Новый"=бирюзовый, "Собеседование"=зелёный,
-// "Отказ"=приглушённый; остальные 3 statuses достроены по аналогии).
-const RESPONSE_STATUS_COLOR_CLASS = {
-  new: "vacancy-status-paused",
-  reviewing: "vacancy-status-paused",
-  interview: "vacancy-status-active",
-  offer: "vacancy-status-active",
-  hired: "vacancy-response-status-hired",
-  rejected: "vacancy-status-closed",
+// Статус отклика — ТОЛЬКО цветом, без подписи (правка в Figma "P2 ·
+// Отклики — статус цветом иконки", узел 266:298, новее User Flow):
+// «статус десятков откликов сканируется глазами быстрее, чем читается
+// словами». Шесть статусов мини-ATS сведены к трём тонам макета:
+// серый — ещё не двинулось, лайм — движение вперёд, красный — отказ.
+const RESPONSE_STATUS_TONE = {
+  new: "neutral",
+  reviewing: "neutral",
+  interview: "forward",
+  offer: "forward",
+  hired: "forward",
+  rejected: "rejected",
 };
+const RESPONSE_TONE_MARK = { neutral: null, forward: IconCheck, rejected: IconCross };
 
 function ResponseStatusDot({ status }) {
   const { t } = useLang();
+  const tone = RESPONSE_STATUS_TONE[status] || "neutral";
   return (
-    <span className={`vacancy-status-badge ${RESPONSE_STATUS_COLOR_CLASS[status] || ""}`}>
-      <span className="vacancy-status-dot" />
-      {t(`vacancies.responses.status.${status}`)}
+    <span
+      className={`vacancy-response-status vacancy-response-status--${tone}`}
+      title={t(`vacancies.responses.status.${status}`)}
+    >
+      <i />
+    </span>
+  );
+}
+
+// Маркер перед датой — та же тройка тонов, что у точки.
+function ResponseMark({ status }) {
+  const tone = RESPONSE_STATUS_TONE[status] || "neutral";
+  return (
+    <span className={`vacancy-response-mark vacancy-response-mark--${tone}`}>
+      {(() => {
+        const Mark = RESPONSE_TONE_MARK[tone];
+        return Mark ? <Mark /> : "•";
+      })()}
     </span>
   );
 }
@@ -312,198 +334,379 @@ function VacancyForm({ editingId, initial, authorWorkspace, canRecruiter, canCom
   }
 
   return (
-    <div className="card">
-      <h3>{editingId ? t("vacancies.form.editTitle") : t("vacancies.form.title")}</h3>
+    <div>
+      <div className="card">
+        <h3>{editingId ? t("vacancies.form.editTitle") : t("vacancies.form.title")}</h3>
 
-      {!editingId && canRecruiter && canCompany && (
-        <>
-          <label>{t("vacancies.form.authorWorkspaceLabel")}</label>
-          <div className="vertical-chips">
-            <button
-              type="button"
-              className={`vertical-chip${workspace === "recruiter" ? " is-selected" : ""}`}
-              onClick={() => setWorkspace("recruiter")}
-            >
-              {t("workspace.recruiter")}
-            </button>
-            <button
-              type="button"
-              className={`vertical-chip${workspace === "company" ? " is-selected" : ""}`}
-              onClick={() => setWorkspace("company")}
-            >
-              {t("workspace.company")}
-            </button>
-          </div>
-        </>
-      )}
+        {!editingId && canRecruiter && canCompany && (
+          <>
+            <label>{t("vacancies.form.authorWorkspaceLabel")}</label>
+            <div className="vertical-chips">
+              <button
+                type="button"
+                className={`vertical-chip${workspace === "recruiter" ? " is-selected" : ""}`}
+                onClick={() => setWorkspace("recruiter")}
+              >
+                {t("workspace.recruiter")}
+              </button>
+              <button
+                type="button"
+                className={`vertical-chip${workspace === "company" ? " is-selected" : ""}`}
+                onClick={() => setWorkspace("company")}
+              >
+                {t("workspace.company")}
+              </button>
+            </div>
+          </>
+        )}
+
+      </div>
 
       <form onSubmit={onSubmit}>
-        <label>{t("vacancies.form.titleLabel")}</label>
-        <input
-          type="text"
-          placeholder={t("vacancies.form.titlePlaceholder")}
-          value={form.title}
-          onChange={(e) => onTitleChange(e.target.value)}
-        />
-        {suggestions.length > 0 && (
-          <div className="title-suggestions">
-            {suggestions.map((s, i) => (
-              <button type="button" key={i} className="title-suggestion" onClick={() => pickSuggestion(s)}>
-                <span>{s.label}</span>
-                <span className="partner-meta">{s.vertical} · {s.grade}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        {mismatchWord && (
-          <div className="mismatch-banner">
-            ⚠ {t("vacancies.form.mismatchWarning", { word: mismatchWord, grade: form.grade })}
-          </div>
-        )}
-
-        <PositionCascadeSelect
-          positions={positions}
-          vertical={form.vertical}
-          grade={form.grade}
-          position={form.position}
-          positionIsOther={form.positionIsOther}
-          onChange={({ vertical, grade, position, positionIsOther }) =>
-            setForm((f) => ({ ...f, vertical, grade, position, positionIsOther }))
-          }
-        />
-
-        <label>{t("vacancies.form.locationLabel")}</label>
-        <input
-          type="text"
-          placeholder={t("vacancies.form.locationPlaceholder")}
-          value={form.location}
-          onChange={(e) => set("location", e.target.value)}
-        />
-
-        <label>{t("vacancies.form.workFormatLabel")}</label>
-        <div className="vertical-chips">
-          {WORK_FORMATS.map((wf) => (
-            <button
-              key={wf}
-              type="button"
-              className={`vertical-chip${form.workFormat === wf ? " is-selected" : ""}`}
-              onClick={() => set("workFormat", form.workFormat === wf ? "" : wf)}
-            >
-              {t(`vacancies.workFormat.${wf}`)}
-            </button>
-          ))}
-        </div>
-
-        <label>{t("vacancies.form.employmentLabel")}</label>
-        <div className="vertical-chips">
-          {EMPLOYMENT_TYPES.map((et) => (
-            <button
-              key={et}
-              type="button"
-              className={`vertical-chip${form.employmentType === et ? " is-selected" : ""}`}
-              onClick={() => set("employmentType", form.employmentType === et ? "" : et)}
-            >
-              {t(`vacancies.employment.${et}`)}
-            </button>
-          ))}
-        </div>
-
-        <label>{t("vacancies.form.descriptionLabel")}</label>
-        <textarea
-          rows={4}
-          placeholder={t("vacancies.form.descriptionPlaceholder")}
-          value={form.description}
-          onChange={(e) => set("description", e.target.value)}
-        />
-
-        <label>{t("vacancies.form.salaryLabel")}</label>
-        <div className="amount-row">
+        <div className="card">
+          <label>{t("vacancies.form.titleLabel")}</label>
           <input
-            type="number"
-            inputMode="decimal"
-            placeholder={t("vacancies.form.salaryFromPlaceholder")}
-            value={form.salaryFrom}
-            onChange={(e) => set("salaryFrom", e.target.value)}
-            disabled={form.salaryNegotiable}
+            type="text"
+            placeholder={t("vacancies.form.titlePlaceholder")}
+            value={form.title}
+            onChange={(e) => onTitleChange(e.target.value)}
           />
-          <input
-            type="number"
-            inputMode="decimal"
-            placeholder={t("vacancies.form.salaryToPlaceholder")}
-            value={form.salaryTo}
-            onChange={(e) => set("salaryTo", e.target.value)}
-            disabled={form.salaryNegotiable}
-          />
-        </div>
-        <label className="checkbox-row">
-          <input
-            type="checkbox"
-            checked={form.salaryNegotiable}
-            onChange={(e) => set("salaryNegotiable", e.target.checked)}
-          />
-          {t("vacancies.form.salaryNegotiableLabel")}
-        </label>
-        <label className="checkbox-row">
-          <input
-            type="checkbox"
-            checked={form.salaryVisible}
-            onChange={(e) => set("salaryVisible", e.target.checked)}
-            disabled={form.salaryNegotiable}
-          />
-          {t("vacancies.form.salaryVisibleLabel")}
-        </label>
-
-        {!editingId && (
-          <>
-            <label>{t("vacancies.form.durationLabel")}</label>
-            <div className="vertical-chips">
-              {DURATIONS.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  className={`vertical-chip${form.durationDays === d ? " is-selected" : ""}`}
-                  onClick={() => set("durationDays", d)}
-                >
-                  {t("vacancies.form.durationDays", { days: d })}
+          {suggestions.length > 0 && (
+            <div className="title-suggestions">
+              {suggestions.map((s, i) => (
+                <button type="button" key={i} className="title-suggestion" onClick={() => pickSuggestion(s)}>
+                  <span>{s.label}</span>
+                  <span className="partner-meta">{s.vertical} · {s.grade}</span>
                 </button>
               ))}
             </div>
+          )}
+        </div>
 
-            <label>{t("vacancies.form.langLabel")}</label>
-            <div className="vertical-chips">
-              {["ru", "en"].map((l) => (
-                <button
-                  key={l}
-                  type="button"
-                  className={`vertical-chip${form.lang === l ? " is-selected" : ""}`}
-                  onClick={() => set("lang", l)}
-                >
-                  {l.toUpperCase()}
-                </button>
+        <div className="card">
+          {mismatchWord && (
+            <div className="mismatch-banner">
+              <IconWarning style={{ color: "var(--amber)" }} />{" "}
+          {t("vacancies.form.mismatchWarning", { word: mismatchWord, grade: form.grade })}
+            </div>
+          )}
+
+          <PositionCascadeSelect
+            positions={positions}
+            vertical={form.vertical}
+            grade={form.grade}
+            position={form.position}
+            positionIsOther={form.positionIsOther}
+            onChange={({ vertical, grade, position, positionIsOther }) =>
+              setForm((f) => ({ ...f, vertical, grade, position, positionIsOther }))
+            }
+          />
+        </div>
+
+        <div className="card">
+          <label>{t("vacancies.form.locationLabel")}</label>
+          <input
+            type="text"
+            placeholder={t("vacancies.form.locationPlaceholder")}
+            value={form.location}
+            onChange={(e) => set("location", e.target.value)}
+          />
+
+          <label>{t("vacancies.form.workFormatLabel")}</label>
+          <div className="vertical-chips">
+            {WORK_FORMATS.map((wf) => (
+              <button
+                key={wf}
+                type="button"
+                className={`vertical-chip${form.workFormat === wf ? " is-selected" : ""}`}
+                onClick={() => set("workFormat", form.workFormat === wf ? "" : wf)}
+              >
+                {t(`vacancies.workFormat.${wf}`)}
+              </button>
+            ))}
+          </div>
+
+          <label>{t("vacancies.form.employmentLabel")}</label>
+          <div className="vertical-chips">
+            {EMPLOYMENT_TYPES.map((et) => (
+              <button
+                key={et}
+                type="button"
+                className={`vertical-chip${form.employmentType === et ? " is-selected" : ""}`}
+                onClick={() => set("employmentType", form.employmentType === et ? "" : et)}
+              >
+                {t(`vacancies.employment.${et}`)}
+              </button>
+            ))}
+          </div>
+
+          <label>{t("vacancies.form.descriptionLabel")}</label>
+          <textarea
+            rows={4}
+            placeholder={t("vacancies.form.descriptionPlaceholder")}
+            value={form.description}
+            onChange={(e) => set("description", e.target.value)}
+          />
+        </div>
+
+        <div className="card">
+          <label>{t("vacancies.form.salaryLabel")}</label>
+          <div className="amount-row">
+            <input
+              type="number"
+              inputMode="decimal"
+              placeholder={t("vacancies.form.salaryFromPlaceholder")}
+              value={form.salaryFrom}
+              onChange={(e) => set("salaryFrom", e.target.value)}
+              disabled={form.salaryNegotiable}
+            />
+            <input
+              type="number"
+              inputMode="decimal"
+              placeholder={t("vacancies.form.salaryToPlaceholder")}
+              value={form.salaryTo}
+              onChange={(e) => set("salaryTo", e.target.value)}
+              disabled={form.salaryNegotiable}
+            />
+          </div>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={form.salaryNegotiable}
+              onChange={(e) => set("salaryNegotiable", e.target.checked)}
+            />
+            {t("vacancies.form.salaryNegotiableLabel")}
+          </label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={form.salaryVisible}
+              onChange={(e) => set("salaryVisible", e.target.checked)}
+              disabled={form.salaryNegotiable}
+            />
+            {t("vacancies.form.salaryVisibleLabel")}
+          </label>
+
+          {!editingId && (
+            <>
+              <label>{t("vacancies.form.durationLabel")}</label>
+              <div className="vertical-chips">
+                {DURATIONS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={`vertical-chip${form.durationDays === d ? " is-selected" : ""}`}
+                    onClick={() => set("durationDays", d)}
+                  >
+                    {t("vacancies.form.durationDays", { days: d })}
+                  </button>
+                ))}
+              </div>
+
+              <label>{t("vacancies.form.langLabel")}</label>
+              <div className="vertical-chips">
+                {["ru", "en"].map((l) => (
+                  <button
+                    key={l}
+                    type="button"
+                    className={`vertical-chip${form.lang === l ? " is-selected" : ""}`}
+                    onClick={() => set("lang", l)}
+                  >
+                    {l.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          <button className="btn" type="submit" disabled={state.loading} style={{ marginTop: 14 }}>
+            {state.loading
+              ? t("vacancies.form.submitting")
+              : editingId
+                ? t("vacancies.form.saveBtn")
+                : t("vacancies.form.submit")}
+          </button>
+          <button
+            className="btn secondary"
+            type="button"
+            onClick={onCancel}
+            disabled={state.loading}
+            style={{ marginTop: 8 }}
+          >
+            {t("common.cancel")}
+          </button>
+        </div>
+      </form>
+      <Msg type="error">{state.error}</Msg>
+    </div>
+  );
+}
+
+// Премиальная карточка вакансии верифицированной компании (03.09.2026,
+// прототип владельца GURO_ID_Mini_App-2, Figma node 15048:22109) —
+// показывается ВМЕСТО обычной .vacancy-card, когда вакансия опубликована
+// от лица компании И у компании есть бейдж верификации. Светлого варианта
+// нет: он был в прототипе, но в самой Figma отсутствует (сверка 04.09.2026).
+//
+// Отличия от прототипа, сделанные осознанно:
+// - кнопки-закладки (☆ "Сохранить вакансию") нет: в приложении нет самой
+//   фичи закладок, рисовать неработающую кнопку хуже, чем не рисовать;
+// - кружка рейтинга автора тоже нет — премиальная карточка в макете
+//   намеренно показывает БРЕНД, а не рейтинг конкретного человека
+//   (в обычной карточке рейтинг как был, так и остался).
+// Кнопка-закладка (03.09.2026; 04.09.2026 — вынесена из премиальной
+// карточки, т.к. понадобилась и на обычной). Состояние оптимистичное:
+// звезда переключается сразу по тапу, при ошибке сервера откатывается —
+// перезагружать весь список доски ради одной звезды незачем.
+function BookmarkButton({ vacancyId, initial, className }) {
+  const { t } = useLang();
+  const [bookmarked, setBookmarked] = useState(!!initial);
+  const [busy, setBusy] = useState(false);
+
+  async function onToggle(e) {
+    // Карточка целиком кликабельна (открывает вакансию) — гасим всплытие,
+    // иначе тап по звезде заодно уводил бы с доски.
+    e.stopPropagation();
+    if (busy) return;
+    const next = !bookmarked;
+    setBookmarked(next);
+    setBusy(true);
+    haptic("light");
+    try {
+      const res = await toggleVacancyBookmark(vacancyId);
+      setBookmarked(!!res.is_bookmarked);
+    } catch {
+      setBookmarked(!next);
+      haptic("error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const label = t(bookmarked ? "vacancies.bookmark.remove" : "vacancies.bookmark.add");
+  return (
+    <button
+      type="button"
+      className={className}
+      aria-pressed={bookmarked}
+      aria-label={label}
+      title={label}
+      onClick={onToggle}
+    >
+      <IconStar style={bookmarked ? { color: "var(--gold)" } : undefined} />
+    </button>
+  );
+}
+
+function PremiumVacancyCard({ v, onOpen }) {
+  const { t } = useLang();
+
+  const salaryText = v.salary_negotiable
+    ? t("vacancies.salaryNegotiable")
+    : v.salary_from != null || v.salary_to != null
+      ? `$${v.salary_from ?? "?"} – $${v.salary_to ?? "?"}`
+      : null;
+  const brandName = v.company || v.poster_name || "";
+  const workFormat = v.work_format ? t(`vacancies.workFormat.${v.work_format}`) : null;
+  const employment = v.employment_type ? t(`vacancies.employment.${v.employment_type}`) : null;
+  const brandSub = [workFormat, v.location].filter(Boolean).join(" · ").toUpperCase();
+
+  // Теги в макете РАЗНОЦВЕТНЫЕ по смыслу: грейд — лайм, должность — циан,
+  // вертикаль — приглушённый. Раньше все три были одинаково серыми.
+  const tags = [
+    v.grade && { text: v.grade, tone: "grade" },
+    v.position && { text: v.position, tone: "position" },
+    v.vertical && { text: v.vertical, tone: "muted" },
+  ].filter(Boolean);
+
+  // Мета-строка в макете идёт с иконками (гео / занятость / формат).
+  const meta = [
+    // Прежние ◉ ◷ ⌂ были случайными типографскими глифами, а не единым
+    // набором (дизайн-система, раздел 6).
+    v.location && { Icon: IconBuilding, text: v.location },
+    employment && { Icon: IconBriefcase, text: employment },
+    workFormat && { Icon: IconBriefcase, text: workFormat },
+  ].filter(Boolean);
+
+  return (
+    <>
+      <article
+        className="premium-vacancy-card"
+        onClick={() => onOpen(v.id)}
+        role="button"
+        tabIndex={0}
+      >
+        <header className="premium-vacancy-card__brand-row">
+          <div className="premium-vacancy-card__logo">
+            {v.poster_logo_url ? <img src={v.poster_logo_url} alt="" /> : initialOf(brandName)}
+          </div>
+          <div className="premium-vacancy-card__brand-copy">
+            <strong>{brandName.toUpperCase()}</strong>
+            {brandSub && <span>{brandSub}</span>}
+          </div>
+          <BookmarkButton
+            vacancyId={v.id}
+            initial={v.is_bookmarked}
+            className="premium-vacancy-card__bookmark"
+          />
+        </header>
+
+        <div className="premium-vacancy-card__title-row">
+          <h3>{v.title}</h3>
+          <span className="premium-vacancy-card__verified" title={t("company.verify.verified")}>
+                <IconCheck />
+              </span>
+        </div>
+
+        {tags.length > 0 && (
+          <div className="premium-vacancy-card__tags">
+            {tags.map((tag, i) => (
+              <span key={i} className={`premium-vacancy-card__tag--${tag.tone}`}>
+                {String(tag.text).toUpperCase()}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {meta.length > 0 && (
+          <>
+            <div className="premium-vacancy-card__divider" />
+            <div className="premium-vacancy-card__meta">
+              {meta.map((m, i) => (
+                <span key={i}>
+                  <i className="premium-vacancy-card__meta-icon">
+                    <m.Icon />
+                  </i>{" "}
+                  {m.text}
+                </span>
               ))}
             </div>
           </>
         )}
 
-        <button className="btn" type="submit" disabled={state.loading} style={{ marginTop: 14 }}>
-          {state.loading
-            ? t("vacancies.form.submitting")
-            : editingId
-              ? t("vacancies.form.saveBtn")
-              : t("vacancies.form.submit")}
-        </button>
-        <button
-          className="btn secondary"
-          type="button"
-          onClick={onCancel}
-          disabled={state.loading}
-          style={{ marginTop: 8 }}
-        >
-          {t("common.cancel")}
-        </button>
-      </form>
-      <Msg type="error">{state.error}</Msg>
-    </div>
+        {salaryText && (
+          <>
+            <div className="premium-vacancy-card__divider" />
+            <footer className="premium-vacancy-card__footer">
+              <div className="premium-vacancy-card__salary">
+                <strong>{salaryText}</strong>
+                <span>{t("vacancies.premium.perMonth")}</span>
+              </div>
+              <button type="button" className="premium-vacancy-card__cta">
+                {t("vacancies.premium.applyBtn")} <span>›</span>
+              </button>
+            </footer>
+          </>
+        )}
+      </article>
+
+      {/* Пояснение про верификацию — в макете ОТДЕЛЬНЫЙ блок под карточкой,
+          а не бейдж внутри неё. */}
+      <div className="premium-verified-note">
+        <div className="premium-verified-note__title">{t("vacancies.premium.verifiedTitle")}</div>
+        <p>{t("vacancies.premium.verifiedText")}</p>
+      </div>
+    </>
   );
 }
 
@@ -545,10 +748,17 @@ function VacancyCard({ v, onOpen }) {
       role="button"
       tabIndex={0}
     >
+      <BookmarkButton
+        vacancyId={v.id}
+        initial={v.is_bookmarked}
+        className="vacancy-card__bookmark"
+      />
       {isCompany && (
-        <div className="vacancy-official-badge">✓ {t("vacancies.officialCompanyBadge")}</div>
+        <div className="vacancy-official-badge">
+          <IconCheck /> {t("vacancies.officialCompanyBadge")}
+        </div>
       )}
-      <h3>{v.title}</h3>
+      <h3 className="vacancy-card__title">{v.title}</h3>
       {tags.length > 0 && (
         <div className="vacancy-tag-row">
           {tags.map((tag, i) => (
@@ -565,7 +775,9 @@ function VacancyCard({ v, onOpen }) {
           <div className="vacancy-poster-name">
             {posterName}
             {v.verified_company && (
-              <span className="company-verified-badge" title={t("company.verify.verified")}>✓</span>
+              <span className="company-verified-badge" title={t("company.verify.verified")}>
+              <IconCheck />
+            </span>
             )}
           </div>
           {days != null && (
@@ -642,7 +854,11 @@ function VacancyDetail({ id, onBack, onOpenMessages, onManage, onOpenResponses, 
         {salaryText && <div className="partner-meta" style={{ marginTop: 6 }}>{salaryText}</div>}
         <div className="partner-meta" style={{ marginTop: 8 }}>
           {[v.company || v.poster_name, v.verified_company && t("vacancies.verifiedCompany")].filter(Boolean).join(" · ")}
-          {typeof v.reputation_score === "number" && ` · ★ ${v.reputation_score}`}
+          {/* Было «★ 1.7» — звезда выдавала рабочий рейтинг (шкала 0-100)
+              за оценку из пяти, а соседняя карточка показывала то же число
+              округлённым до 2. Один вид, одно округление, без звезды. */}
+          {typeof v.reputation_score === "number"
+            && ` · ${t("vacancies.posterRating", { n: Math.round(v.reputation_score) })}`}
         </div>
 
         {v.description && !descOpen && (
@@ -717,8 +933,11 @@ function VacancyDetail({ id, onBack, onOpenMessages, onManage, onOpenResponses, 
 // vacancies/loading подняты в VacanciesScreen (27.08.2026, ТЗ "экраны по ТЗ
 // от 23.08") — те же данные нужны и тут, и для подписи под плиткой
 // "Мои вакансии" в верхней навигации (см. NavTiles), незачем грузить дважды.
-function MyVacancies({ vacancies, loading, error, onOpen, onManage, onPublish }) {
+const MINE_STATUS_FILTERS = ["", "active", "paused", "closed"];
+
+function MyVacancies({ vacancies, loading, error, onOpen, onPreview, onManage, onPublish }) {
   const { t } = useLang();
+  const [statusFilter, setStatusFilter] = useState("");
 
   if (loading) return <Spinner>{t("messages.loading")}</Spinner>;
   if (error) return <Msg type="error">{t("vacancies.loadError")}</Msg>;
@@ -738,9 +957,27 @@ function MyVacancies({ vacancies, loading, error, onOpen, onManage, onPublish })
     onManage(action, v, { stay: true });
   }
 
+  const shown = statusFilter ? vacancies.filter((v) => v.status === statusFilter) : vacancies;
+
   return (
     <div>
-      {vacancies.map((v) => (
+      {/* Быстрый фильтр по стадии — правка в Figma "P3 · Мои вакансии". */}
+      <div className="vertical-chips vertical-chips--tabs">
+        {MINE_STATUS_FILTERS.map((s) => (
+          <button
+            key={s || "all"}
+            type="button"
+            className={`vertical-chip${statusFilter === s ? " is-selected" : ""}`}
+            onClick={() => setStatusFilter(s)}
+          >
+            {s ? t(`vacancies.mine.filter.${s}`) : t("vacancies.mine.filterAll")}
+          </button>
+        ))}
+      </div>
+
+      {shown.length === 0 && <div className="partner-meta">{t("vacancies.mine.filterEmpty")}</div>}
+
+      {shown.map((v) => (
         <div key={v.id} className="card" style={{ cursor: "pointer" }} onClick={() => onOpen(v.id)}>
           <div className="partner-name">{v.title}</div>
           {/* Тап по телу карточки открывает "Отклики" именно на эту
@@ -749,10 +986,26 @@ function MyVacancies({ vacancies, loading, error, onOpen, onManage, onPublish })
           <div className="vacancy-mine-status-row">
             <StatusBadge status={v.status} closedReason={v.closed_reason} />
             <span className="vacancy-mine-counts">
-              👁 {v.views_count} ↩ {v.responses_count}
+              <IconEye /> {v.views_count}{" "}
+              <span className="vacancy-mine-counts-responses">
+                <IconReply /> {v.responses_count}
+              </span>
             </span>
           </div>
           <div className="recruiter-quick-actions" style={{ marginTop: 10, flexWrap: "wrap" }}>
+            {/* Открывает ту же карточку, что видит кандидат, а не отдельный
+                предпросмотр: своя копия разойдётся с оригиналом при первом
+                же изменении вёрстки (стр. 1-2 отчёта). */}
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreview(v.id);
+              }}
+            >
+              {t("vacancies.manage.preview")}
+            </button>
             <button type="button" className="btn secondary" onClick={(e) => act(e, "edit", v)}>
               {t("vacancies.manage.edit")}
             </button>
@@ -841,6 +1094,11 @@ function VacancyResponses({ vacancyId, onBack, onOpenMessages, onOpenHireConfirm
             </div>
           </>
         )}
+        {/* Эталонный экран 16: над рядом чипов стоит надзаголовок. По
+            разделу 7 Eyebrow всегда над группой, а не под ней. */}
+        <div className="eyebrow" style={{ marginTop: 16 }}>
+          {t("vacancies.responses.filterTitle")}
+        </div>
         <div className="vertical-chips" style={{ marginTop: 8 }}>
           <button
             type="button"
@@ -862,6 +1120,15 @@ function VacancyResponses({ vacancyId, onBack, onOpenMessages, onOpenHireConfirm
         </div>
       </div>
 
+      {/* Эталонный экран 16: карточка-пояснение, почему кнопка найма
+          появляется только у одного статуса. */}
+      <div className="card">
+        <h3>{t("vacancies.responses.hiredNoteTitle")}</h3>
+        <div className="privacy-hint" style={{ marginBottom: 0 }}>
+          {t("vacancies.responses.hiredNoteText")}
+        </div>
+      </div>
+
       {state.loading && <Spinner>{t("messages.loading")}</Spinner>}
       {state.error && <Msg type="error">{t("vacancies.loadError")}</Msg>}
       {state.responses && state.responses.length === 0 && (
@@ -879,10 +1146,11 @@ function VacancyResponses({ vacancyId, onBack, onOpenMessages, onOpenHireConfirm
                 <div className="rating-preview-circle vacancy-response-rating">{Math.round(r.reputation_score)}</div>
               )}
             </div>
-            <div className="vacancy-mine-status-row">
+            <div className="vacancy-mine-status-row vacancy-mine-status-row--response">
               <ResponseStatusDot status={r.status} />
               {days !== null && (
                 <span className="vacancy-mine-counts">
+                  <ResponseMark status={r.status} />{" "}
                   {days === 0 ? t("vacancies.responses.today") : t("vacancies.responses.daysAgo", { days })}
                 </span>
               )}
@@ -966,6 +1234,11 @@ function AllResponses({ onBack, onOpenMessages, onOpenHireConfirm }) {
       </button>
       <div className="card">
         <h3>{t("vacancies.responses.title")}</h3>
+        {/* Эталонный экран 16: над рядом чипов стоит надзаголовок. По
+            разделу 7 Eyebrow всегда над группой, а не под ней. */}
+        <div className="eyebrow" style={{ marginTop: 16 }}>
+          {t("vacancies.responses.filterTitle")}
+        </div>
         <div className="vertical-chips" style={{ marginTop: 8 }}>
           <button
             type="button"
@@ -987,6 +1260,15 @@ function AllResponses({ onBack, onOpenMessages, onOpenHireConfirm }) {
         </div>
       </div>
 
+      {/* Эталонный экран 16: карточка-пояснение, почему кнопка найма
+          появляется только у одного статуса. */}
+      <div className="card">
+        <h3>{t("vacancies.responses.hiredNoteTitle")}</h3>
+        <div className="privacy-hint" style={{ marginBottom: 0 }}>
+          {t("vacancies.responses.hiredNoteText")}
+        </div>
+      </div>
+
       {state.loading && <Spinner>{t("messages.loading")}</Spinner>}
       {state.error && <Msg type="error">{t("vacancies.loadError")}</Msg>}
       {state.responses && state.responses.length === 0 && (
@@ -1002,10 +1284,11 @@ function AllResponses({ onBack, onOpenMessages, onOpenHireConfirm }) {
                 <div className="rating-preview-circle vacancy-response-rating">{Math.round(r.reputation_score)}</div>
               )}
             </div>
-            <div className="vacancy-mine-status-row">
+            <div className="vacancy-mine-status-row vacancy-mine-status-row--response">
               <ResponseStatusDot status={r.status} />
               {days !== null && (
                 <span className="vacancy-mine-counts">
+                  <ResponseMark status={r.status} />{" "}
                   {days === 0 ? t("vacancies.responses.today") : t("vacancies.responses.daysAgo", { days })}
                 </span>
               )}
@@ -1052,12 +1335,65 @@ function AllResponses({ onBack, onOpenMessages, onOpenHireConfirm }) {
   );
 }
 
-export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm, workspace }) {
+// Права на публикацию (подписка кабинета Рекрутер / Компания). Экран
+// размонтируется при каждом переключении вкладки, поэтому без кэша два
+// запроса /api/me повторялись на каждый заход — и каждый раз с ожиданием,
+// пока не отрисуются плитки навигации.
+//
+// Кэш модульный (живёт, пока открыт Mini App) и НЕ замораживается: при
+// каждом заходе запрос всё равно уходит и молча обновляет значение, так
+// что после оплаты кабинета плитки появятся сами.
+let vacancyCapsCache = null;
+
+function fetchVacancyCaps() {
+  return Promise.all([
+    getMe({ workspace: "recruiter" }).then((d) => !!d.is_recruiter_subscribed).catch(() => false),
+    getMe({ workspace: "company" }).then((d) => !!d.is_company_subscribed).catch(() => false),
+  ]).then(([recruiter, company]) => {
+    vacancyCapsCache = { loading: false, recruiter, company };
+    return vacancyCapsCache;
+  });
+}
+
+// Дёргается один раз при старте приложения (App.jsx): к моменту, когда
+// человек откроет вкладку, ответ обычно уже лежит в кэше и ждать нечего.
+export function prefetchVacancyCaps() {
+  if (!vacancyCapsCache) fetchVacancyCaps().catch(() => {});
+}
+
+// Тот же прогретый кэш, но для экранов вне вакансий (06.09.2026): в поиске
+// нужно знать, оплачен ли кабинет, чтобы не показывать оплатившему призыв
+// оплатить. Отдельного запроса это не стоит — ответ уже лежит с запуска.
+export function useWorkspaceCaps() {
+  const [caps, setCaps] = useState(
+    vacancyCapsCache ?? { loading: true, recruiter: false, company: false },
+  );
+  useEffect(() => {
+    if (vacancyCapsCache) {
+      setCaps(vacancyCapsCache);
+      return undefined;
+    }
+    let alive = true;
+    fetchVacancyCaps().then((c) => alive && setCaps(c)).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return caps;
+}
+
+export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm, workspace, deepLinkResponsesId }) {
   const { t, lang } = useLang();
   const positions = usePositions();
-  const [tab, setTab] = useState("board"); // "board" | "mine"
-  const [view, setView] = useState({ name: "board" });
-  const [caps, setCaps] = useState({ loading: true, recruiter: false, company: false });
+  // Переход из уведомления об отклике (06.09.2026) — открываемся сразу на
+  // откликах нужной вакансии, «назад» ведёт в «Мои вакансии».
+  const [tab, setTab] = useState(deepLinkResponsesId ? "mine" : "board"); // "board" | "mine"
+  const [view, setView] = useState(
+    deepLinkResponsesId
+      ? { name: "responses", id: deepLinkResponsesId, returnTo: "board" }
+      : { name: "board" },
+  );
+  const [caps, setCaps] = useState(vacancyCapsCache ?? { loading: true, recruiter: false, company: false });
   const [refreshKey, setRefreshKey] = useState(0);
   const [manageError, setManageError] = useState(null);
 
@@ -1069,6 +1405,9 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
   // Фильтр по тегу "Тип компании" (26.08.2026, ТЗ "Компания. каб", раздел 5)
   // — жёсткий структурный фильтр поверх доски, тот же принцип, что грейд.
   const [companyType, setCompanyType] = useState("");
+  // Фильтр "только сохранённые" (03.09.2026) — тот же приём, что у
+  // чекбоксов-фильтров в Поиске, отдельного экрана закладок не заводим.
+  const [bookmarkedOnly, setBookmarkedOnly] = useState(false);
   const [state, setState] = useState({ loading: true, vacancies: null, truncated: false, error: null });
   // "Мои вакансии" поднято на верхний уровень (27.08.2026, ТЗ "экраны по ТЗ
   // от 23.08") — те же данные нужны и списку под табом, и подписи под
@@ -1077,10 +1416,9 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
   const [myVac, setMyVac] = useState({ loading: true, vacancies: null, error: null, activeLimit: 0 });
 
   useEffect(() => {
-    Promise.all([
-      getMe({ workspace: "recruiter" }).then((d) => !!d.is_recruiter_subscribed).catch(() => false),
-      getMe({ workspace: "company" }).then((d) => !!d.is_company_subscribed).catch(() => false),
-    ]).then(([recruiter, company]) => setCaps({ loading: false, recruiter, company }));
+    // Запрос уходит всегда: даже когда плитки уже нарисованы из кэша, надо
+    // подхватить свежую оплату. Просто без ожидания на экране.
+    fetchVacancyCaps().then(setCaps);
   }, []);
 
   function loadMyVacancies() {
@@ -1100,12 +1438,13 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
     getVacancies({
       lang: langFilter, vertical: vertical || undefined, grade: grade || undefined,
       position: position || undefined, q: q || undefined, companyType: companyType || undefined,
+      bookmarked: bookmarkedOnly || undefined,
     })
       .then(({ vacancies, truncated }) => setState({ loading: false, vacancies, truncated, error: null }))
       .catch((error) => setState({ loading: false, vacancies: null, truncated: false, error }));
   }
 
-  useEffect(loadList, [langFilter, vertical, grade, position, q, companyType, refreshKey]);
+  useEffect(loadList, [langFilter, vertical, grade, position, q, companyType, bookmarkedOnly, refreshKey]);
 
   const canPublish = caps.recruiter || caps.company;
   const subscriptionRequired = state.error instanceof ApiError && state.error.status === 402;
@@ -1117,7 +1456,7 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
     setManageError(null);
     try {
       if (action === "edit") {
-        setView({ name: "edit", id: v.id, initial: vacancyToForm(v) });
+        setView({ name: "edit", id: v.id, initial: vacancyToForm(v), authorWorkspace: v.author_workspace });
         return;
       }
       if (action === "pause") await pauseVacancy(v.id);
@@ -1143,6 +1482,9 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
         id={view.id}
         onBack={() => {
           setView({ name: "board" });
+          // Пришли из «Моих вакансий» (кнопка «Показать») — туда и
+          // возвращаемся, а не на общую доску.
+          if (view.returnTo === "mine") setTab("mine");
           setRefreshKey((k) => k + 1);
         }}
         onOpenMessages={onOpenMessages}
@@ -1188,6 +1530,7 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
       <VacancyForm
         editingId={view.name === "edit" ? view.id : null}
         initial={view.initial}
+        authorWorkspace={view.authorWorkspace}
         canRecruiter={caps.recruiter}
         canCompany={caps.company}
         onSaved={() => {
@@ -1213,6 +1556,12 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
             "Мои вакансии"/"Отклики"/"+Опубликовать" доступны только тем, у
             кого есть публикующая подписка (Рекрутер/Компания) — те же
             условия, что у старой кнопки "Опубликовать" ниже. */}
+        {/* Пока права не известны, сетку не рисуем вовсе: набор плиток
+            зависит от них, и любой предварительный вариант пришлось бы
+            потом менять в размере. Так плитки появляются все разом и
+            ровно один раз. */}
+        {caps.loading && <Spinner>{t("messages.loading")}</Spinner>}
+        {!caps.loading && (
         <div className="vacancy-nav-grid">
           <button
             type="button"
@@ -1251,7 +1600,7 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
           {canPublish && (
             <button
               type="button"
-              className="vacancy-nav-tile"
+              className="vacancy-nav-tile btn-publish-pulse"
               onClick={() => setView({ name: "form" })}
             >
               <span className="vacancy-nav-tile-title">{t("vacancies.publishBtn")}</span>
@@ -1259,6 +1608,7 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
             </button>
           )}
         </div>
+        )}
         {!canPublish && !caps.loading && (
           <div className="partner-meta" style={{ marginTop: 10 }}>{t("vacancies.upsellText")}</div>
         )}
@@ -1317,6 +1667,14 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
               onChange={(e) => setQ(e.target.value)}
               style={{ marginTop: 8 }}
             />
+            <label className="checkbox-row" style={{ marginTop: 10 }}>
+              <input
+                type="checkbox"
+                checked={bookmarkedOnly}
+                onChange={(e) => setBookmarkedOnly(e.target.checked)}
+              />
+              {t("vacancies.bookmark.filter")}
+            </label>
           </>
         )}
 
@@ -1342,6 +1700,7 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
             loading={myVac.loading}
             error={myVac.error}
             onOpen={(id) => setView({ name: "responses", id, returnTo: "board" })}
+            onPreview={(id) => setView({ name: "detail", id, returnTo: "mine" })}
             onManage={onManage}
             onPublish={() => setView({ name: "form" })}
           />
@@ -1372,7 +1731,14 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
           )}
 
           {state.vacancies?.map((v) => (
-            <VacancyCard key={v.id} v={v} onOpen={(id) => setView({ name: "detail", id })} />
+            // Премиальная карточка — только для вакансий от лица
+            // ВЕРИФИЦИРОВАННОЙ компании (03.09.2026); всё остальное, включая
+            // вакансии неверифицированных компаний, рисуется как раньше.
+            v.author_workspace === "company" && v.verified_company ? (
+              <PremiumVacancyCard key={v.id} v={v} onOpen={(id) => setView({ name: "detail", id })} />
+            ) : (
+              <VacancyCard key={v.id} v={v} onOpen={(id) => setView({ name: "detail", id })} />
+            )
           ))}
           {state.truncated && <div className="partner-meta">{t("vacancies.truncatedHint")}</div>}
         </>

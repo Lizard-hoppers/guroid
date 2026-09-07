@@ -3,18 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#071a1c" />
     <title>GURO ID</title>
     <link rel="icon" type="image/png" href="./src/assets/favicon.png" />
     <link rel="apple-touch-icon" href="./src/assets/favicon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Lora:wght@600;700&family=Poppins:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Orbitron:wght@400..900&display=swap"
       rel="stylesheet"
     />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
   <body>
+    <!-- Обводка экрана. Параметры — из файла владельца
+         GURO_ID_Mini_App_READY_2.html (05.09.2026): радиус 32, толщина
+         1.75px, фирменный градиент по диагонали. Обычный div, а не SVG:
+         у SVG с preserveAspectRatio="none" скругление растягивалось
+         вместе с viewBox и углы выходили эллипсами. Оверлей fixed, без
+         JS и без перехвата тапов — при прокрутке и при анимации
+         tg.expand() ничего не пересчитывается. -->
+    <div id="border-frame" aria-hidden="true"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

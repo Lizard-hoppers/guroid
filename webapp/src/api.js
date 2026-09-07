@@ -60,7 +60,7 @@ export function searchByUserId(userId, { workspace } = {}) {
 
 export function createPartnership({
   confirmerUsername, vertical, geo, offer, amountReceived, amountPaid, review, amountVisible, txHash,
-  ptype, txNetwork, asCompany,
+  ptype, txNetwork, asCompany, isFlaggedFraud, noPayment,
 }) {
   return request("/api/partnerships", {
     method: "POST",
@@ -69,17 +69,21 @@ export function createPartnership({
       vertical: vertical || null,
       geo: geo || null,
       offer: offer || null,
-      amount_received: amountReceived || null,
-      amount_paid: amountPaid || null,
+      // Безоплатное партнёрство (ТЗ раздел 9.1): денежных данных нет
+      // вовсе — не отправляем даже то, что могло остаться в форме, если
+      // человек сначала заполнил суммы, а потом поставил галочку.
+      amount_received: noPayment ? null : amountReceived || null,
+      amount_paid: noPayment ? null : amountPaid || null,
       review: review || null,
-      amount_visible: !!amountVisible,
-      tx_hash: txHash || null,
+      amount_visible: !noPayment && !!amountVisible,
+      tx_hash: noPayment ? null : txHash || null,
       ptype,
-      tx_network: txHash ? txNetwork : null,
+      tx_network: !noPayment && txHash ? txNetwork : null,
       // as_company (27.08.2026, ТЗ "Роли и команда") — "действую как
       // компания": сделка попадает в общую историю компании (см. company_id
       // в partnerships), лимит новых заявок считается на компанию.
       as_company: !!asCompany,
+      is_flagged_fraud: !!isFlaggedFraud,
     }),
   });
 }
@@ -136,8 +140,12 @@ export function browseResumes(vertical, { top } = {}) {
 // ТЗ от 23.08") — тот же /api/search, что и browseVertical/browseResumes
 // выше, просто в одном запросе сразу вертикаль+грейд+должность+"ищет
 // работу"+топ-рейтинг (см. _directory_browse/_resume_browse в guro_id_api.py).
-export function searchCandidates({ vertical, grade, position, looking, top } = {}) {
+export function searchCandidates({ vertical, grade, position, looking, top, q } = {}) {
   const params = new URLSearchParams();
+  // scope=candidates (06.09.2026) — область поиска кабинета: текст ищется и
+  // по описанию, а пустой запрос показывает всех, кого обещал счётчик.
+  params.set("scope", "candidates");
+  if (q) params.set("q", q);
   if (looking) params.set("resumes", "1");
   if (vertical) params.set("vertical", vertical);
   if (grade) params.set("grade", grade);
@@ -169,7 +177,7 @@ export function getPositions() {
   return request("/api/positions");
 }
 
-export function getVacancies({ lang, vertical, grade, position, q, companyType } = {}) {
+export function getVacancies({ lang, vertical, grade, position, q, companyType, bookmarked } = {}) {
   const params = new URLSearchParams();
   if (lang) params.set("lang", lang);
   if (vertical) params.set("vertical", vertical);
@@ -177,6 +185,7 @@ export function getVacancies({ lang, vertical, grade, position, q, companyType }
   if (position) params.set("position", position);
   if (q) params.set("q", q);
   if (companyType) params.set("company_type", companyType);
+  if (bookmarked) params.set("bookmarked", "1");
   const qs = params.toString();
   return request(`/api/vacancies${qs ? `?${qs}` : ""}`);
 }
@@ -198,6 +207,12 @@ export function editVacancy(id, fields) {
     method: "POST",
     body: JSON.stringify(fields),
   });
+}
+
+// Закладка вакансии (03.09.2026) — переключатель, ответ отдаёт новое
+// состояние ({is_bookmarked}), а не всю карточку.
+export function toggleVacancyBookmark(id) {
+  return request(`/api/vacancies/${encodeURIComponent(id)}/bookmark`, { method: "POST" });
 }
 
 export function pauseVacancy(id) {
@@ -307,6 +322,28 @@ export function setCompanyPrivacyField(field, value) {
 // request(): та жёстко ставит Content-Type: application/json на любое
 // тело, а multipart нужен свой boundary, который браузер проставляет сам
 // ТОЛЬКО если Content-Type вообще не задан руками.
+// Логотип кабинета Рекрутер — свой эндпоинт, а не company/image: там
+// требуется членство в компании и вид (logo/cover), тут вид всегда один.
+export async function uploadRecruiterImage(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch("/api/recruiter/image", {
+    method: "POST",
+    headers: { Authorization: `tma ${getInitData()}` },
+    body: formData,
+  });
+  let body = null;
+  try {
+    body = await res.json();
+  } catch {
+    // пустое/не-JSON тело — оставляем null
+  }
+  if (!res.ok) {
+    throw new ApiError(res.status, body?.error || "UNKNOWN", body);
+  }
+  return body;
+}
+
 export async function uploadCompanyImage(kind, file) {
   const formData = new FormData();
   formData.append("kind", kind);
@@ -339,6 +376,12 @@ export function requestCompanyVerification() {
 // (участники + заявки), одобрение/отклонение/удаление/передача владения.
 export function createCompany(fields) {
   return request("/api/company/create", { method: "POST", body: JSON.stringify(fields) });
+}
+
+// Проверка названия ДО создания и оплаты (ТЗ «Роли и команда», 3.0.1).
+// Ничего не создаёт — только отвечает, есть ли уже такая компания.
+export function checkCompanyName(name) {
+  return request(`/api/company/name_check?name=${encodeURIComponent(name)}`);
 }
 
 export function requestJoinCompany(companyId, positionText) {

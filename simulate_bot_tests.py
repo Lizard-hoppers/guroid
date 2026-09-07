@@ -3364,11 +3364,29 @@ async def _run_guro_id_api_sim():
                                           json={"confirmer_username": "confirmer"})
                 check(resp.status == 400, "POST /api/partnerships без ptype -> 400 INVALID_TYPE (6, п.1, обязательное поле)")
 
+                # tx_hash/tx_network передаём ЯВНЫМ null — так их шлёт форма при
+                # галочке «Без прямой оплаты» (06.09.2026, «компания.pdf», стр. 6).
+                # Раньше тест ключи просто не передавал и потому не различал
+                # «ключа нет» и «ключ со значением null» — а баг жил именно там:
+                # str(None) давал строку "None", сервер считал её хешем и требовал
+                # сеть, из-за чего безоплатная сделка не отправлялась вообще.
                 resp = await client.post("/api/partnerships", headers=auth_100,
-                                          json={"confirmer_username": "confirmer", "vertical": "casino", "ptype": "deal"})
-                check(resp.status == 200, "POST /api/partnerships валидный запрос -> 200")
+                                          json={"confirmer_username": "confirmer", "vertical": "casino",
+                                                "ptype": "deal", "tx_hash": None, "tx_network": None,
+                                                "amount_received": None, "amount_paid": None})
+                check(resp.status == 200, "POST /api/partnerships с явными null -> 200 (безоплатная сделка)")
                 body = await resp.json()
                 check(body["status"] == "pending", "созданное партнёрство в статусе pending")
+                _row_np = _sq.connect(db_path).execute(
+                    "SELECT tx_hash FROM partnerships WHERE id=?", (body["id"],)).fetchone()
+                check(_row_np[0] is None,
+                      'в базе NULL, а не строка "None" (так мусор попадал в боевые данные)')
+
+                resp = await client.post("/api/partnerships", headers=auth_100,
+                                          json={"confirmer_username": "nobody", "ptype": "deal",
+                                                "tx_hash": "None"})
+                check(resp.status == 404,
+                      'строка "None" в поле хеша не считается хешем (иначе -> 400 про сеть)')
 
                 resp = await client.post("/api/partnerships", headers=auth_100,
                                           json={"confirmer_username": "confirmer", "ptype": "deal"})
@@ -3643,8 +3661,9 @@ async def _run_guro_id_api_sim():
                 body = await resp.json()
                 check(body["is_recruiter_subscribed"] is False, "свежий кабинет рекрутера -> подписки ещё нет")
                 check(body["name"] is None, "поля витрины рекрутера пока не заполнены")
-                check(body["privacy"] == {f: False for f in GC.PRIVACY_FIELDS},
-                      "приватность рекрутера тоже default-False (opt-in, тот же принцип)")
+                check(body["privacy"] == {f: True for f in GC.PRIVACY_FIELDS},
+                      "приватность рекрутера теперь opt-out (06.09.2026): витрина видна сразу, "
+                      "иначе оплаченный кабинет не находится в поиске")
 
                 # Главный экран кабинета "Рекрутер" (26.08.2026, ТЗ "Гуро
                 # рекрутер каб") — панель "Характеристика"/статус/процентиль.
@@ -3701,8 +3720,16 @@ async def _run_guro_id_api_sim():
                 body = await resp.json()
                 check(body["locked"] is False, "auth_200 подписан на базовый GURO ID -> карточка разблокирована")
                 check(body["name"] == "Init HR", "show_name включён -> имя рекрутера видно")
+                check(body["company"] == "GURO Recruiting",
+                      "show_company включён по умолчанию -> company виден (opt-out, 06.09.2026)")
+                # Механизм приватности должен работать и в обратную сторону:
+                # выключенный вручную тумблер обязан скрывать поле.
+                app["storage"].set_recruiter_privacy_field(100, "show_company", False)
+                resp = await client.get("/api/search?workspace=recruiter&username=initiator", headers=auth_200)
+                body = await resp.json()
                 check(body["company"] is None,
-                      "show_company НЕ включали -> company скрыт (opt-in по каждому полю независимо)")
+                      "выключенный вручную show_company -> company снова скрыт")
+                app["storage"].set_recruiter_privacy_field(100, "show_company", True)
 
                 st.save_profile({"user_id": 495, "username": "nosub3", "name": "No Sub 3"})
                 auth_495 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 495, "username": "nosub3"})}
@@ -3809,8 +3836,16 @@ async def _run_guro_id_api_sim():
                 body = await resp.json()
                 check(body["locked"] is False, "auth_200 подписан на базовый GURO ID -> карточка разблокирована")
                 check(body["name"] == "GURO Casino Ltd", "show_name включён -> имя компании видно")
+                check(body["vertical"] == "iGaming",
+                      "show_vertical включён по умолчанию -> vertical виден (opt-out, 06.09.2026)")
+                # Обратная сторона: выключенный вручную тумблер обязан
+                # скрывать поле, иначе приватность сломана незаметно.
+                app["storage"].set_company_privacy_field(100, "show_vertical", False)
+                resp = await client.get("/api/search?workspace=company&username=initiator", headers=auth_200)
+                body = await resp.json()
                 check(body["vertical"] is None,
-                      "show_vertical НЕ включали -> vertical скрыт (opt-in по каждому полю независимо)")
+                      "выключенный вручную show_vertical -> vertical снова скрыт")
+                app["storage"].set_company_privacy_field(100, "show_vertical", True)
                 check(body["can_join"] is True, "auth_200 не состоит ни в одной компании -> может подать заявку")
                 check(body["is_member"] is False, "auth_200 не участник ЭТОЙ компании")
 
@@ -4574,15 +4609,37 @@ async def _run_guro_id_api_sim():
                 check(len(company_history) == 1 and company_history[0]["id"] == partnership_id_company,
                       "list_company_partnerships видит сделку как часть единой истории компании")
 
-                # Раздел 1.2 ТЗ — мягкое предупреждение о похожем названии,
-                # НЕ блокирует создание.
+                # Раздел 3.0.1 ТЗ «Роли и команда» (06.09.2026): занятое название
+                # больше НЕ создаёт вторую такую же компанию. Раньше это было
+                # мягкое предупреждение ПОСЛЕ создания, из-за чего человек
+                # получал дубль и предложение оплатить ненужный тариф.
                 st.save_profile({"user_id": 1070, "username": "similar_test", "name": "SimilarTest"})
                 auth_1070 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 1070, "username": "similar_test"})}
                 resp = await client.post("/api/company/create", headers=auth_1070, json={"name": "1xBet Casino"})
-                check(resp.status == 200, "создание компании с похожим на существующее именем -> 200 (не блокирует)")
+                check(resp.status == 409, "создание компании с занятым названием -> 409 (не создаём дубль)")
                 body = await resp.json()
-                check(body.get("similar_companies") and any("1xBet" in c["name"] for c in body["similar_companies"]),
-                      "мягкое предупреждение о похожем названии в ответе")
+                check(body.get("error") == "COMPANY_NAME_TAKEN", "код отказа понятен фронту")
+                check(body.get("matches") and any("1xBet" in m["name"] for m in body["matches"]),
+                      "в отказе приехали найденные компании")
+                check(body["matches"][0].get("company_id"),
+                      "у найденной компании есть company_id — на нём держится кнопка присоединения")
+
+                # Проверка названия ДО создания: ничего не создаёт, но находит.
+                resp = await client.get("/api/company/name_check?name=1xBet%20Casino", headers=auth_1070)
+                check(resp.status == 200, "GET /api/company/name_check -> 200")
+                body = await resp.json()
+                check(body.get("matches") and body["matches"][0].get("company_id"),
+                      "проверка названия возвращает найденную компанию с company_id")
+
+                resp = await client.get("/api/company/name_check?name=Freshly%20Unique%20Name", headers=auth_1070)
+                body = await resp.json()
+                check(body.get("matches") == [], "свободное название совпадений не даёт")
+
+                # Пункт 5 раздела 3.0.1: одноимённые компании бывают разными
+                # юрлицами (888 во Франции и 888 в Португалии) — выход есть.
+                resp = await client.post("/api/company/create", headers=auth_1070,
+                                          json={"name": "1xBet Casino", "confirm_different": True})
+                check(resp.status == 200, "с confirm_different создание проходит (пункт 5 раздела 3.0.1)")
 
                 # --- личные сообщения внутри прилы (Фаза 1, 11.08.2026) -------
                 # ВАЖНО: auth_300 к этому моменту УЖЕ подписан (см. тест

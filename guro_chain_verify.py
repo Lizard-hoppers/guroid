@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import aiohttp
 
@@ -52,6 +53,24 @@ _USDT_DECIMALS = {"tron": 6, "ethereum": 6, "bsc": 18}
 # tronscan.org/transaction/<hash>/overview). Каждый паттерн просто ищет
 # ID-подобную подстроку после известного пути эксплорера — если ничего не
 # совпало, считаем весь ввод уже голым хешем (см. extract_tx_hash).
+# Сеть по домену эксплорера (ТЗ раздел 5): если человек вставил ссылку,
+# незачем заставлять его ещё и выбирать сеть руками — она уже в ссылке.
+_EXPLORER_NETWORKS = (
+    ("tronscan.org", "tron"),
+    ("etherscan.io", "ethereum"),
+    ("bscscan.com", "bsc"),
+)
+
+
+def detect_network(raw: str) -> str | None:
+    """Сеть из ссылки на эксплорер, иначе None (значит, выбирает человек)."""
+    low = (raw or "").lower()
+    for domain, network in _EXPLORER_NETWORKS:
+        if domain in low:
+            return network
+    return None
+
+
 _EXPLORER_URL_PATTERNS = (
     re.compile(r"tronscan\.org/(?:#/)?transaction/([0-9a-fA-F]{64})"),
     re.compile(r"etherscan\.io/tx/(0x[0-9a-fA-F]{64})"),
@@ -72,6 +91,26 @@ def extract_tx_hash(raw: str) -> str:
     return raw
 
 
+# Значения, которые приходят вместо хеша, когда что-то пошло не так на
+# стороне клиента (str(None), JSON-строка "null" и т.п.).
+_JUNK_HASHES = frozenset({"none", "null", "undefined", "nan"})
+
+
+def normalize_tx_hash(raw: str) -> str:
+    """Единый вид хеша для ХРАНЕНИЯ и СРАВНЕНИЯ (ТЗ «Hash_Uniqueness»,
+    раздел 2): вырезать хеш из ссылки, обрезать края, привести к нижнему
+    регистру. Хеши всех трёх поддерживаемых сетей шестнадцатеричные,
+    поэтому регистр в них ничего не значит — а без приведения один и тот же
+    перевод, вставленный ссылкой и голым хешем (или из разных источников с
+    разным регистром), прошёл бы проверку уникальности как два разных."""
+    normalized = extract_tx_hash(raw).lower()
+    # Подделки под значение: так в базе однажды оказался хеш 'None' (см.
+    # guro_id_api._body_text). Даже если такой мусор придёт не с нашего
+    # фронта, принимать его за хеш нельзя — на нём висит и проверка
+    # «сделка без хеша не заводится», и уникальность.
+    return "" if normalized in _JUNK_HASHES else normalized
+
+
 @dataclass
 class VerifyResult:
     verified: bool
@@ -79,6 +118,10 @@ class VerifyResult:
     to_address: str | None = None
     amount: float | None = None  # в единицах актива (USDT), не в raw/wei
     error: str | None = None
+    # Время транзакции в сети, UTC (ТЗ «Hash_Uniqueness», раздел 5) — нужно
+    # для проверки давности. None, если эксплорер его не отдал: тогда
+    # давность просто не проверяется, отсутствие даты не повод отказывать.
+    timestamp: datetime | None = None
 
 
 async def _get_json(url: str, params: dict) -> tuple[dict | None, str | None]:
@@ -91,6 +134,18 @@ async def _get_json(url: str, params: dict) -> tuple[dict | None, str | None]:
     except Exception:  # noqa: BLE001
         logger.exception("guro_chain_verify: сетевая ошибка запроса к %s", url)
         return None, "NETWORK_ERROR"
+
+
+def _epoch_ms_to_dt(value) -> datetime | None:
+    """Время эксплорера (мс от эпохи) -> datetime в UTC. Возвращает None на
+    любом мусоре: дата нужна только для мягкой проверки давности, и её
+    отсутствие не должно ронять верификацию."""
+    if not isinstance(value, (int, float)) or value <= 0:
+        return None
+    try:
+        return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 async def _verify_tron(tx_hash: str, api_key: str | None) -> VerifyResult:
@@ -115,6 +170,9 @@ async def _verify_tron(tx_hash: str, api_key: str | None) -> VerifyResult:
     if data.get("contractRet") != "SUCCESS" or data.get("revert"):
         return VerifyResult(False, error="TX_FAILED")
 
+    # Tronscan отдаёт время прямо в ответе transaction-info, в мс.
+    ts = _epoch_ms_to_dt(data.get("timestamp"))
+
     trc20 = data.get("trc20TransferInfo") or []
     if trc20:
         transfer = trc20[0]
@@ -125,7 +183,7 @@ async def _verify_tron(tx_hash: str, api_key: str | None) -> VerifyResult:
             amount = None
         return VerifyResult(
             True, from_address=transfer.get("from_address"), to_address=transfer.get("to_address"),
-            amount=amount,
+            amount=amount, timestamp=ts,
         )
 
     # Нет токен-трансфера в логах -> нативный TRX перевод (contractData.amount, SUN, 1e6=1 TRX).
@@ -134,6 +192,7 @@ async def _verify_tron(tx_hash: str, api_key: str | None) -> VerifyResult:
     return VerifyResult(
         True, from_address=data.get("ownerAddress"), to_address=data.get("toAddress"),
         amount=(raw_amount / 1_000_000) if isinstance(raw_amount, (int, float)) else None,
+        timestamp=ts,
     )
 
 
@@ -172,6 +231,25 @@ async def _verify_evm(network: str, tx_hash: str, api_key: str | None) -> Verify
     if result.get("status") != "0x1":
         return VerifyResult(False, error="TX_FAILED")
 
+    # eth_getTransactionReceipt времени не содержит — только номер блока.
+    # Спрашиваем время блока отдельно; не получилось — оставляем None,
+    # проверка давности тогда просто не сработает (мягкий деграйд, как и
+    # везде в этом модуле).
+    block_ts = None
+    block_number = result.get("blockNumber")
+    if block_number:
+        block, block_err = await _get_json(
+            ETHERSCAN_V2_BASE,
+            {"chainid": chain_id, "module": "proxy", "action": "eth_getBlockByNumber",
+             "tag": block_number, "boolean": "false", "apikey": api_key},
+        )
+        raw_ts = (block or {}).get("result", {}).get("timestamp") if not block_err else None
+        if isinstance(raw_ts, str):
+            try:
+                block_ts = datetime.fromtimestamp(int(raw_ts, 16), tz=timezone.utc)
+            except (ValueError, OverflowError, OSError):
+                block_ts = None
+
     from_addr, to_addr, amount = _decode_evm_transfer_log(result.get("logs") or [], network)
     if from_addr is None:
         # Нет ERC20/BEP20 Transfer-события в логах -> это НЕ токен-перевод
@@ -181,7 +259,9 @@ async def _verify_evm(network: str, tx_hash: str, api_key: str | None) -> Verify
         # там это явный кейс из ТЗ-примера сетей, для EVM нативная монета
         # не является заявленным активом продукта).
         return VerifyResult(False, error="NO_TOKEN_TRANSFER")
-    return VerifyResult(True, from_address=from_addr, to_address=to_addr, amount=amount)
+    return VerifyResult(
+        True, from_address=from_addr, to_address=to_addr, amount=amount, timestamp=block_ts,
+    )
 
 
 async def verify_tx(network: str, tx_hash: str, *, api_keys: dict[str, str | None]) -> VerifyResult:

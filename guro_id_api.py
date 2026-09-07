@@ -40,6 +40,7 @@ WEBAPP_DIST = Path(__file__).resolve().parent / "webapp" / "dist"
 # перезаписывается при каждом npm run build + scp, файлы юзеров туда
 # складывать нельзя), раздаётся отдельным static-роутом ниже.
 COMPANY_UPLOADS_DIR = Path(__file__).resolve().parent / "webapp" / "uploads" / "company"
+RECRUITER_UPLOADS_DIR = Path(__file__).resolve().parent / "webapp" / "uploads" / "recruiter"
 # Сигнатуры форматов (без Pillow — его нет в venv, а тащить ради проверки
 # 3 байт в начале файла избыточно) — не доверяем ни имени файла от клиента,
 # ни его Content-Type, только реальным первым байтам.
@@ -111,6 +112,10 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
     now = datetime.now(timezone.utc)
     days_in_community = (now - joined_dt).days if joined_dt else None
 
+    # Счётчики оборота (ТЗ разделы 7-8) — публичные, но только по
+    # подтверждённым ончейн суммам, см. turnover_stats.
+    turnover = storage.turnover_stats(user_id)
+
     partners = []
     for p in storage.list_confirmed_partnerships(user_id):
         other_id = p["confirmer_id"] if p["initiator_id"] == user_id else p["initiator_id"]
@@ -145,6 +150,12 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
             # это подтверждение именно её, отдельного тумблера нет.
             "tx_hash": p["tx_hash"] if amount_visible else None,
             "tx_verified": bool(p["tx_verified"]) if amount_visible else None,
+            # Три состояния проверки и сумма ИЗ транзакции (ТЗ разделы 2-3):
+            # фронту нужно показать обе суммы рядом при расхождении.
+            "tx_state": (p["tx_state"] or GC.TX_STATE_NONE) if amount_visible else None,
+            "tx_amount": p["tx_amount"] if amount_visible else None,
+            "tx_verify_error": p["tx_verify_error"] if amount_visible else None,
+            "tx_network": p["tx_network"] if amount_visible else None,
             # Кто именно указал офер/суммы (со слов инициатора, не факт,
             # подтверждённый confirmer'ом) — фронту нужно, чтобы подписать
             # "получил/заплатил" с правильной стороны.
@@ -166,7 +177,10 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
         "company": profile["company"],
         "vertical": profile["vertical"],
         "profession": profile["profession"],
-        "linkedin": profile["linkedin"],
+        # Своё значение из приложения, пока его нет — из анкеты бота
+        # (тот же фолбэк, что у looking_for ниже).
+        "turnover": turnover,
+        "linkedin": extra["linkedin"] or profile["linkedin"],
         # "Что для вас сейчас актуально" из анкеты бота — семантически
         # ровно "Я ищу" из макета редизайна. 18.08.2026: сделано
         # редактируемым прямо в GURO ID (владелец просил после багрепорта
@@ -346,7 +360,13 @@ def _recruiter_summary(storage: GuroStorage, user_id: int) -> dict:
         # "Откликов за 7 дней" (27.08.2026) — раньше был хардкод 0 (см. старый
         # комментарий: механики "Отклики" ещё не было), сама механика уже
         # реализована (guro_vacancy_responses), считаем реально.
-        "responses_7d": storage.count_responses_since(user_id, datetime.now(timezone.utc) - timedelta(days=7)),
+        "responses_7d": storage.count_responses_since(
+            user_id, datetime.now(timezone.utc) - timedelta(days=7), workspace="recruiter",
+        ),
+        # Оборот у кабинетов тот же, что в личном профиле: партнёрства и
+        # рейтинг между ними общие (см. описание воркспейса выше), и два
+        # разных ответа на «сколько у меня оборота» были бы враньём.
+        "turnover": storage.turnover_stats(user_id),
         "tenure_days": _recruiter_tenure_days(row, datetime.now(timezone.utc)),
         # Статус активности (2.4) — отдельный от work_status личного профиля.
         "activity_status": row["activity_status"],
@@ -411,7 +431,10 @@ def _company_summary(storage: GuroStorage, user_id: int) -> dict:
         # вакансиям компании (см. count_responses_since).
         "successful_hires": storage.count_confirmed_partnerships_by_type_for_company(company_id, GC.PARTNERSHIP_TYPE_HIRE),
         "active_vacancies": storage.count_active_vacancies(company_id, workspace="company"),
-        "responses_7d": storage.count_responses_since(user_id, datetime.now(timezone.utc) - timedelta(days=7)),
+        "responses_7d": storage.count_responses_since(
+            user_id, datetime.now(timezone.utc) - timedelta(days=7), workspace="company",
+        ),
+        "turnover": storage.turnover_stats(user_id),
     }
 
 
@@ -760,19 +783,40 @@ def _rank_directory_matches(matches: list[tuple[int, dict]], *, top: bool) -> di
     return {"mode": "list", "results": results, "truncated": len(ranked) > len(sliced)}
 
 
-def _directory_search(storage: GuroStorage, requester_id: int, query: str, *, top: bool) -> dict:
+def _directory_search(
+    storage: GuroStorage, requester_id: int, query: str, *, top: bool,
+    vertical: str | None = None, grade: str | None = None,
+    position: str | None = None, looking: bool = False,
+) -> dict:
     """Поиск ПО ОПИСАНИЮ ("менеджер в крипто") — список всех, у кого есть
     совпадение среди полей, которые они САМИ открыли тумблерами
     приватности. Вызывается из handle_search, когда q= не совпал ни с
     одним точным юзернеймом (см. режимы ниже) — доступ уже проверен
-    вызывающим (платная фича, 402 без подписки)."""
+    вызывающим (платная фича, 402 без подписки).
+
+    06.09.2026: принимает те же фильтры, что и _directory_browse. Раньше
+    текст и чипы были взаимоисключающими, и рекрутер, выбравший Gambling и
+    написавший «Team Lead», получал совпадения по всем вертикалям сразу."""
     keywords = query.lower().split()[: GC.DIRECTORY_QUERY_MAX_KEYWORDS]
+    vertical_lower = (vertical or "").strip().lower()
+    grade_lower = (grade or "").strip().lower()
+    position_lower = (position or "").strip().lower()
 
     def match_fn(summary: dict) -> int:
+        if looking and summary.get("work_status") != GC.WORK_STATUS_LOOKING:
+            return 0
+        if vertical_lower:
+            v = (summary.get("vertical") or "").lower()
+            if v != vertical_lower and not (vertical_lower == "other" and v.startswith("other")):
+                return 0
+        if not _grade_position_ok(summary, grade_lower, position_lower):
+            return 0
         haystack = _searchable_text(summary)
         return sum(1 for kw in keywords if kw in haystack)
 
-    matches = _scan_directory_candidates(storage, requester_id, match_fn)
+    matches = _scan_directory_candidates(
+        storage, requester_id, match_fn, require_privacy_open=not looking,
+    )
     return _rank_directory_matches(matches, top=top)
 
 
@@ -987,6 +1031,42 @@ async def handle_search(request: web.Request) -> web.Response:
             return web.json_response({"error": "VIEW_LIMIT_REACHED", "resets_at": _next_utc_midnight_iso()}, status=429)
         return web.json_response(_profile_response(storage, requester["id"], target_profile))
 
+    # «Поиск кандидатов» кабинета Рекрутер/Компания (06.09.2026,
+    # «рекрутер полный.pdf», стр. 3-5). Своя область со своими правилами —
+    # личный профиль сюда не попадает и остаётся на точном юзернейме, как
+    # решено 25.08.2026.
+    if request.query.get("scope") == "candidates":
+        if not storage.any_subscription_active(requester["id"]):
+            return web.json_response({"error": "SUBSCRIPTION_REQUIRED"}, status=402)
+        q = query.strip()
+        if q:
+            # Точный юзернейм — самый дешёвый и частый случай, пробуем его
+            # первым. Не совпало — значит это описание, а не адрес.
+            target_profile = storage.find_profile_by_username(q)
+            if target_profile is not None:
+                if not _check_profile_view_limit(storage, requester["id"], target_profile["user_id"]):
+                    return web.json_response(
+                        {"error": "VIEW_LIMIT_REACHED", "resets_at": _next_utc_midnight_iso()}, status=429,
+                    )
+                return web.json_response(_profile_response(storage, requester["id"], target_profile))
+            return web.json_response(_directory_search(
+                storage, requester["id"], q, top=top,
+                vertical=vertical or None, grade=grade or None,
+                position=position or None, looking=resumes,
+            ))
+        # Пустой запрос — это НЕ «ничего не искали», а «показать всех, кого
+        # обещал счётчик». Раньше здесь возвращался пустой список, и кнопка
+        # «Показать 59 кандидатов» показывала ноль.
+        if resumes:
+            return web.json_response(_resume_browse(
+                storage, requester["id"], vertical or None,
+                grade=grade or None, position=position or None, top=top,
+            ))
+        return web.json_response(_directory_browse(
+            storage, requester["id"], vertical,
+            grade=grade or None, position=position or None, top=top,
+        ))
+
     # any_subscription_active (26.08.2026, ТЗ "Гуро рекрутер каб", "Найти
     # кандидата") — рекрутер/компания тоже могут просматривать резюме/
     # вертикали, не обязательно имея ЛИЧНУЮ подписку GURO ID отдельно.
@@ -1039,6 +1119,19 @@ async def _notify_confirmer(bot_token: str, confirmer_id: int, initiator_usernam
         )
 
 
+def _body_text(body: dict, key: str, default: str = "") -> str:
+    """Текстовое поле из тела запроса, где null означает «пусто».
+
+    str(body.get(key, "")) для этого не годится: второй аргумент .get()
+    срабатывает, только когда ключа НЕТ, а фронт штатно присылает ключ со
+    значением null — и str(None) даёт строку "None" длиной четыре символа.
+    Дальше она ведёт себя как заполненное значение: включает проверки «поле
+    задано» и попадает в базу вместо пустоты (06.09.2026, «компания.pdf»,
+    стр. 6; ровно так в боевой базе оказался хеш 'None')."""
+    value = body.get(key, default)
+    return default if value is None else str(value)
+
+
 def _parse_amount(raw) -> float | None:
     """Пустая строка/None/мусор -> None (сумма не указана), а не 400 —
     поле необязательное."""
@@ -1058,7 +1151,7 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
     confirmer_username = str(body.get("confirmer_username", "")).strip()
     vertical = body.get("vertical") or None
     geo = body.get("geo") or None
-    offer = (str(body.get("offer", "")).strip()[:300]) or None
+    offer = (_body_text(body, "offer").strip()[:300]) or None
     # Свободный "отзыв" убран с этого шага (25.08.2026, фидбек владельца
     # "Правки.pdf": факт сотрудничества и оценка/отзыв — теперь два разных
     # шага, см. submit_rating/6.1) — старые записи с review сохраняются и
@@ -1073,17 +1166,67 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
     # копировать голый хэш (фидбек владельца) — extract_tx_hash вырезает
     # хэш из известных explorer-ссылок (Tronscan/Etherscan/BscScan), иначе
     # оставляет ввод как есть (уже голый хэш).
-    tx_hash = GCV.extract_tx_hash(str(body.get("tx_hash", "")))[:200] or None
+    raw_tx_input = _body_text(body, "tx_hash")
+    # Нормализованный вид (ТЗ «Hash_Uniqueness», раздел 2) — и хранится, и
+    # сравнивается только он.
+    tx_hash = GCV.normalize_tx_hash(raw_tx_input)[:200] or None
     # Тип партнёрства (6, п.1, 25.08.2026) — обязательный, влияет на
     # базовый вес (5.1). Сеть (6, п.2) обязательна, ТОЛЬКО если указан хэш —
     # без неё нельзя понять, какой explorer API дёргать (ETH/BSC неотличимы
     # по формату хэша, см. guro_chain_verify.py).
     ptype = str(body.get("ptype", "")).strip()
-    tx_network = str(body.get("tx_network", "")).strip() or None
+    tx_network = _body_text(body, "tx_network").strip() or None
+    # Сеть из ссылки на эксплорер (ТЗ раздел 5): если вставили ссылку,
+    # выбирать сеть руками незачем — она уже в домене.
+    if tx_hash and not tx_network:
+        tx_network = GCV.detect_network(raw_tx_input)
+    is_flagged_fraud = bool(body.get("is_flagged_fraud"))
+    # Код отказа пишем в лог: в access-логе виден только статус, и по нему
+    # причину не восстановить (05.09.2026 — пришлось вычислять её по длине
+    # ответа, что ненадёжно).
+    def _reject(code: str, status: int, **extra):
+        logger.warning(
+            "guro_id: заявка на партнёрство отклонена: %s (user=%s, ptype=%r, network=%r, hash=%s)",
+            code, user["id"], ptype, tx_network, "есть" if tx_hash else "нет",
+        )
+        return web.json_response({"error": code, **extra}, status=status)
+
     if ptype not in GC.PARTNERSHIP_TYPES:
-        return web.json_response({"error": "INVALID_TYPE"}, status=400)
+        return _reject("INVALID_TYPE", 400)
     if tx_hash and tx_network not in GC.TX_NETWORKS:
-        return web.json_response({"error": "INVALID_NETWORK"}, status=400)
+        return _reject("INVALID_NETWORK", 400)
+    # Денежная сделка без хеша больше не заводится («рекрутер каб.pdf»,
+    # стр. 4 и 6). Признак безоплатного партнёрства — отсутствие суммы:
+    # форма при отмеченном чекбоксе присылает обе суммы пустыми, и
+    # требовать хеш там не с чего.
+    if (amount_received or amount_paid) and not tx_hash:
+        return _reject("TX_HASH_REQUIRED", 400)
+
+    # Один хеш = одно партнёрство (ТЗ «Hash_Uniqueness», разделы 1-3).
+    # Проверяем ДО создания записи, на шаге 1, а не после подтверждения
+    # контрагентом. Текст отказа зависит от того, кто спрашивает.
+    if tx_hash:
+        taken = storage.find_partnership_by_tx_hash(tx_hash)
+        if taken is not None:
+            own = user["id"] in (taken["initiator_id"], taken["confirmer_id"])
+            if own:
+                # Чаще всего это не накрутка, а непонимание: сделка уже
+                # зафиксирована с двух сторон, и человек заводит её второй
+                # раз. Показываем, с кем и когда, — этих данных он и так
+                # не лишён, партнёрство его собственное.
+                other_id = (
+                    taken["confirmer_id"] if taken["initiator_id"] == user["id"]
+                    else taken["initiator_id"]
+                )
+                other = storage.get_profile(other_id)
+                return _reject(
+                    "TX_HASH_USED_BY_OWN", 409,
+                    partner_username=(other["username"] if other else None),
+                    partnership_date=taken["created_at"],
+                )
+            # Чужая сделка: детали не раскрываем — это приватные данные
+            # третьих лиц (ТЗ раздел 3, случай B).
+            return _reject("TX_HASH_ALREADY_USED", 409)
 
     # as_company (27.08.2026, ТЗ "Роли и команда", раздел 6) — "действую как
     # <бренд>": сделка попадает в общую историю компании, лимит новых заявок
@@ -1093,7 +1236,7 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
     if body.get("as_company"):
         membership = storage.get_company_membership(user["id"])
         if membership is None or not storage.is_company_subscribed(membership["company_id"]):
-            return web.json_response({"error": "COMPANY_SUBSCRIPTION_REQUIRED"}, status=402)
+            return _reject("COMPANY_SUBSCRIPTION_REQUIRED", 402)
         company_id = membership["company_id"]
 
     # Раздел 2.2 ТЗ "Тарифы и лимиты" — лимит НОВЫХ заявок/день (не путать с
@@ -1107,14 +1250,19 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
         daily_limit = _new_requests_per_day_limit(storage, user["id"])
         today_count = storage.count_new_partnerships_today(user["id"])
     if today_count >= daily_limit:
-        return web.json_response(
-            {"error": "DAILY_REQUEST_LIMIT_REACHED", "resets_at": _next_utc_midnight_iso()}, status=429,
-        )
+        return _reject("DAILY_REQUEST_LIMIT_REACHED", 429, resets_at=_next_utc_midnight_iso())
 
     target_profile = storage.find_profile_by_username(confirmer_username)
     if target_profile is None:
-        return web.json_response({"error": "NO_CONFIRMER_PROFILE"}, status=404)
+        return _reject("NO_CONFIRMER_PROFILE", 404)
 
+    # Ончейн-проверка (ТЗ «Верификация транзакций», разделы 2-4). Раньше
+    # tx_verified поднимался по одному факту, что транзакция найдена и не
+    # провалилась — СУММА не сверялась вообще. Теперь «подтверждено»
+    # выставляется ТОЛЬКО после успешной сверки суммы; всё остальное — либо
+    # расхождение, либо «не проверено».
+    tx_state = GC.TX_STATE_NONE
+    tx_amount = None
     tx_verified = False
     tx_company_match = False
     tx_verify_error = None
@@ -1129,12 +1277,41 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
         except Exception:  # noqa: BLE001
             logger.exception("guro_id: ончейн-верификация упала для tx_hash=%s", tx_hash)
             result = GCV.VerifyResult(False, error="VERIFY_CRASHED")
-        tx_verified = result.verified
+        tx_amount = result.amount
         tx_verify_error = result.error
-        if result.verified:
-            tx_company_match = GCV.matches_company_address(
-                result, tx_network, storage.verified_company_addresses(),
-            )
+        # Сверяем с той суммой, которую человек указал: сделка односторонняя,
+        # заполнено одно из двух полей.
+        declared = next((a for a in (amount_received, amount_paid) if a), None)
+        # Давность (ТЗ «Hash_Uniqueness», раздел 5): слишком старую
+        # транзакцию не подтверждаем, но и сделку не блокируем.
+        fresh = GL.tx_within_age_limit(result.timestamp, datetime.now(timezone.utc))
+        if result.verified and not fresh:
+            tx_verify_error = "TX_TOO_OLD"
+        elif result.verified:
+            if GL.amounts_match(declared, result.amount):
+                tx_state = GC.TX_STATE_VERIFIED
+                tx_verified = True
+                tx_company_match = GCV.matches_company_address(
+                    result, tx_network, storage.verified_company_addresses(),
+                )
+            elif declared is None or result.amount is None:
+                # Сверять не с чем (сумму не указали или не смогли разобрать
+                # трансфер) — «подтверждено» тут ставить нельзя.
+                tx_verify_error = tx_verify_error or "NO_AMOUNT_TO_COMPARE"
+            else:
+                tx_state = GC.TX_STATE_MISMATCH
+                tx_verify_error = "AMOUNT_MISMATCH"
+        elif result.error in ("NOT_FOUND", "TX_FAILED"):
+            # Транзакции нет в сети либо она провалена — это расхождение,
+            # человеку есть что показать (ТЗ раздел 4).
+            tx_state = GC.TX_STATE_MISMATCH
+        # Остальные ошибки (API недоступен, нет ключа, таймаут, падение) —
+        # оставляем «не проверено». Считать сделку подтверждённой при
+        # недоступном API нельзя ни при каких условиях (ТЗ раздел 4).
+        logger.info(
+            "guro_id: ончейн-проверка %s: состояние=%s заявлено=%s в сети=%s ошибка=%s",
+            tx_hash[:16], tx_state, declared, result.amount, tx_verify_error,
+        )
 
     try:
         partnership = storage.create_partnership(
@@ -1142,11 +1319,12 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
             offer=offer, amount_received=amount_received, amount_paid=amount_paid,
             review=review, amount_visible=amount_visible, tx_hash=tx_hash,
             ptype=ptype, tx_network=tx_network, tx_verified=tx_verified,
+            tx_state=tx_state, tx_amount=tx_amount,
             tx_company_match=tx_company_match, tx_verify_error=tx_verify_error,
-            company_id=company_id,
+            company_id=company_id, is_flagged_fraud=is_flagged_fraud,
         )
     except ValueError as e:
-        return web.json_response({"error": str(e)}, status=409)
+        return _reject(str(e), 409)
 
     initiator_profile = storage.get_profile(user["id"])
     initiator_username = (initiator_profile["username"] if initiator_profile else None) or user.get("username") or "?"
@@ -1171,6 +1349,25 @@ async def _notify_new_message(bot_token: str, webapp_url: str, recipient_id: int
             "✉️ Вам пришло новое сообщение в GURO ID.",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("Открыть сообщения", web_app=WebAppInfo(url=url)),
+            ]]),
+        )
+
+
+async def _notify_vacancy_response(
+    bot_token: str, webapp_url: str, author_id: int, vacancy_id: int,
+    vacancy_title: str, candidate: str,
+) -> None:
+    """Уведомление владельцу вакансии о новом отклике (06.09.2026,
+    «рекрутер полный.pdf», стр. 8). Deep-link ведёт сразу к откликам ЭТОЙ
+    вакансии — та же механика, что у ?thread= для сообщений."""
+    url = f"{webapp_url.rstrip('/')}/?responses={vacancy_id}"
+    bot = Bot(token=bot_token)
+    async with bot:
+        await bot.send_message(
+            author_id,
+            f"↩️ Новый отклик на вакансию «{vacancy_title}» — {candidate}.",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("Посмотреть отклик", web_app=WebAppInfo(url=url)),
             ]]),
         )
 
@@ -1566,6 +1763,47 @@ async def handle_upload_company_image(request: web.Request) -> web.Response:
     return web.json_response(extra)
 
 
+async def handle_upload_recruiter_image(request: web.Request) -> web.Response:
+    """Логотип кабинета Рекрутер из галереи — зеркало
+    handle_upload_company_image, но вид один (обложка кабинета рекрутера —
+    градиент в CSS, а не картинка) и своя папка: имена файлов там строятся
+    от company_id, тут от user_id, в общей папке они бы столкнулись.
+
+    Гейт по подписке, в отличие от текстового
+    handle_set_recruiter_profile_field: тут на диск ложится файл, а сам
+    кабинет и так доступен только подписчикам.
+
+    Имя файла НЕ берётся у клиента (path traversal) — user_id + хэш
+    содержимого, расширение по реально сработавшей сигнатуре."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    if not storage.is_recruiter_subscribed(user["id"]):
+        return web.json_response({"error": "NOT_SUBSCRIBED"}, status=403)
+
+    file_bytes = b""
+    reader = await request.multipart()
+    async for part in reader:
+        if part.name == "file":
+            file_bytes = await part.read(decode=False)
+
+    if not file_bytes:
+        return web.json_response({"error": "EMPTY_FILE"}, status=400)
+    if len(file_bytes) > COMPANY_UPLOAD_MAX_BYTES["logo"]:
+        return web.json_response({"error": "FILE_TOO_LARGE"}, status=400)
+    ext = _sniff_image_ext(file_bytes)
+    if ext is None:
+        return web.json_response({"error": "UNSUPPORTED_FORMAT"}, status=400)
+
+    digest = hashlib.sha256(file_bytes).hexdigest()[:20]
+    filename = f"{user['id']}_logo_{digest}.{ext}"
+    RECRUITER_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    (RECRUITER_UPLOADS_DIR / filename).write_bytes(file_bytes)
+
+    url = f"/uploads/recruiter/{filename}"
+    extra = storage.set_recruiter_extra_field(user["id"], "logo_url", url)
+    return web.json_response(extra)
+
+
 async def handle_request_company_verification(request: web.Request) -> web.Response:
     """Кнопка "Подать заявку на верификацию" (раздел 2 ТЗ) — MVP: только
     фиксирует время запроса, реальная сверка домена/бренда — вручную
@@ -1595,6 +1833,37 @@ async def handle_set_company_privacy(request: web.Request) -> web.Response:
     return web.json_response(privacy)
 
 
+def _company_match_public(storage: GuroStorage, row) -> dict:
+    """Карточка найденной компании для экрана создания (раздел 3.0.1).
+    company_id обязателен: на нём держится кнопка «Запросить
+    присоединение», без него человеку снова пришлось бы искать компанию
+    руками через поиск или доску вакансий."""
+    company_id = row["user_id"]
+    extra = storage.get_company_extra(company_id)
+    return {
+        "company_id": company_id,
+        "name": row["name"],
+        "vertical": extra.get("vertical"),
+        "logo_url": extra.get("logo_url"),
+        "verified": bool(storage.is_company_verified(company_id)),
+    }
+
+
+async def handle_company_name_check(request: web.Request) -> web.Response:
+    """Раздел 3.0.1 — проверка названия ДО оплаты и до создания. Ничего не
+    создаёт и не меняет: это ответ на вопрос «такая компания уже есть?»,
+    который фронт задаёт, пока человек ещё печатает."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    _auth(request, settings)
+    name = request.query.get("name", "").strip()[:200]
+    if not name:
+        return web.json_response({"matches": []})
+    matches = storage.find_similar_companies(name)
+    return web.json_response({
+        "matches": [_company_match_public(storage, row) for row in matches[:5]],
+    })
+
+
 async def handle_create_company(request: web.Request) -> web.Response:
     """Явное создание компании (раздел 1 ТЗ "Роли и управление командой") —
     основатель сразу становится Владельцем (см. GuroStorage.
@@ -1610,6 +1879,14 @@ async def handle_create_company(request: web.Request) -> web.Response:
     if not name:
         return web.json_response({"error": "NAME_REQUIRED"}, status=400)
     similar = storage.find_similar_companies(name)
+    # Раздел 3.0.1: занятое название ведёт к присоединению, а не к созданию
+    # второй такой же компании и оплате ненужного тарифа. Раньше совпадение
+    # было мягким предупреждением ПОСЛЕ создания.
+    if similar and not body.get("confirm_different"):
+        return web.json_response({
+            "error": "COMPANY_NAME_TAKEN",
+            "matches": [_company_match_public(storage, row) for row in similar[:5]],
+        }, status=409)
     storage.get_or_create_company_profile(user["id"])
     storage.set_company_extra_field(user["id"], "name", name)
     for field in ("vertical", "website", "description", "logo_url", "cover_url", "company_types", "company_type_other"):
@@ -1643,7 +1920,7 @@ async def handle_company_join_request(request: web.Request) -> web.Response:
         company_id = int(body.get("company_id"))
     except (TypeError, ValueError):
         return web.json_response({"error": "COMPANY_NOT_FOUND"}, status=404)
-    position_text = str(body.get("position_text", "")).strip()[:200] or None
+    position_text = _body_text(body, "position_text").strip()[:200] or None
     try:
         req = storage.create_join_request(company_id, user["id"], position_text)
     except ValueError as e:
@@ -1693,6 +1970,7 @@ async def handle_get_company_team(request: web.Request) -> web.Response:
     data = {
         "company_id": company_id,
         "my_role": membership["role"],
+        "my_user_id": user["id"],
         "member_count": len(members),
         "member_limit": storage.company_member_limit(company_id),
         "members": out_members,
@@ -2026,7 +2304,22 @@ def _vacancy_poster_summary(storage: GuroStorage, row) -> dict:
     }
 
 
-def _vacancy_public(storage: GuroStorage, row, *, viewer_id: int | None = None) -> dict:
+def _is_bookmarked(
+    storage: GuroStorage, vacancy_id: int, viewer_id: int | None, bookmarked_ids: set[int] | None,
+) -> bool:
+    """Закладка вакансии для смотрящего. bookmarked_ids — уже готовый набор
+    (списки вакансий тянут его ОДНИМ запросом, чтобы не делать по запросу
+    на карточку); если его нет — точечная проверка."""
+    if bookmarked_ids is not None:
+        return vacancy_id in bookmarked_ids
+    if viewer_id is None:
+        return False
+    return vacancy_id in storage.bookmarked_vacancy_ids(viewer_id)
+
+
+def _vacancy_public(
+    storage: GuroStorage, row, *, viewer_id: int | None = None, bookmarked_ids: set[int] | None = None,
+) -> dict:
     """viewer_id (26.08.2026) — если передан и равен author_id (или, с
     27.08.2026, ТЗ "Роли и команда" — участник той же компании), подмешивает
     "владельческие" поля (счётчики просмотров/откликов, closed_reason) —
@@ -2056,6 +2349,10 @@ def _vacancy_public(storage: GuroStorage, row, *, viewer_id: int | None = None) 
         "expires_at": row["expires_at"],
         "created_at": row["created_at"],
         "is_owner": is_owner,
+        # Закладка (03.09.2026). В списках вызывающий передаёт готовый набор
+        # id одним запросом (bookmarked_ids), в одиночных ручках его нет —
+        # тогда спрашиваем точечно.
+        "is_bookmarked": _is_bookmarked(storage, row["id"], viewer_id, bookmarked_ids),
     }
     if is_owner:
         data["views_count"] = row["views_count"]
@@ -2090,11 +2387,17 @@ async def handle_list_vacancies(request: web.Request) -> web.Response:
     position = request.query.get("position") or None
     query = request.query.get("q") or None
     company_type = request.query.get("company_type") or None
+    bookmarked_ids = storage.bookmarked_vacancy_ids(user["id"])
+    # bookmarked=1 — показать только сохранённые (фильтр доски, 03.09.2026).
+    only_ids = bookmarked_ids if request.query.get("bookmarked") == "1" else None
     rows, truncated = storage.list_vacancies(
-        lang=lang, vertical=vertical, grade=grade, position=position, query=query, company_type=company_type,
+        lang=lang, vertical=vertical, grade=grade, position=position, query=query,
+        company_type=company_type, only_ids=only_ids,
     )
     return web.json_response({
-        "vacancies": [_vacancy_public(storage, r, viewer_id=user["id"]) for r in rows],
+        "vacancies": [
+            _vacancy_public(storage, r, viewer_id=user["id"], bookmarked_ids=bookmarked_ids) for r in rows
+        ],
         "truncated": truncated,
     })
 
@@ -2294,6 +2597,22 @@ async def _vacancy_action(request: web.Request, action) -> web.Response:
     return web.json_response(_vacancy_public(storage, row, viewer_id=user["id"]))
 
 
+async def handle_bookmark_vacancy(request: web.Request) -> web.Response:
+    """Переключатель закладки (03.09.2026) — отдельно от _vacancy_action:
+    тот проверяет права ВЛАДЕЛЬЦА вакансии, а сохранить в закладки может
+    любой подписчик, вакансия при этом чужая."""
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    try:
+        vacancy_id = int(request.match_info["vacancy_id"])
+    except ValueError:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    state = storage.toggle_vacancy_bookmark(user["id"], vacancy_id)
+    if state is None:
+        return web.json_response({"error": "NOT_FOUND"}, status=404)
+    return web.json_response({"is_bookmarked": state})
+
+
 async def handle_pause_vacancy(request: web.Request) -> web.Response:
     return await _vacancy_action(request, lambda s, vid, uid: s.pause_vacancy(vid, uid))
 
@@ -2357,7 +2676,7 @@ async def handle_close_vacancy(request: web.Request) -> web.Response:
     reason = None
     try:
         body = await request.json()
-        reason = (str(body.get("reason", "")).strip()[:200]) or None
+        reason = (_body_text(body, "reason").strip()[:200]) or None
     except Exception:  # noqa: BLE001
         pass
     if not storage.close_vacancy(vacancy_id, user["id"], reason=reason):
@@ -2383,12 +2702,32 @@ async def handle_respond_vacancy(request: web.Request) -> web.Response:
     except ValueError:
         return web.json_response({"error": "NOT_FOUND"}, status=404)
     body = await request.json()
-    message = (str(body.get("message", "")).strip()[:500]) or None
+    message = (_body_text(body, "message").strip()[:500]) or None
     try:
         response = storage.create_vacancy_response(vacancy_id, user["id"], message)
     except ValueError as e:
         code = str(e)
         return web.json_response({"error": code}, status=_RESPONSE_ERROR_STATUS.get(code, 409))
+
+    # Без этого рекрутер узнавал об отклике, только если сам заходил в
+    # «Отклики» (стр. 8 отчёта). Сбой отправки не отменяет сам отклик —
+    # он уже записан, и кандидат своё действие совершил.
+    vacancy = storage.get_vacancy(vacancy_id)
+    if vacancy is not None:
+        profile = storage.get_profile(user["id"])
+        candidate = (profile["name"] if profile else None) or (
+            f"@{profile['username']}" if profile and profile["username"] else "кандидат"
+        )
+        try:
+            await _notify_vacancy_response(
+                settings.bot_token, settings.guro_id_webapp_url,
+                vacancy["author_id"], vacancy_id, vacancy["title"], candidate,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "guro_id: не удалось уведомить об отклике на вакансию %s", vacancy_id,
+            )
+
     return web.json_response({"id": response["id"], "status": response["status"]})
 
 
@@ -2754,10 +3093,12 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/recruiter/privacy", handle_set_recruiter_privacy)
     app.router.add_post("/api/company/profile", handle_set_company_profile_field)
     app.router.add_post("/api/company/image", handle_upload_company_image)
+    app.router.add_post("/api/recruiter/image", handle_upload_recruiter_image)
     app.router.add_post("/api/company/privacy", handle_set_company_privacy)
     app.router.add_post("/api/company/verification/request", handle_request_company_verification)
     # Роли и команда (ТЗ "Роли и управление командой", 27.08.2026).
     app.router.add_post("/api/company/create", handle_create_company)
+    app.router.add_get("/api/company/name_check", handle_company_name_check)
     app.router.add_post("/api/company/join_request", handle_company_join_request)
     app.router.add_get("/api/company/team", handle_get_company_team)
     app.router.add_post("/api/company/team/requests/{request_id}/approve", handle_approve_join_request)
@@ -2777,6 +3118,7 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/vacancies", handle_create_vacancy)
     app.router.add_get("/api/vacancies/{vacancy_id}", handle_get_vacancy)
     app.router.add_post("/api/vacancies/{vacancy_id}/edit", handle_edit_vacancy)
+    app.router.add_post("/api/vacancies/{vacancy_id}/bookmark", handle_bookmark_vacancy)
     app.router.add_post("/api/vacancies/{vacancy_id}/pause", handle_pause_vacancy)
     app.router.add_post("/api/vacancies/{vacancy_id}/resume", handle_resume_vacancy)
     app.router.add_post("/api/vacancies/{vacancy_id}/extend", handle_extend_vacancy)
@@ -2800,6 +3142,8 @@ def create_app(settings: Settings) -> web.Application:
     # когда папки ещё никто не создал загрузкой.
     COMPANY_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     app.router.add_static("/uploads/company", COMPANY_UPLOADS_DIR, show_index=False)
+    RECRUITER_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    app.router.add_static("/uploads/recruiter", RECRUITER_UPLOADS_DIR, show_index=False)
     return app
 
 

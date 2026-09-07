@@ -1,9 +1,12 @@
 import { useState } from "react";
-import { EditableField, RatingPreview } from "../Shared.jsx";
+import { EditableField, ImageUploadArea, Msg, RatingPreview, TurnoverCard } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
-import { setRecruiterProfileField, setRecruiterPrivacyField, setRecruiterActivityStatus } from "../../api.js";
+import {
+  setRecruiterProfileField, setRecruiterPrivacyField, setRecruiterActivityStatus, uploadRecruiterImage,
+} from "../../api.js";
 import { SubscribeScreen } from "../SubscribeScreen.jsx";
 import { useLang } from "../../i18n.jsx";
+import { IconGear, IconTrophy } from "../Icons.jsx";
 import { haptic } from "../../telegram.js";
 import { ensureHttpUrl, initialOf } from "../../utils.js";
 
@@ -27,7 +30,10 @@ const FIELD_DEFS = [
     ),
   },
   { field: "offering", labelKey: "recruiter.field.offering", placeholderKey: "recruiter.field.offeringPlaceholder", multiline: true },
-  { field: "logo_url", labelKey: "recruiter.field.logoUrl", placeholderKey: "recruiter.field.logoUrlPlaceholder" },
+  // logo_url убран из списка полей 06.09.2026 («рекрутер каб.pdf», стр. 1):
+  // логотип задаётся тапом по аватару на главном экране, а не ссылкой.
+  // Ссылку из поисковой выдачи (редирект на страницу, а не на файл) поле
+  // принимало молча, и картинка не появлялась.
 ];
 
 const PRIVACY_FIELDS = [
@@ -131,7 +137,8 @@ function PercentileBlock({ tier, vertical, onConfirmHire }) {
   if (tier) {
     return (
       <div className="card percentile-block percentile-good">
-        <div className="percentile-badge">🏆 {t("recruiter.percentile.top", { tier })}{vertical ? ` ${vertical}` : ""}</div>
+        <div className="percentile-badge">
+      <IconTrophy /> {t("recruiter.percentile.top", { tier })}{vertical ? ` ${vertical}` : ""}</div>
         <p className="partner-meta">{t("recruiter.percentile.goodText")}</p>
       </div>
     );
@@ -155,9 +162,11 @@ function SettingsPanel({ data, onFieldSaved, onPrivacyChange }) {
   const [open, setOpen] = useState(false);
   return (
     <div>
-      <button type="button" className="settings-gear-btn" onClick={() => setOpen((v) => !v)}>
-        ⚙️ {t("recruiter.settingsBtn")} {open ? "︿" : "﹀"}
-      </button>
+      <div className="settings-gear-row">
+        <button type="button" className="settings-gear-btn" onClick={() => setOpen((v) => !v)}>
+          <IconGear /> {t("recruiter.settingsBtn")}
+        </button>
+      </div>
       {open && (
         <>
           <div className="card">
@@ -175,6 +184,12 @@ function SettingsPanel({ data, onFieldSaved, onPrivacyChange }) {
                 renderValue={f.renderValue}
               />
             ))}
+            {/* Здесь человек и ищет логотип — значит здесь и надо сказать,
+                где он задаётся и какой файл подойдёт («рекрутер каб.pdf»,
+                стр. 1: «нужно написать юзеру какие именно размеры»). */}
+            <div className="privacy-hint recruiter-logo-note">
+              {t("recruiter.logoInSettings")}
+            </div>
           </div>
           <PrivacyToggles
             privacy={data.privacy}
@@ -205,6 +220,7 @@ export function RecruiterHub({
   data, onFieldSaved, onPrivacyChange, onSubscribed, onNavigateSub, onActivityChange, onNavigateTab,
 }) {
   const { t } = useLang();
+  const [logoUploadError, setLogoUploadError] = useState(null);
 
   if (!data.is_recruiter_subscribed) {
     return (
@@ -220,6 +236,10 @@ export function RecruiterHub({
 
   return (
     <div>
+      {/* "Настройки" стоят НАД визиткой (макет "11 · Кабинет Рекрутер"):
+          раньше кнопка была под ней и во всю ширину. */}
+      <SettingsPanel data={data} onFieldSaved={onFieldSaved} onPrivacyChange={onPrivacyChange} />
+
       {/* Карточка-визитка — визуально ОТЛИЧАЕТСЯ от личного профиля (2.1):
           полоса-обложка сверху с подписью режима + аватар-сквиркл с
           бирюзовой рамкой + бейдж "HR" на аватаре. Приведено в соответствие
@@ -231,11 +251,22 @@ export function RecruiterHub({
           <span className="recruiter-mode-label">{t("recruiter.modeLabel")}</span>
         </div>
         <div className="profile-header-card recruiter-header">
-          {data.logo_url ? (
-            <img className="profile-avatar recruiter-avatar" src={data.logo_url} alt="" />
-          ) : (
-            <div className="profile-avatar-fallback recruiter-avatar">{initialOf(data.name, data.company)}</div>
-          )}
+          {/* Аватар кликабелен целиком — тап открывает галерею, тем же
+              компонентом, что логотип компании (05.09.2026, просьба
+              владельца). Заменить уже загруженный тоже можно тапом. */}
+          <ImageUploadArea
+            upload={uploadRecruiterImage}
+            className="recruiter-avatar-upload"
+            wrap={false}
+            onUploaded={(extra) => onFieldSaved("logo_url", extra.logo_url)}
+            onError={setLogoUploadError}
+          >
+            {data.logo_url ? (
+              <img className="profile-avatar recruiter-avatar" src={data.logo_url} alt="" />
+            ) : (
+              <div className="profile-avatar-fallback recruiter-avatar">{initialOf(data.name, data.company)}</div>
+            )}
+          </ImageUploadArea>
           <span className="recruiter-role-badge">{t("recruiter.roleBadge")}</span>
           <div className="profile-header-info">
             <h2>{data.name || t("common.noName")}</h2>
@@ -249,13 +280,18 @@ export function RecruiterHub({
           <RatingPreview reputation={data.reputation_score} onOpen={() => onNavigateSub("recruiter-history")} />
         </div>
       </div>
-
-      <SettingsPanel data={data} onFieldSaved={onFieldSaved} onPrivacyChange={onPrivacyChange} />
+      {/* То же правило, что в кабинете компании: подсказка исчезает, когда
+          логотип уже загружен. */}
+      {!data.logo_url && (
+        <p className="partner-meta company-upload-hint">{t("recruiter.upload.logoHint")}</p>
+      )}
+      {logoUploadError && <Msg type="error">{logoUploadError}</Msg>}
 
       <CharacteristicPanel data={data} />
+      <TurnoverCard turnover={data.turnover} />
 
       <div className="card">
-        <label>{t("recruiter.activity.label")}</label>
+        <h3>{t("recruiter.activity.label")}</h3>
         <ActivityStatusToggle value={data.activity_status} onChange={onActivityChange} />
       </div>
 
@@ -266,6 +302,7 @@ export function RecruiterHub({
       />
 
       <div className="card recruiter-quick-actions is-stacked">
+        <h3>{t("recruiter.quickActions.title")}</h3>
         <button type="button" className="btn" onClick={() => onNavigateTab("vacancies")}>
           {t("recruiter.quickPublish")}
         </button>
@@ -274,7 +311,8 @@ export function RecruiterHub({
         </button>
       </div>
 
-      <div className="card">
+      <div className="card recruiter-menu">
+        <h3>{t("recruiter.communication.title")}</h3>
         {[
           { key: "messages", labelKey: "recruiter.menu.messages" },
           { key: "recruiter-responses", labelKey: "recruiter.menu.responses" },

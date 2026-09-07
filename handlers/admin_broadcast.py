@@ -45,6 +45,10 @@ def _audience_menu_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("📊 По вертикали", callback_data="acms_bc_aud:vertical")],
         [InlineKeyboardButton("🎯 По грейду", callback_data="acms_bc_aud:grade")],
         [InlineKeyboardButton("🌍 По странам", callback_data="acms_bc_aud:country")],
+        # Сегмент из отчёта владельца 06.09.2026: зарегистрировались, но
+        # тариф не оплатили — их рейтинг не виден рекрутерам, и именно им
+        # нужно объяснить, зачем платить.
+        [InlineKeyboardButton("💤 Без подписки GURO ID", callback_data="acms_bc_aud:unpaid")],
         [InlineKeyboardButton("‹ Панель управления", callback_data="acms_home")],
     ])
 
@@ -164,6 +168,16 @@ async def bc_audience_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return BROWSE
 
 
+async def bc_audience_unpaid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    context.user_data["bc"] = {
+        "audience": {"mode": "unpaid", "value": None, "label": "Без подписки GURO ID"},
+        "items": [],
+    }
+    await _show_builder(context)
+    return BROWSE
+
+
 async def bc_audience_vertical_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     await admin_ui.edit_screen(context, "📊 Выберите вертикаль:", _vertical_kb())
@@ -249,6 +263,16 @@ def _targets(context, bc: dict) -> list:
         return storage.profiles_for_broadcast(country=bc["audience"]["value"])
     if mode == "country_other":
         return storage.profiles_for_broadcast(country_in=bc["audience"]["value"])
+    if mode == "unpaid":
+        # Активность подписки — это функция от статуса и срока
+        # (GL.subscription_active), а не колонка. Спрашиваем ровно тем же
+        # вызовом, что и остальное приложение: своя SQL-копия правила
+        # разъехалась бы с оригиналом, и письмо ушло бы оплатившим.
+        guro = context.bot_data["guro_storage"]
+        return [
+            row for row in storage.profiles_for_broadcast()
+            if not guro.is_subscribed(row["user_id"])
+        ]
     return storage.profiles_for_broadcast()
 
 

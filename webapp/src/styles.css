@@ -1,24 +1,88 @@
 :root {
-  --bg-deep: #071510;
-  --bg-mid: #0e2a1c;
+  /* Приложение всегда тёмное, независимо от темы устройства/клиента
+     (03.09.2026 -> 04.09.2026, задача "светлая/тёмная тема не должна
+     искажать цвета"). color-scheme объявлен в трёх местах намеренно:
+     тут (:root), на html и на body — движки берут его из разных мест в
+     зависимости от версии, дублирование ничего не стоит.
+     accent-color задаёт цвет ЛЮБОГО нативного контрола (чекбокс, радио,
+     range, progress) — без него система рисует их своим синим. */
+  color-scheme: dark;
+  accent-color: var(--accent-teal);
+
+  /* 07.09.2026, дизайн-система (раздел 3): фон экрана #0A181A. Прежний
+     #071a1c был холоднее и темнее — расхождение видно на границе с
+     карточкой. Хекс берётся ровно как указан, без тонирования. */
+  --bg-deep: #0a181a;
+  --bg-mid: #0b2024;
+  /* Плитка статистики и secondary-кнопка (разделы 3 и 5). До этого в
+     разных местах стояли #0e272b и #122e33 вперемешку. */
+  --tile: #122e33;
   /* 27.08.2026 — палитра приведена к ФИНАЛ-макету (лайм→мятный градиент
      вместо прежнего золота), см. ФИНАЛ · GURO ID.svg. Имя переменной
      осталось прежним ("--gold"), чтобы не трогать 50+ мест использования
      ради переименования — значение теперь не золото, а лайм. */
   --gold: #aaf64a;
   --gold-soft: rgba(170, 246, 74, 0.35);
-  --text: #f3efe4;
-  --text-dim: #b9c4bd;
-  --danger: #e0655a;
-  --ok: #6bbf8a;
+  --text: #ffffff;
+  --text-dim: #c7d1cc;
+  --danger: #cc4d3d;
+  /* 04.09.2026, сверка с Figma — отдельного "зелёного успеха" в макете
+     нет, позитивное состояние везде выражено лаймом. Имя токена оставлено
+     (используется в 10+ местах), значение приведено к макету. */
+  --ok: #aaf64a;
   --glass-bg: rgba(255, 255, 255, 0.06);
-  --glass-border: rgba(170, 246, 74, 0.28);
+  --glass-border: #0f3840;
   /* Акцент кабинета "Рекрутер" (28.08.2026, макет "11 · Рекрутер —
      главный экран") — отдельный бирюзовый цвет для рамки аватара/
      бейджа роли/вертикали/рейтинга, чтобы кабинет визуально читался
      иначе, чем личный профиль (тот весь на --gold). См. Выноска "Шаг
      12": "Другой кабинет должен и выглядеть иначе". */
-  --recruiter-cyan: #3ecfea;
+  /* 04.09.2026, сверка с Figma — #3ecfea в макете не встречается ни разу,
+     фирменный циан один: #0FD5F0 (он же второй цвет бренд-градиента). */
+  --recruiter-cyan: #0fd5f0;
+
+  /* Типографическая шкала 1a (раздел 2 дизайн-системы) — шесть ролей, и
+     новых не заводить: «если новый текст не подходит ни к одной, он
+     подходит к Body». Держим токенами, чтобы значения не разъезжались по
+     файлу. Вес 600 в тексте не применяется — он закреплён за интерактивом
+     (кнопки, чипы, строки списка, подписи полей). */
+  --fs-display: 28px;   /* цифра статистики/рейтинга/цены, 700, lh 1.0 */
+  --fs-h1: 24px;        /* заголовок экрана, один на экран, 700, lh 28px */
+  --fs-h2: 17px;        /* заголовок секции внутри карточки, 700, lh 22px */
+  --fs-eyebrow: 11px;   /* метка над группой, 700, +14%, КАПС */
+  --fs-body: 14px;      /* тело, 400, lh 21px */
+  --fs-meta: 12px;      /* подпись: даты, роль/компания, счётчики, 500 */
+  --fs-control: 15px;   /* интерактив: кнопки, чипы, строки списка, 600 */
+
+  /* Радиусы (раздел 4). Значения точные; 18px в системе нет. */
+  --r-card: 16px;
+  --r-cta: 14px;
+  --r-tile: 12px;
+  --r-badge: 8px;
+
+  /* 03.09.2026 — добавлено по образцу рабочего прототипа владельца
+     (GURO_ID_Mini_App/styles/tokens.css, собран напрямую из Figma).
+     03.09.2026, второй заход (владелец обновил прототип) — владелец
+     отменил переход на бирюзовый: --accent-teal остаётся как имя
+     переменной (не переименовываю — 15+ мест использования), но
+     значение снова лайм, как явно помечено в самом прототипе:
+     "Legacy action token: approved buttons now use the lime accent". */
+  --accent-teal: #aaf64a;
+  --warning: #e8624a;
+  --amber: #d9a33d;
+  --lime-highlight-8: rgba(170, 246, 74, 0.08);
+  /* Поля ввода (сверка с Figma 04.09.2026). Раньше был полупрозрачный
+     #ffffff0d, который поверх карточки давал более тёмный и плоский
+     #172b2f. В макете поле — самостоятельная поверхность на тон светлее
+     карточки, а рамка заметно голубее, чем --glass-border. */
+  --input-bg: #16353b;
+  --input-border: #2e5a63;
+  /* Третий уровень текста (сверка с Figma 04.09.2026): надзаголовки,
+     подписи метрик, шевроны, служебные пояснения. Отдельно от --text-dim,
+     который в макете отвечает за вторичный текст покрупнее. */
+  --text-muted: #7e908c;
+  /* Разделители в макете — сплошная линия цвета рамки, не белая с альфой. */
+  --divider: #0f3840;
 }
 
 * {
@@ -43,8 +107,16 @@ html {
      совместимый способ: overflow-y:scroll ЖЁСТКО держит полосу скролла
      видимой всегда, даже когда контента на странице мало — работает во
      ВСЕХ движках, а не только в свежих. */
+  /* 03.09.2026, по образцу прототипа — подсказывает браузеру рисовать
+     нативные controls/скроллбары/автозаполнение в тёмной палитре, а не
+     светлой по умолчанию. */
+  color-scheme: dark;
   scrollbar-gutter: stable;
   overflow-y: scroll;
+  /* Страница целиком вбок не ездит: широкий контент в проекте живёт в
+     своих скролл-контейнерах (.table-scroll и т.п.). Без этого любой
+     случайно переполняющий блок «возит» экран пальцем. */
+  overflow-x: hidden;
   /* Побочный эффект того же фикса (тем же вечером, 15.08.2026): полоса
      скролла теперь ВСЕГДА видна, но не была стилизована — рисовалась
      светлым дефолтным цветом браузера/ОС поверх тёмной темы, при активном
@@ -84,16 +156,56 @@ a {
 
 body {
   margin: 0;
-  font-family: Poppins, sans-serif;
+  font-family: Manrope, sans-serif;
   color: var(--text);
   background: radial-gradient(circle at 50% -10%, var(--bg-mid), var(--bg-deep) 65%);
+  /* Непрозрачная подложка ПОД градиентом — если движок почему-то не
+     отрисует градиент (или притушит его), под ним всё равно наш тёмный
+     фон, а не белый дефолт страницы. */
+  background-color: var(--bg-deep);
   min-height: 100vh;
+  color-scheme: dark;
+  /* Серо-синяя вспышка при тапе (iOS/Android) — чужой системный цвет
+     поверх нашей палитры. */
+  -webkit-tap-highlight-color: transparent;
+  /* Резиновый оверскролл иначе показывает подложку движка за краем
+     страницы (в светлой ОС — светлую). */
+  overscroll-behavior-y: none;
+}
+
+/* Автозаполнение (Chrome/WebView) рисует поле СВОИМ светлым фоном и
+   тёмным текстом поверх наших стилей — background им не перебить, только
+   inset-тенью на всю площадь. Цвет тени = наш фон инпута (--input-bg).
+   Огромный transition
+   на background-color — известный приём, чтобы движок не успел применить
+   свой цвет вообще. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--text);
+  -webkit-box-shadow: 0 0 0 1000px #16353b inset;
+  box-shadow: 0 0 0 1000px #16353b inset;
+  caret-color: var(--text);
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+/* Все цифры табличные (раздел 2, «жёсткие правила»): иначе колонки сумм
+   и счётчиков пляшут при смене значения. */
+.turnover-value,
+.recruiter-metric-value,
+.rating-preview-circle,
+.plan-card-price-main,
+.directory-row-rating,
+.chip {
+  font-variant-numeric: tabular-nums;
 }
 
 h1,
 h2,
 h3 {
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   margin: 0 0 0.4em;
   letter-spacing: 0.01em;
 }
@@ -101,8 +213,41 @@ h3 {
 .app {
   max-width: 480px;
   margin: 0 auto;
-  padding: 20px 16px 96px;
+  padding: 20px 20px 96px;
   min-height: 100vh;
+}
+
+/* Обводка экрана — см. комментарий у <div id="border-frame"> в
+   index.html. Середина вырезается маской, поэтому от градиента остаётся
+   только рамка толщиной padding. */
+#border-frame {
+  /* По умолчанию скрыта: без mask-composite вместо рамки был бы сплошной
+     градиент во весь экран. Включается ниже, в @supports. */
+  display: none;
+}
+
+@supports ((-webkit-mask-composite: xor) or (mask-composite: exclude)) {
+  #border-frame {
+    display: block;
+    position: fixed;
+    inset: 0;
+    max-width: 480px;
+    margin: 0 auto;
+    pointer-events: none;
+    z-index: 500;
+    /* 45px вместо 32px из файла владельца — подбирали вживую (05.09.2026). */
+    border-radius: 45px;
+    padding: 1.75px;
+    background: linear-gradient(45deg, #aaf64a, #0fd5f0);
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+  }
 }
 
 .header {
@@ -114,16 +259,28 @@ h3 {
      прижимается к левому краю тем же способом. */
   text-align: left;
   margin-bottom: 20px;
+  /* 02.09.2026, фидбек владельца — "GURO ID" наезжал на нативную плашку
+     Telegram (статус-бар + строка Закрыть/шеврон/меню) в развёрнутом
+     состоянии. --tg-safe-top считается в telegram.js из safeAreaInset +
+     contentSafeAreaInset (Bot API 8.0+) и обновляется live по событиям
+     safeAreaChanged/contentSafeAreaChanged. У .lang-switch тот же
+     отступ продублирован в его собственном top — см. комментарий там
+     (padding родителя абсолютный элемент не сдвигает). */
+  padding-top: var(--tg-safe-top, 0px);
 }
 
 /* Переключатель языка RU/EN (12.08.2026) — правый верхний угол шапки. */
 .lang-switch {
   position: absolute;
-  top: 0;
+  /* top у абсолютного элемента считается от padding-box родителя, то есть
+     padding-top у .header его НЕ сдвигает — безопасную зону нужно
+     повторить здесь явно, иначе в полноэкранном режиме переключатель
+     уезжает под статус-бар и кнопки Telegram. */
+  top: var(--tg-safe-top, 0px);
   right: 0;
   display: flex;
-  gap: 2px;
-  padding: 3px;
+  gap: 4px;
+  padding: 4px;
   border-radius: 10px;
   background: #ffffff0d;
   border: 1px solid var(--glass-border);
@@ -136,59 +293,67 @@ h3 {
   border: none;
   background: none;
   color: var(--text-dim);
-  font-family: Poppins, sans-serif;
+  font-family: Manrope, sans-serif;
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
 }
 
 .lang-switch button.is-active {
-  background: linear-gradient(135deg, var(--gold), #54e4a6);
-  color: #071510;
+  background: var(--accent-teal);
+  color: #051410;
 }
 
+/* Логотип набран Orbitron (сверено с Logo text.svg). Кегль 27px даёт
+   прописную 19.4px как в макете. Вес: по замеру Logo text.svg
+   (штрих буквы I к высоте прописной = 0.190) выходило 740, но владелец
+   счёл его слишком жирным, а 400 — слишком тонким; остановились ровно
+   посередине, на 570 (05.09.2026). Тот же вес стоит на заставке: буквы
+   переезжают оттуда в шапку, разный вес дал бы скачок толщины прямо в
+   перелёте. */
 .brand {
   display: inline-flex;
-  font-family: Lora, serif;
-  font-weight: 700;
-  font-size: 22px;
+  font-family: Orbitron, Manrope, sans-serif;
+  font-weight: 570;
+  font-size: 27px;
   color: var(--gold);
 }
 
 .header .subtitle {
-  color: var(--gold);
+  color: #7e908c;
   font-size: 13px;
   margin-top: 4px;
 }
 
 .card {
-  background: var(--glass-bg);
+  background: var(--bg-mid);
   border: 1px solid var(--glass-border);
-  border-radius: 18px;
-  padding: 18px;
-  margin-bottom: 16px;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 8px 24px #00000040;
+  /* 07.09.2026, дизайн-система: радиус карточки 16, padding 20. Прежние
+     18/18 не входят в разрешённый набор (4 · 8 · 12 · 16 · 20). */
+  border-radius: var(--r-card);
+  padding: 20px;
+  margin-bottom: 12px;
 }
 
 .metrics-row {
   display: flex;
-  gap: 10px;
-  margin: 14px 0;
+  gap: 12px;
+  margin: 16px 0;
 }
 
+/* Плитка метрики на карточке контрагента ("03 · Карточка контрагента"):
+   тёмная заливка, голубая рамка, лаймовое число. */
 .metric {
   flex: 1;
   text-align: center;
-  background: #ffffff0a;
-  border: 1px solid var(--glass-border);
+  background: #0a1912;
+  border: 1px solid var(--recruiter-cyan);
   border-radius: 14px;
-  padding: 12px 6px;
+  padding: 12px 8px;
 }
 
 .metric .value {
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-size: 22px;
   font-weight: 700;
   color: var(--gold);
@@ -197,32 +362,85 @@ h3 {
 .metric .label {
   font-size: 11px;
   color: var(--text-dim);
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
+/* Запись истории партнёрств — карточка, а не строка списка; рамка
+   окрашена в цвет своей оценки ("07 · История партнёрств"). */
 .partner-row {
+  padding: 16px;
+  margin-top: 12px;
+  border: 1px solid var(--divider);
+  border-radius: 14px;
+  background: #0a1912;
+}
+
+.partner-row:first-child {
+  margin-top: 0;
+}
+
+.partner-row--success {
+  border-color: #2f7049;
+}
+
+.partner-row--nuance {
+  border-color: #7c652a;
+}
+
+/* Для "проблемной" сделки примера в макете нет — берём тот же приём от
+   уже существующего --danger. */
+.partner-row--problematic {
+  border-color: #7a3a30;
+}
+
+.partner-row-head {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.partner-row:last-child {
-  border-bottom: none;
+.partner-verdict {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.partner-verdict--success {
+  background: #143222;
+  color: #4db875;
+}
+
+.partner-verdict--nuance {
+  background: #2b2f19;
+  color: var(--amber);
+}
+
+.partner-verdict--problematic {
+  background: #2e1a17;
+  color: var(--danger);
+}
+
+.partner-row-actions {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 8px;
 }
 
 .avatar-dot {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--gold), #2f8f66);
+  background: linear-gradient(135deg, var(--gold), #0fd5f0);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
-  color: #071510;
+  color: #171708;
   flex-shrink: 0;
 }
 
@@ -232,12 +450,16 @@ h3 {
 }
 
 .partner-name {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .partner-meta {
-  font-size: 12px;
+  /* Роль Meta (раздел 2): 12/16 · 500 · #C7D1CC. Прежний --text-muted
+     тусклее и в палитре дизайн-системы отсутствует. */
+  font-size: var(--fs-meta);
+  line-height: 16px;
+  font-weight: 500;
   color: var(--text-dim);
 }
 
@@ -246,40 +468,49 @@ h3 {
   color: var(--text-dim);
   border: 1px solid var(--glass-border);
   border-radius: 8px;
-  padding: 1px 6px;
+  padding: 4px 8px;
 }
 
 /* Офер/отзыв в карточке партнёрства (Фаза 2, 11.08.2026) */
 .partner-offer {
   font-size: 13px;
-  margin-top: 2px;
+  margin-top: 8px;
 }
 
 .partner-review {
   font-size: 13px;
-  font-style: italic;
-  color: var(--text-dim);
-  margin-top: 2px;
+  color: var(--text);
+  margin-top: 8px;
 }
 
 /* Атрибуция "чьи слова" (25.08.2026) — не курсивом/не приглушено, чтобы не
    сливалось с самим текстом оффера/отзыва. */
+/* В макете подпись "Вы написали:" / "Он написал вам:" стоит отдельной
+   строкой над самим текстом, а не в подбор с ним. */
 .partner-words-label {
+  display: block;
   font-style: normal;
-  font-weight: 600;
+  font-weight: 400;
   color: var(--text-dim);
+  margin-bottom: 4px;
 }
 
 input[type="text"],
 input[type="number"],
 textarea {
   width: 100%;
-  padding: 12px 14px;
-  border-radius: 12px;
+  /* Фон #0A181A и обводка #0F3840 — раздел 3; прежние #16353b / #2e5a63
+     в палитре отсутствуют. Padding 16 по разделу 4 («инпут 16»), а не 14
+     из раздела 5: 14 там же перечислено среди запрещённых. */
+  padding: 16px;
+  border-radius: var(--r-tile);
   border: 1px solid var(--glass-border);
-  background: #ffffff0d;
+  background: var(--bg-deep);
   color: var(--text);
-  font-size: 15px;
+  /* Ровно 16px, не меньше: при кегле < 16px iOS насильно приближает
+     страницу на фокусе, после чего появляется горизонтальная прокрутка и
+     экран «ездит» пальцем. */
+  font-size: 16px;
   font-family: inherit;
   outline: none;
 }
@@ -295,6 +526,16 @@ input[type="text"] {
 
 textarea {
   resize: vertical;
+}
+
+/* В макете поле в фокусе обведено голубым акцентом (фреймы "05 · Подтвердить
+   партнёрство" и "14 · Опубликовать вакансию"). Раньше состояния фокуса не
+   было вообще: outline снят, а рамка не менялась — поле никак не отзывалось
+   на тап. */
+input[type="text"]:focus,
+input[type="number"]:focus,
+textarea:focus {
+  border-color: var(--recruiter-cyan);
 }
 
 input[type="text"]::placeholder,
@@ -315,24 +556,62 @@ textarea::placeholder {
 
 .checkbox-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 12px 0 6px;
+  /* Подпись бывает в две строки — в макете квадратик стоит у первой. */
+  align-items: flex-start;
+  gap: 12px;
+  margin: 12px 0 8px;
   font-size: 13px;
   color: var(--text-dim);
   cursor: pointer;
 }
 
 .checkbox-row input[type="checkbox"] {
-  width: auto;
-  accent-color: var(--gold);
+  appearance: none;
+  -webkit-appearance: none;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  border-radius: 7px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.checkbox-row input[type="checkbox"]:checked {
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+/* Галочка — две смежные стороны рамки псевдоэлемента, повёрнутые на 45°:
+   остаётся резкой на любой плотности и не тянет за собой картинку. */
+.checkbox-row input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 3px;
+  width: 5px;
+  height: 10px;
+  border: solid #171708;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.checkbox-row input[type="checkbox"]:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 label {
   display: block;
-  font-size: 12px;
-  color: var(--text-dim);
-  margin: 12px 0 6px;
+  /* Раздел 5: подпись поля 13/1.3 · 600 · #FFFFFF, отступ до поля 8. */
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--text);
+  margin: 16px 0 8px;
 }
 
 .btn {
@@ -341,27 +620,93 @@ label {
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 13px 16px;
-  border-radius: 14px;
+  /* 07.09.2026, дизайн-система, раздел 5: padding 15, радиус 14,
+     текст 15/1 · 700 · #0A181A, градиент 45°. Прежние 135° и вес 600 в
+     системе не встречаются. */
+  /* 16, а не 15: раздел 4 перечисляет 15 среди запрещённых значений и
+     прямо задаёт «CTA 16». Числа раздела 5 сняты с макета на глаз. */
+  padding: 16px;
+  border-radius: var(--r-cta);
   border: none;
-  font-family: Poppins, sans-serif;
-  font-size: 15px;
-  font-weight: 600;
+  font-family: Manrope, sans-serif;
+  font-size: var(--fs-control);
+  font-weight: 700;
+  line-height: 1;
   cursor: pointer;
-  background: linear-gradient(135deg, var(--gold), #54e4a6);
-  color: #071510;
-  margin-top: 14px;
+  background: linear-gradient(45deg, var(--gold), var(--recruiter-cyan));
+  color: var(--bg-deep);
+  margin-top: 16px;
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.85;
   cursor: default;
 }
 
+/* Контурная акцентная кнопка — в макете так подана "Характеристика"
+   рядом с тёмной "Написать" ("03 · Карточка контрагента"). */
+/* Тёмная кнопка с цветным текстом — в макете так поданы "Принять"
+   (лайм) и "Передать владение" (голубой) на экране команды. */
+.btn.secondary.accent-lime {
+  color: var(--gold);
+}
+
+.btn.secondary.accent-cyan {
+  color: var(--recruiter-cyan);
+}
+
+.btn.outline-accent {
+  background: transparent;
+  color: var(--gold);
+  border: 1px solid var(--gold);
+}
+
+/* Ряд действий на карточке контрагента: две кнопки в строку. Раскрытая
+   характеристика — сиблинг кнопки, поэтому ложится под ряд на всю
+   ширину; обёртка сама по себе не участвует в раскладке (display:
+   contents), чтобы кнопка и панель были прямыми детьми флекса. */
+.contragent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.contragent-actions .characteristic-wrap {
+  display: contents;
+}
+
+.contragent-actions .btn {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.contragent-actions .card {
+  flex-basis: 100%;
+  margin-top: 0;
+}
+
 .btn.secondary {
-  background: #ffffff14;
+  /* Тот же цвет, что у плитки статистики (раздел 3) — держим токеном,
+     чтобы он жил в одном месте. */
+  background: var(--tile);
   color: var(--text);
-  border: 1px solid var(--glass-border);
+  font-weight: 600;
+  /* В макете вторичная кнопка — сплошная заливка без рамки. */
+  border: none;
+}
+
+/* Пока открыта клавиатура, таббар убираем совсем: он position: fixed, то
+   есть привязан к LAYOUT-вьюпорту, который клавиатура не ужимает — и
+   поэтому всплывал бы поверх неё. Класс вешает watchKeyboard()
+   в telegram.js. */
+.keyboard-open .tabbar {
+  display: none;
+}
+
+.keyboard-open .app {
+  padding-bottom: 20px;
 }
 
 .tabbar {
@@ -371,10 +716,13 @@ label {
   left: 0;
   right: 0;
   display: flex;
-  background: #071510eb;
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
-  padding: 8px var(--tabbar-pad-x) calc(8px + env(safe-area-inset-bottom));
+  /* 07.09.2026, дизайн-система: таб-бар сплошной, цвет фона экрана,
+     сверху разделитель. Прозрачность с размытием была нашей добавкой. */
+  background: var(--bg-deep);
+  border-top: 1px solid var(--glass-border);
+  /* Раздел 5: padding 12 · 20 · 16. Нижний отступ дополняется зоной
+     безопасности — без неё бар режется индикатором на iPhone. */
+  padding: 12px 20px calc(16px + env(safe-area-inset-bottom));
   z-index: 10;
 }
 
@@ -397,20 +745,25 @@ label {
   background: none;
   border: none;
   color: var(--text-dim);
-  font-family: Poppins, sans-serif;
+  font-family: Manrope, sans-serif;
   font-size: 11px;
-  padding: 6px 2px;
+  padding: 8px 4px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   transition: color 0.2s ease;
 }
 
 .screen-viewport {
   position: relative;
   overflow-x: clip;
+  /* AnimatePresence работает в mode="wait": старый экран уходит ПОЛНОСТЬЮ
+     и только потом монтируется новый. В этот момент детей нет вовсе, и без
+     минимальной высоты контейнер схлопывается в ноль, а страница дёргается
+     вверх-вниз. Держим место под контент экрана. */
+  min-height: 60dvh;
 }
 
 .tab-icon {
@@ -424,7 +777,11 @@ label {
 .tab-label {
   position: relative;
   z-index: 3;
-  line-height: 1.1;
+  /* Раздел 5: подпись таб-бара 10/1 · 500. Раньше кегль наследовался от
+     родителя и был крупнее макетного. */
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
   transition: color 0.2s ease;
   /* Ровно та же ширина, что у самого таба (min-width:0 выше), плюс защита
      на случай совсем узких экранов — длинное слово аккуратно ужимается по
@@ -436,7 +793,7 @@ label {
 }
 
 .tab.is-active {
-  color: var(--gold);
+  color: var(--accent-teal);
 }
 
 .tab-blob {
@@ -495,36 +852,36 @@ label {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 12px;
   text-align: center;
   padding: 16px;
 }
 
 .msg {
   text-align: center;
-  padding: 10px;
+  padding: 12px;
   border-radius: 12px;
   font-size: 13px;
   margin-bottom: 12px;
 }
 
 .msg.error {
-  background: #e0655a26;
+  background: #cc4d3d26;
   color: var(--danger);
-  border: 1px solid rgba(224, 101, 90, 0.35);
+  border: 1px solid rgba(204, 77, 61, 0.35);
 }
 
 .msg.ok {
-  background: #6bbf8a26;
+  background: #aaf64a26;
   color: var(--ok);
-  border: 1px solid rgba(107, 191, 138, 0.35);
+  border: 1px solid rgba(99, 207, 135, 0.35);
 }
 
 /* --- Переключатель Личный/Рекрутер (Фаза 3, 12.08.2026) --- */
 
 .workspace-switch {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   padding: 4px;
   margin-bottom: 12px;
   border-radius: 14px;
@@ -534,27 +891,49 @@ label {
 
 .workspace-switch button {
   flex: 1;
-  padding: 9px 10px;
+  padding: 12px 12px;
   border-radius: 10px;
   border: none;
   background: none;
   color: var(--text-dim);
-  font-family: Poppins, sans-serif;
+  font-family: Manrope, sans-serif;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .workspace-switch button.is-active {
-  background: linear-gradient(135deg, var(--gold), #54e4a6);
-  color: #071510;
+  background: var(--accent-teal);
+  color: #051410;
 }
 
 .vacancy-nav-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 4px;
+}
+
+/* Подсветка «Опубликовать вакансию» (стр. 12 отчёта: «рекрутеры ужасно
+   невнимательные люди, им надо прям подсвечивать»). Волна по кнопке раз в
+   несколько секунд — она заметна, но не дёргает элемент и не мешает
+   попасть по нему пальцем. */
+@keyframes publish-pulse {
+  0%, 82%, 100% { box-shadow: 0 0 0 0 rgba(170, 246, 74, 0); }
+  88% { box-shadow: 0 0 0 6px rgba(170, 246, 74, 0.28); }
+  94% { box-shadow: 0 0 0 12px rgba(170, 246, 74, 0); }
+}
+
+.btn-publish-pulse {
+  animation: publish-pulse 5s ease-in-out infinite;
+}
+
+/* На телефоне с включённым «уменьшением движения» пульсации быть не
+   должно — это системная просьба, а не предпочтение оформления. */
+@media (prefers-reduced-motion: reduce) {
+  .btn-publish-pulse {
+    animation: none;
+  }
 }
 
 .vacancy-nav-tile {
@@ -562,10 +941,10 @@ label {
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-  padding: 12px 14px;
+  padding: 16px;
   border-radius: 14px;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
+  background: #122e33;
+  border: none;
   color: var(--text);
   font-family: inherit;
   text-align: left;
@@ -579,24 +958,24 @@ label {
    всегда зелёная) макет не показывает — обычная нейтральная плитка,
    как "Отклики"/невыбранная вкладка. */
 .vacancy-nav-tile.is-active {
-  background: linear-gradient(135deg, var(--gold), #54e4a6);
+  background: var(--accent-teal);
   border-color: transparent;
-  color: #071510;
+  color: #051410;
 }
 
 .vacancy-nav-tile-title {
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 14px;
 }
 
 .vacancy-nav-tile-sub {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-dim);
 }
 
 .vacancy-nav-tile.is-active .vacancy-nav-tile-sub {
-  color: #071510cc;
+  color: #051410cc;
 }
 
 /* Статус + прогресс-бар подписки (28.08.2026, макет "10 · Подписка") —
@@ -605,8 +984,8 @@ label {
 .subscribe-status {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .subscribe-status-dot {
@@ -616,7 +995,7 @@ label {
   margin-top: 4px;
   flex-shrink: 0;
   background: var(--ok);
-  box-shadow: 0 0 8px rgba(107, 191, 138, 0.6);
+  box-shadow: 0 0 8px rgba(99, 207, 135, 0.6);
 }
 
 .subscribe-status-info {
@@ -625,7 +1004,7 @@ label {
 }
 
 .subscribe-status-title {
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 16px;
 }
@@ -633,11 +1012,11 @@ label {
 .subscribe-status-meta {
   font-size: 12px;
   color: var(--text-dim);
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .subscribe-progress-track {
-  margin-top: 10px;
+  margin-top: 12px;
   height: 6px;
   border-radius: 999px;
   background: #ffffff14;
@@ -647,14 +1026,14 @@ label {
 .subscribe-progress-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--gold), #54e4a6);
+  background: linear-gradient(90deg, var(--gold), #0fd5f0);
 }
 
 .subscribe-benefit-row {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 6px 0;
+  padding: 8px 0;
   font-size: 13px;
   line-height: 1.5;
 }
@@ -666,17 +1045,17 @@ label {
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  color: #071510;
-  background: linear-gradient(135deg, var(--gold), #54e4a6);
+  color: #171708;
+  background: linear-gradient(135deg, var(--gold), #0fd5f0);
   border-radius: 999px;
-  padding: 2px 7px;
+  padding: 4px 8px;
 }
 
 .compare-row {
   display: flex;
   justify-content: space-between;
   padding: 8px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--divider);
   font-size: 13px;
 }
 
@@ -695,18 +1074,19 @@ label {
 
 .plan-picker {
   display: flex;
-  gap: 10px;
-  margin: 14px 0;
+  gap: 12px;
+  margin: 16px 0;
 }
 
 .plan-card {
   position: relative;
   flex: 1;
-  background: #ffffff0a;
+  /* В макете невыбранная плитка без заливки, а содержимое прижато влево. */
+  background: transparent;
   border: 1px solid var(--glass-border);
   border-radius: 14px;
-  padding: 12px 8px;
-  text-align: center;
+  padding: 16px 12px;
+  text-align: left;
   cursor: pointer;
   color: var(--text);
   font-family: inherit;
@@ -714,33 +1094,43 @@ label {
 
 .plan-card.is-selected {
   border-color: var(--gold);
-  background: #aaf64a1a;
+  background: var(--tile);
 }
 
 .plan-card-label {
   font-size: 13px;
-  color: var(--text-dim);
-  margin-bottom: 6px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
 }
 
 .plan-card-price-full {
   display: block;
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--text-muted);
   text-decoration: line-through;
 }
 
 .plan-card-price-main {
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 20px;
+  /* Лаймовой цена становится только у выбранной плитки — в макете так
+     подсвечен выгодный тариф, а не оба сразу. */
+  color: var(--text);
+}
+
+.plan-card.is-selected .plan-card-price-main {
   color: var(--gold);
 }
 
+/* "экономия N ⭐" — строкой ПОД ценой, как в макете. Абсолютной пилюлей в
+   углу она быть не может: там уже лежит .plan-card-value-badge
+   ("Выгодно") с теми же координатами, метки накладывались друг на друга,
+   а длинный текст экономии наезжал на подпись тарифа. */
 .plan-card-badge {
-  margin-top: 6px;
-  font-size: 10px;
-  color: var(--ok);
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .tariff-card.is-highlighted {
@@ -750,12 +1140,12 @@ label {
 .tariff-price {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 12px;
   margin: 8px 0;
 }
 
 .tariff-price-main {
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 22px;
   color: var(--gold);
@@ -763,78 +1153,139 @@ label {
 
 .tariff-price-yearly {
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--recruiter-cyan);
 }
 
+/* В макете лимиты — плитки с зазором, без разделительных линий. */
 .tariff-limit-row {
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #122e33;
 }
 
-.tariff-limit-row:last-child {
-  border-bottom: none;
+.tariff-limit-row:first-of-type {
+  margin-top: 0;
 }
 
 .tariff-limit-label {
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--text);
-  margin-bottom: 2px;
+  margin-bottom: 4px;
 }
 
+/* Спиннер резервирует высоту: иначе экран сначала рисуется в две строки,
+   а после ответа сервера разворачивается и толкает вёрстку вниз. */
 .spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 140px;
   text-align: center;
   color: var(--text-dim);
-  padding: 24px;
+  padding: 20px;
   font-size: 13px;
 }
 
-/* Статичная заставка при старте (28.08.2026) — заменила слот-барабаны
-   (SlotIntro/brandLetters, см. git-историю): иконка + название +
-   подзаголовок + "Telegram Mini App", без анимации сборки букв. */
-.splash-overlay {
+/* Заставка со слот-барабанами (05.09.2026) — подробности и все замеры в
+   шапке SlotIntro.jsx. Заменила статичный сплэш от 28.08.2026. */
+.slot-overlay {
   position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  inset: 0;
   z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* В гифке фон чёрный, но чёрный прямоугольник спорил бы с фоном
+     приложения и с градиентной обводкой экрана. */
+  background: var(--bg-deep);
+}
+
+/* Сцена: оба состояния (барабаны и голые буквы) лежат ДРУГ НА ДРУГЕ.
+   Без этого в момент подмены AnimatePresence второй блок вставал справа
+   от первого и буквы улетали в шапку не из центра, а от края. */
+.slot-stage {
+  position: relative;
+  width: 100%;
+  height: 130px;
+}
+
+.slot-row {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Ячейки разделены тонкими вертикальными линиями — ни рамок, ни заливки,
+   как в эталоне. Крайние линии тоже есть. */
+.reel-window {
+  width: min(56px, 14.4vw);
+  height: 130px;
+  overflow: hidden;
+  border-left: 1px solid rgba(255, 255, 255, 0.38);
+}
+
+.reel-window:last-child {
+  border-right: 1px solid rgba(255, 255, 255, 0.38);
+}
+
+.reel-strip {
   display: flex;
   flex-direction: column;
   align-items: center;
+  will-change: transform;
+}
+
+.reel-cell,
+.slot-letter {
+  width: min(56px, 14.4vw);
+  display: flex;
+  align-items: center;
   justify-content: center;
-  gap: 10px;
-  background: radial-gradient(circle at 50% 30%, var(--bg-mid), var(--bg-deep) 70%);
+  font-family: Orbitron, Manrope, sans-serif;
+  font-weight: 570;
+  /* Кегль 60px даёт высоту прописной 43px — как в гифке. У Orbitron
+     прописные квадратные, значит и ширина буквы 43px; ячейка 56px
+     оставляет по 6.5px до разделителя с каждой стороны. Просвет держим
+     ЯЧЕЙКОЙ, а не уменьшением кегля. */
+  font-size: min(60px, 15.4vw);
+  line-height: 1;
+  color: var(--text);
 }
 
-.splash-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 20px;
-  box-shadow: 0 12px 32px #00000073;
+.reel-cell {
+  height: 90px;
 }
 
-.splash-title {
-  font-family: Lora, serif;
-  font-weight: 700;
-  font-size: 28px;
-  color: var(--gold);
-  text-shadow: 0 0 10px rgba(170, 246, 74, 0.5);
+/* Буквы после того, как разделители погасли, — та же высота, что у окна,
+   чтобы строка не дёрнулась в момент подмены. */
+.slot-letter {
+  height: 130px;
 }
 
-.splash-subtitle {
-  color: var(--gold);
-  font-size: 13px;
+/* "ID" в эталоне залито фирменным градиентом. */
+.reel-cell--accent,
+.slot-letter--accent {
+  background: linear-gradient(45deg, var(--gold), var(--recruiter-cyan));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
-.splash-badge {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-dim);
-  border: 1px solid var(--glass-border);
-  border-radius: 999px;
-  padding: 4px 10px;
-  margin-top: 6px;
+/* Буква в шапке — цель переезда из барабана. Заливка градиентная: свой
+   отрезок общей растяжки приходит инлайном из BRAND_GRADIENT. */
+.brand-letter {
+  display: inline-block;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
+
 
 .showcase-badge {
   display: inline-block;
@@ -844,11 +1295,11 @@ label {
   background: #aaf64a1f;
   border: 1px solid var(--glass-border);
   border-radius: 999px;
-  padding: 4px 10px;
+  padding: 4px 12px;
 }
 
 .showcase-tagline {
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-size: 14px;
   color: var(--gold);
   margin-top: 4px;
@@ -858,28 +1309,51 @@ label {
   font-size: 13px;
   color: var(--text-dim);
   line-height: 1.5;
-  margin: 10px 0 14px;
+  margin: 12px 0 16px;
 }
 
 .showcase-stack {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 4px;
 }
 
 .chip {
-  font-size: 11px;
-  color: var(--text);
-  background: #ffffff0f;
-  border: 1px solid var(--glass-border);
-  border-radius: 999px;
-  padding: 4px 10px;
+  /* Бейдж-счётчик (раздел 5): лайм, тёмный текст, 12/1 · 700 tabular,
+     padding 5 · 8, радиус 8. Прежний полупрозрачный с обводкой в системе
+     отсутствует. */
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--bg-deep);
+  background: var(--gold);
+  border: none;
+  border-radius: var(--r-badge);
+  /* 4 · 8 по разделу 4; в разделе 5 стоит 5 · 8, но 5 там же
+     перечислено среди запрещённых. */
+  padding: 4px 8px;
+}
+
+/* Два акцентных вида пилюли из макета тарифов: "ХИТ" на выделенном
+   тарифе и служебная пометка "MVP — гипотеза цены" в шапке. */
+.chip--hit {
+  background: var(--gold);
+  border-color: transparent;
+  color: #051410;
+  font-weight: 700;
+}
+
+.chip--note {
+  background: #1e4048;
+  border-color: transparent;
+  color: var(--recruiter-cyan);
+  font-weight: 600;
 }
 
 .project-card {
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--divider);
 }
 
 .project-card:last-child {
@@ -894,7 +1368,7 @@ label {
 }
 
 .project-name {
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 14px;
   color: var(--text);
@@ -905,7 +1379,7 @@ label {
   color: var(--gold);
   border: 1px solid var(--glass-border);
   border-radius: 8px;
-  padding: 2px 7px;
+  padding: 4px 8px;
   white-space: nowrap;
 }
 
@@ -916,18 +1390,19 @@ label {
   font-size: 13px;
   font-weight: 600;
   color: var(--gold);
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 /* Карточка-сводка "Партнёрство" на экране оценки, шаг 2 (28.08.2026,
    макет "07 · Сделки — шаг 2", RatePartnershipScreen.jsx). */
 .confirm-rate-partnership-box {
-  padding: 12px 14px;
+  padding: 12px 16px;
   border-radius: 12px;
-  background: #ffffff0a;
-  border: 1px solid var(--glass-border);
+  /* В макете это сплошная плашка без рамки. */
+  background: var(--tile);
+  border: none;
   font-size: 14px;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .confirm-pending-rating-row {
@@ -935,8 +1410,8 @@ label {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 12px 2px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--divider);
   background: none;
   border-left: none;
   border-right: none;
@@ -953,8 +1428,82 @@ label {
 
 /* --- Приватность (10.08.2026) — новая секция, не было в оригинале --- */
 
+/* Роль Eyebrow (раздел 2): 11/13 · 700 · трекинг +14% · КАПС · #C7D1CC.
+   Роль в шкале была, а класса под неё не существовало — надзаголовки
+   набирались чем придётся. */
+.eyebrow {
+  font-size: var(--fs-eyebrow);
+  line-height: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* Вкладки экрана «Команда» (эталонный экран 18). Взаимоисключающая пара
+   — по разделу 5 такая группа занимает один ряд на всю ширину. */
+.team-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.team-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 12px 8px;
+  border: none;
+  border-radius: var(--r-tile);
+  background: var(--tile);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.team-tab.is-active {
+  background: var(--gold);
+  color: var(--bg-deep);
+}
+
+/* Внутри активной вкладки бейдж на лайме потерялся бы — переворачиваем. */
+.team-tab.is-active .chip {
+  background: var(--bg-deep);
+  color: var(--gold);
+}
+
+/* Подсказка / нотификация (раздел 5): фон лайм 8%, радиус 12, текст
+   13/1.45 белым, иконка-замок в начале. Отдельный компонент — он
+   объясняет, почему что-то закрыто, и потому не должен выглядеть как
+   обычное приглушённое пояснение под полем. */
+.hint-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--lime-highlight-8);
+  border-radius: var(--r-tile);
+  padding: 16px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.hint-block svg {
+  margin-top: 4px;
+}
+
 .privacy-hint {
-  font-size: 12px;
+  /* Пояснение под полем — роль Body (раздел 2), а у Body жёсткое правило
+     «никогда мельче 14px». Стояло 12. */
+  font-size: var(--fs-body);
   color: var(--text-dim);
   line-height: 1.5;
   margin-bottom: 12px;
@@ -964,9 +1513,9 @@ label {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  gap: 12px;
+  /* В макете строки приватности идут без разделителей. */
+  padding: 12px 0;
 }
 
 .privacy-row:last-child {
@@ -977,28 +1526,36 @@ label {
    макет "09 · Приватность") — подсказка ПОСЛЕ тумблеров, что эти 2 поля
    в них не входят и не могут быть скрыты. */
 .profile-privacy-locked-note {
-  margin-top: 14px;
-  padding: 12px 14px;
+  margin-top: 16px;
+  padding: 12px 16px;
   border-radius: 12px;
-  border: 1px solid var(--gold-soft);
-  background: rgba(170, 246, 74, 0.08);
+  /* В макете плашка тёмно-зелёная с обычной рамкой, лаймовый тут только
+     заголовок. */
+  border: 1px solid var(--divider);
+  background: #183127;
+}
+
+/* Внутри плашки пояснение идёт вторым уровнем, а не третьим. */
+.profile-privacy-locked-note .partner-meta {
+  color: var(--text-dim);
 }
 
 .profile-privacy-locked-title {
   color: var(--gold);
   font-weight: 600;
   font-size: 14px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .privacy-row-label {
-  font-size: 14px;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .privacy-row-note {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-dim);
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .switch {
@@ -1019,7 +1576,7 @@ label {
   position: absolute;
   cursor: pointer;
   inset: 0;
-  background: #ffffff1a;
+  background: var(--tile);
   border: 1px solid var(--glass-border);
   border-radius: 999px;
   transition: background 0.2s ease;
@@ -1038,13 +1595,13 @@ label {
 }
 
 .switch input:checked + .slider {
-  background: linear-gradient(135deg, var(--gold), #54e4a6);
+  background: var(--accent-teal);
   border-color: var(--gold-soft);
 }
 
 .switch input:checked + .slider::before {
   transform: translateX(18px);
-  background: #071510;
+  background: #171708;
 }
 
 .switch input:disabled + .slider {
@@ -1074,7 +1631,7 @@ label {
 .profile-header-card {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
 }
 
 .profile-avatar,
@@ -1090,14 +1647,14 @@ label {
 }
 
 .profile-avatar-fallback {
-  background: linear-gradient(135deg, var(--gold), #2f8f66);
+  background: linear-gradient(135deg, var(--gold), #0fd5f0);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 22px;
-  color: #071510;
+  color: #171708;
 }
 
 .profile-header-info {
@@ -1106,12 +1663,18 @@ label {
 }
 
 .profile-header-info h2 {
-  margin: 0 0 2px;
+  margin: 0 0 4px;
 }
 
 .profile-header-sub {
   font-size: 13px;
   color: var(--text-dim);
+}
+
+/* В макете должность идёт вторым уровнем, а строка компании — третьим:
+   две подписи подряд одинаковой яркости сливались в блок. */
+.profile-header-sub--muted {
+  color: var(--text-muted);
 }
 
 .rating-preview {
@@ -1135,10 +1698,10 @@ label {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-deep);
-  border: 2px solid var(--recruiter-cyan);
-  color: var(--recruiter-cyan);
-  font-family: Lora, serif;
+  background: #1e4048;
+  border: 2px solid var(--gold);
+  color: var(--gold);
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 17px;
 }
@@ -1149,7 +1712,7 @@ label {
 .section-eyebrow {
   display: block;
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -1161,14 +1724,14 @@ label {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .rating-card-score {
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 13px;
-  color: var(--text-dim);
+  color: var(--text-muted);
 }
 
 .rating-card-body {
@@ -1190,7 +1753,7 @@ label {
 }
 
 .rating-ring-track {
-  stroke: rgba(255, 255, 255, 0.08);
+  stroke: var(--divider);
 }
 
 .rating-ring-progress {
@@ -1204,10 +1767,10 @@ label {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 26px;
-  color: var(--gold);
+  color: var(--text);
 }
 
 .rating-card-info {
@@ -1216,7 +1779,7 @@ label {
 }
 
 .rating-card-tier {
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 16px;
   margin-bottom: 4px;
@@ -1224,21 +1787,43 @@ label {
 
 .rating-card-hint {
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--text-muted);
   line-height: 1.5;
 }
 
 .rating-card-metrics {
   margin-top: 16px;
   margin-bottom: 0;
-  padding-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 16px;
+  border-top: 1px solid var(--divider);
+}
+
+/* На своём профиле ("01 · Профиль (личный)") те же плитки поданы тише,
+   чем на карточке чужого: без рамки, число белое, подпись третьего
+   уровня — акцент там держит кольцо рейтинга, а не метрики. */
+.rating-card-metrics .metric {
+  background: var(--tile);
+  border: none;
+}
+
+.rating-card-metrics .metric .value {
+  color: var(--text);
+}
+
+.rating-card-metrics .metric .label {
+  color: var(--text-muted);
 }
 
 /* "Первый шаг" (28.08.2026, тот же макет) — CTA-карточка, видна пока 0
    подтверждённых партнёрств (см. ProfileHub.jsx). */
+/* Единственный лаймовый надзаголовок в макете — "ПЕРВЫЙ ШАГ": карточка
+   зовёт к действию, остальные надзаголовки нейтральные. */
+.first-step-card .section-eyebrow {
+  color: var(--gold);
+}
+
 .first-step-card h3 {
-  margin: 8px 0 6px;
+  margin: 8px 0 8px;
 }
 
 .first-step-card p {
@@ -1249,17 +1834,21 @@ label {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 10px;
+  gap: 12px;
+  margin-top: 12px;
 }
 
+/* В макете вертикаль — чип-пилюля с рамкой и заливкой, а не текст с
+   подчёркиванием снизу. */
 .profile-vertical-badge {
   display: inline-block;
   font-size: 12px;
   font-weight: 600;
   color: var(--gold);
-  border-bottom: 2px solid var(--gold);
-  padding-bottom: 2px;
+  background: var(--tile);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  padding: 8px 12px;
 }
 
 /* Стаж в комьюнити (15.08.2026) — считается от даты заполнения анкеты
@@ -1270,7 +1859,7 @@ label {
    такое приближение достаточным. */
 .profile-tenure-badge {
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--text-muted);
 }
 
 .profile-menu-item {
@@ -1278,15 +1867,20 @@ label {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 14px 2px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 16px 4px;
+  border-bottom: 1px solid var(--divider);
   border-top: none;
   border-left: none;
   border-right: none;
   background: none;
   color: var(--text);
   font-family: inherit;
-  font-size: 15px;
+  /* Раздел 5: строка списка — высота от 48, текст 15/1 · 500-600.
+     Минимальной высоты не было, из-за чего короткие пункты выходили
+     ниже макетных и зона нажатия была меньше 44. */
+  min-height: 48px;
+  font-size: var(--fs-control);
+  font-weight: 500;
   cursor: pointer;
   text-align: left;
 }
@@ -1295,7 +1889,25 @@ label {
   border-bottom: none;
 }
 
+/* Иконка пункта меню профиля ("01 · Профиль (личный)") — лаймовый контур
+   слева от подписи. */
+.profile-menu-item-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.profile-menu-item-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--gold);
+}
+
 .profile-menu-item-chevron {
+  /* Раздел 5: шеврон #C7D1CC. Прежний --text-muted тусклее макетного. */
   color: var(--text-dim);
 }
 
@@ -1305,19 +1917,20 @@ label {
   gap: 4px;
   background: none;
   border: none;
-  color: var(--gold);
+  /* В макете ссылка "назад" нейтральная, не лаймовая (фреймы #03, #08, #10). */
+  color: var(--text-dim);
   font-family: inherit;
   font-size: 14px;
   cursor: pointer;
-  padding: 0 0 14px;
+  padding: 0 0 16px;
 }
 
 .editable-field {
-  margin: 10px 0;
+  margin: 12px 0;
 }
 
 .editable-field label {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
 }
 
 .editable-field-value {
@@ -1329,17 +1942,17 @@ label {
 .editable-field-empty {
   font-size: 13px;
   color: var(--text-dim);
-  font-style: italic;
 }
 
 .editable-field textarea {
   width: 100%;
-  padding: 12px 14px;
+  padding: 12px 16px;
   border-radius: 12px;
-  border: 1px solid var(--glass-border);
-  background: #ffffff0d;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
   color: var(--text);
-  font-size: 14px;
+  /* см. комментарий про 16px у input[type="text"] выше */
+  font-size: 16px;
   font-family: inherit;
   outline: none;
   resize: vertical;
@@ -1357,16 +1970,20 @@ label {
 
 /* --- Статус трудоустройства + QR (10.08.2026) --- */
 
+/* 04.09.2026 — блок переехал из карточки-визитки на фон, отдельным блоком
+   под "Первым шагом" (как в макете). Разделительная линия сверху была
+   нужна, только пока он лежал ВНУТРИ карточки — на фоне она рисовала бы
+   лишнюю черту поперёк экрана. Подпись набрана капителью, как в макете. */
 .work-status-section {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 16px;
 }
 
 .work-status-section > label {
   display: block;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
   margin-bottom: 8px;
 }
 
@@ -1381,7 +1998,7 @@ label {
 .work-status-picker {
   position: relative;
   display: flex;
-  gap: 6px;
+  gap: 8px;
 }
 
 .work-status-blob {
@@ -1400,7 +2017,7 @@ label {
   z-index: 2;
   flex: 1;
   min-width: 0;
-  padding: 8px 6px;
+  padding: 8px 8px;
   border-radius: 10px;
   border: 1px solid var(--glass-border);
   background: transparent;
@@ -1413,15 +2030,15 @@ label {
 }
 
 .work-status-option.work-status-looking.active {
-  color: var(--ok);
+  color: var(--gold);
 }
 
 .work-status-option.work-status-working.active {
-  color: var(--danger);
+  color: var(--gold);
 }
 
 .work-status-option.work-status-neutral.active {
-  color: var(--text);
+  color: var(--accent-teal);
 }
 
 /* Сегментированный Да/Нет/Не указано (CvSubscreen.jsx TriStateField —
@@ -1436,13 +2053,13 @@ label {
    WorkStatusPicker — изменения в одном больше не затронут другое. */
 .tristate-picker {
   display: flex;
-  gap: 6px;
+  gap: 8px;
 }
 
 .tristate-option {
   flex: 1;
   min-width: 0;
-  padding: 8px 6px;
+  padding: 8px 8px;
   border-radius: 10px;
   border: 1px solid var(--glass-border);
   background: #ffffff0d;
@@ -1463,7 +2080,7 @@ label {
 .work-status-badge {
   display: inline-block;
   margin-top: 8px;
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius: 10px;
   background: #ffffff0d;
   font-size: 12px;
@@ -1472,21 +2089,21 @@ label {
 }
 
 .work-status-badge.work-status-looking {
-  border-color: rgba(107, 191, 138, 0.5);
-  background: rgba(107, 191, 138, 0.16);
-  color: var(--ok);
+  border-color: rgba(170, 246, 74, 0.5);
+  background: rgba(170, 246, 74, 0.16);
+  color: var(--gold);
 }
 
 .work-status-badge.work-status-working {
-  border-color: rgba(224, 101, 90, 0.5);
-  background: rgba(224, 101, 90, 0.16);
-  color: var(--danger);
+  border-color: rgba(170, 246, 74, 0.5);
+  background: rgba(170, 246, 74, 0.16);
+  color: var(--gold);
 }
 
 .work-status-badge.work-status-neutral {
-  border-color: var(--glass-border);
-  background: #ffffff1c;
-  color: var(--text);
+  border-color: rgba(170, 246, 74, 0.5);
+  background: rgba(170, 246, 74, 0.16);
+  color: var(--accent-teal);
 }
 
 .qr-card {
@@ -1502,7 +2119,7 @@ label {
   height: 220px;
   border-radius: 14px;
   background: #fff;
-  padding: 10px;
+  padding: 12px;
 }
 
 /* --- Онбординг первого запуска + гейт подписки на рейтинг (10.08.2026) --- */
@@ -1543,25 +2160,25 @@ label {
 }
 
 .onboarding-detail {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--divider);
   font-size: 13px;
   line-height: 1.6;
   color: var(--text-dim);
 }
 
 .onboarding-detail p {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
 }
 
 .onboarding-verticals {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
   padding-left: 20px;
 }
 
 .onboarding-verticals li {
-  margin-bottom: 2px;
+  margin-bottom: 4px;
 }
 
 .subscription-gate-note {
@@ -1576,9 +2193,35 @@ label {
 /* Подсказка про кабинеты Рекрутер/Компания (28.08.2026, макет "03 ·
    Поиск") — выделенный блок со звездой, а не просто текст с разделителем
    (было до 28.08.2026 — см. git-историю, plain top-border divider). */
+/* Переключатель режимов раздела «Поиск» (стр. 7 отчёта). */
+.search-mode-switch {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.search-mode-btn {
+  flex: 1;
+  padding: 12px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.search-mode-btn.is-active {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #0b2024;
+  font-weight: 600;
+}
+
 .search-cabinets-hint {
   margin: 12px 0;
-  padding: 12px 14px;
+  padding: 12px 16px;
   border-radius: 12px;
   border: 1px solid var(--gold-soft);
   background: rgba(170, 246, 74, 0.08);
@@ -1596,14 +2239,53 @@ label {
 }
 
 .vertical-chip {
-  padding: 7px 12px;
-  border-radius: 20px;
-  border: 1px solid var(--glass-border);
-  background: #ffffff0d;
-  color: var(--text);
+  /* 07.09.2026, дизайн-система, раздел 5: список-фильтр с 6+ значениями —
+     заливка #122E33 без обводки, текст приглушённый, padding 12 · 12,
+     радиус 12. Пилюля с радиусом 20 в системе не встречается. */
+  padding: 12px;
+  border-radius: var(--r-tile);
+  border: none;
+  background: var(--tile);
+  color: var(--text-dim);
   font-family: inherit;
   font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
   cursor: pointer;
+}
+
+/* Сегменты статуса над списком "Мои вакансии" (правка в Figma "P3 · Мои
+   вакансии — сегменты статуса вверху"): залитые табы, не контурные чипы.
+   Строка прокручивается вбок сама — страница вбок ехать не должна. */
+.vertical-chips--tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+  margin-bottom: 12px;
+}
+
+.vertical-chips--tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.vertical-chips--tabs .vertical-chip {
+  flex-shrink: 0;
+  background: #122e33;
+  border-color: transparent;
+}
+
+.vertical-chips--tabs .vertical-chip.is-selected {
+  background: var(--accent-teal);
+  color: #051410;
+}
+
+/* Выбор из НЕСКОЛЬКИХ равнозначных вариантов ("Тип партнёрства" на
+   "05 · Подтвердить партнёрство", "Ваша оценка" на "06 · Оценить
+   партнёрство"): голубая рамка, заливки нет, текст приглушённый. */
+.vertical-chips--accent .vertical-chip {
+  border-color: var(--recruiter-cyan);
 }
 
 .vertical-chip:active {
@@ -1611,8 +2293,8 @@ label {
 }
 
 .vertical-chip.is-selected {
-  background: linear-gradient(135deg, var(--gold), #54e4a6);
-  color: #071510;
+  background: var(--accent-teal);
+  color: #051410;
   border-color: transparent;
 }
 
@@ -1620,18 +2302,19 @@ label {
 
 .vacancy-badges {
   display: flex;
-  gap: 6px;
-  margin-top: 6px;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 select {
   width: 100%;
-  padding: 12px 14px;
+  padding: 12px 16px;
   border-radius: 12px;
-  border: 1px solid var(--glass-border);
-  background: #0e2a1c;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
   color: var(--text);
-  font-size: 15px;
+  /* см. комментарий про 16px у input[type="text"] выше */
+  font-size: 16px;
   font-family: inherit;
   outline: none;
 }
@@ -1639,17 +2322,45 @@ select {
 /* --- Directory-поиск по описанию (10.08.2026) --- */
 
 .directory-results {
-  margin-top: 10px;
+  margin-top: 12px;
+}
+
+/* Результаты поиска кандидатов ("12 · Поиск кандидатов") — отдельные
+   плитки с зазором, без разделителей: это не список внутри карточки,
+   как на "02 · Поиск", а самостоятельные карточки. */
+.directory-results--tiles .directory-row {
+  margin-top: 12px;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 12px;
+  background: #122e33;
+}
+
+.directory-results--tiles .directory-row:first-child {
+  margin-top: 0;
+}
+
+/* Аватарка в такой плитке — спокойная заливка с голубой буквой. */
+.directory-row .avatar-dot {
+  background: #1e4048;
+  color: var(--recruiter-cyan);
+}
+
+/* Мета в строке результата идёт вторым уровнем, а не третьим. */
+.directory-row .partner-meta {
+  color: var(--text-dim);
 }
 
 .directory-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 12px 2px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 12px 4px;
+  /* В макете ("02 · Поиск") строки результатов разделены голубым акцентом,
+     а не еле заметной белой линией. */
+  border-bottom: 1px solid var(--recruiter-cyan);
   border-top: none;
   border-left: none;
   border-right: none;
@@ -1669,9 +2380,15 @@ select {
   min-width: 0;
 }
 
+.directory-row-handle {
+  font-size: 12px;
+  color: var(--recruiter-cyan);
+  margin-top: 4px;
+}
+
 .directory-row-name {
-  font-weight: 600;
-  font-size: 14px;
+  font-weight: 700;
+  font-size: 15px;
 }
 
 /* Аватар-кружок + рейтинг (28.08.2026, макет "12 · Рекрутер — Поиск
@@ -1687,20 +2404,20 @@ select {
 }
 
 .directory-paywall {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--divider);
   text-align: center;
 }
 
 .directory-paywall strong {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   color: var(--gold);
 }
 
 .directory-paywall .btn {
-  margin: 10px auto 0;
+  margin: 12px auto 0;
 }
 
 /* --- Личные сообщения внутри прилы (Фаза 1, 11.08.2026) --- */
@@ -1709,10 +2426,10 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 12px 2px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--divider);
   border-top: none;
   border-left: none;
   border-right: none;
@@ -1734,13 +2451,13 @@ select {
 .thread-row-name {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-weight: 600;
   font-size: 14px;
 }
 
 .thread-row-preview {
-  margin-top: 2px;
+  margin-top: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1750,7 +2467,7 @@ select {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--gold);
+  background: var(--accent-teal);
   flex-shrink: 0;
 }
 
@@ -1760,11 +2477,11 @@ select {
   justify-content: center;
   min-width: 18px;
   height: 18px;
-  padding: 0 5px;
-  margin-left: 6px;
+  padding: 0 8px;
+  margin-left: 8px;
   border-radius: 9px;
-  background: var(--gold);
-  color: #071510;
+  background: var(--accent-teal);
+  color: #051410;
   font-size: 11px;
   font-weight: 700;
 }
@@ -1775,12 +2492,12 @@ select {
   gap: 8px;
   max-height: 50vh;
   overflow-y: auto;
-  margin: 10px 0;
+  margin: 12px 0;
 }
 
 .thread-bubble {
   max-width: 80%;
-  padding: 10px 12px;
+  padding: 12px 12px;
   border-radius: 14px;
   font-size: 14px;
   line-height: 1.4;
@@ -1790,8 +2507,8 @@ select {
 
 .thread-bubble.mine {
   align-self: flex-end;
-  background: linear-gradient(135deg, var(--gold), #54e4a6);
-  color: #071510;
+  background: linear-gradient(135deg, var(--gold), #0fd5f0);
+  color: #171708;
 }
 
 .thread-bubble.theirs {
@@ -1806,14 +2523,16 @@ select {
   align-items: flex-end;
 }
 
+/* 16px, как у остальных полей: при меньшем кегле iOS приближает страницу
+   на фокусе — см. комментарий у input[type="text"]. */
 .thread-composer textarea {
   flex: 1;
-  padding: 12px 14px;
+  padding: 12px 16px;
   border-radius: 12px;
   border: 1px solid var(--glass-border);
   background: #ffffff0d;
   color: var(--text);
-  font-size: 14px;
+  font-size: 16px;
   font-family: inherit;
   outline: none;
   resize: none;
@@ -1830,12 +2549,12 @@ select {
    (SearchScreen.jsx). */
 .cv-readonly-row {
   margin-top: 20px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 16px;
+  border-top: 1px solid var(--divider);
 }
 
 .cv-readonly-row:first-of-type {
-  margin-top: 10px;
+  margin-top: 12px;
   padding-top: 0;
   border-top: none;
 }
@@ -1845,7 +2564,7 @@ select {
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  margin-bottom: 5px;
+  margin-bottom: 8px;
 }
 
 .cv-readonly-value {
@@ -1855,9 +2574,9 @@ select {
 }
 
 .cv-experience-entry-view {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--divider);
 }
 
 .cv-experience-entry-view:first-of-type {
@@ -1873,13 +2592,191 @@ select {
 
 /* Хэш транзакции у сделки (16.08.2026) — моноширинный, с переносом
    (хэши бывают 64+ символов, не должны вылезать за карточку). */
-.partner-tx-hash {
-  word-break: break-all;
+/* Карточка найденной одноимённой компании на экране создания (ТЗ «Роли и
+   команда», 3.0.1). */
+/* Колонкой, а не строкой: у .btn ширина во всю строку, и рядом с
+   названием кнопка с длинной подписью на 390px не помещается — на рендере
+   она наезжала на имя компании. */
+.company-match-row {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--tile);
+  border-radius: 14px;
 }
 
-.partner-tx-hash-value {
+.company-match-info {
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+/* «Такое название уже занято» — это не ошибка, а объяснение с выходом. */
+.company-taken-note {
+  padding: 12px 12px;
+  border-radius: 12px;
+  background: rgba(217, 163, 61, 0.12);
+  border: 1px solid rgba(217, 163, 61, 0.35);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* Область загрузки картинки (06.09.2026). Инпут невидим, но остаётся в
+   дереве отрисовки — display:none выводит его оттуда, и label перестаёт
+   его активировать в части движков. */
+.upload-trigger {
+  cursor: pointer;
+}
+
+.upload-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  pointer-events: none;
+}
+
+/* Счётчики оборота (ТЗ «Верификация транзакций», раздел 12). Оба
+   равнозначны визуально: ни один не главнее другого. */
+.turnover-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.turnover-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.turnover-cell {
+  flex: 1;
+  background: var(--tile);
+  border-radius: 14px;
+  padding: 16px 12px;
+}
+
+.turnover-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.turnover-value {
+  font-family: Manrope, sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--text);
+  margin: 4px 0;
+}
+
+/* Пометка стоит прямо у цифры: она объясняет, почему сумме можно верить —
+   в этом главная ценность счётчика. */
+.turnover-note {
+  font-size: 11px;
+  color: #4db875;
+}
+
+/* Ноль подаётся спокойно: он не ошибка, а нормальное начало. */
+.turnover-value--zero {
+  color: var(--text-muted);
+}
+
+.turnover-empty {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* Неподтверждённое — явно отделено и приглушено, чтобы не смешивалось с
+   проверенным (раздел 8). */
+.turnover-unverified {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Пояснение к обязательному хешу («рекрутер каб.pdf», стр. 4). Янтарь,
+   а не красный: человек ещё ничего не сделал не так — это требование,
+   а не ошибка. */
+.tx-required-note {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--amber);
+}
+
+/* Блок ончейн-проверки в карточке партнёрства (ТЗ «Верификация
+   транзакций», разделы 10-11). Три состояния должны различаться с одного
+   взгляда — по цвету и иконке, не вчитываясь. */
+.tx-block {
+  margin-top: 8px;
+}
+
+.tx-state {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Самое частое состояние. Приглушённое намеренно: обычная сделка без хеша
+   это норма, а не проблема. */
+.tx-state--none {
+  color: var(--text-muted);
+}
+
+/* Янтарь, а не красный: расхождение может быть честным (оплата через
+   обменник), это предупреждение, а не обвинение. */
+.tx-state--mismatch {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.tx-state-amounts {
+  color: var(--text-dim);
+  font-weight: 400;
+  margin-top: 4px;
+}
+
+/* Состояние, которого хочется достичь, — поэтому плашкой. */
+.tx-state--verified {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #143222;
+  color: #4db875;
+  font-weight: 600;
+}
+
+.tx-hash-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.tx-hash-value {
   font-family: "SF Mono", "Roboto Mono", monospace;
   font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.tx-hash-copy {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--recruiter-cyan);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.tx-explorer-link {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--recruiter-cyan);
 }
 
 /* Оценка партнёрства, Шаг 2 (ТЗ 6.1, 25.08.2026). */
@@ -1891,13 +2788,13 @@ select {
 
 .rate-widget-buttons {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .rate-widget-buttons button {
   flex: 1 1 auto;
-  padding: 6px 10px;
+  padding: 8px 12px;
   border-radius: 10px;
   border: 1px solid var(--glass-border);
   background: var(--glass-bg);
@@ -1907,7 +2804,7 @@ select {
 
 .rate-widget textarea {
   width: 100%;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 /* Изменить/удалить свою оценку (25.08.2026) — текстовые ссылки инлайн,
@@ -1922,6 +2819,11 @@ select {
   cursor: pointer;
 }
 
+/* "Удалить мой отзыв" в макете красная, а не лаймовая. */
+.rate-inline-link--danger {
+  color: var(--danger);
+}
+
 /* Кабинет "Рекрутер" — главный экран (26.08.2026, ТЗ "Гуро рекрутер каб").
    Карточка визуально ОТЛИЧАЕТСЯ от личного профиля (2.1): полоса-обложка
    сверху + скруглённый квадрат вместо круга у аватара + бейдж роли. */
@@ -1932,10 +2834,10 @@ select {
 }
 
 .recruiter-card-cover {
-  height: 56px;
-  margin: 0 -18px 14px;
-  padding: 8px 18px 0;
-  background: linear-gradient(120deg, var(--gold), #54e4a6);
+  height: 72px;
+  margin: 0 -20px 16px;
+  padding: 8px 20px 0;
+  background: linear-gradient(120deg, var(--gold), #0fd5f0);
   display: flex;
   justify-content: flex-end;
 }
@@ -1947,7 +2849,7 @@ select {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #071510cc;
+  color: #171708cc;
 }
 
 .recruiter-header {
@@ -1955,9 +2857,29 @@ select {
   position: relative;
 }
 
+/* Аватар кабинета — кликабельная зона загрузки; position: relative нужен
+   бейджу "HR", который позиционируется абсолютно относительно строки. */
+.recruiter-avatar-upload {
+  flex-shrink: 0;
+  cursor: pointer;
+  display: inline-block;
+}
+
+.recruiter-avatar-upload.is-uploading {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .recruiter-avatar {
   border-radius: 14px !important;
   border: 2px solid var(--recruiter-cyan) !important;
+}
+
+/* Заливка аватара кабинета — не общий лаймовый градиент, а спокойная
+   плашка с голубыми инициалами (макет "11 · Кабинет Рекрутер"). */
+.profile-avatar-fallback.recruiter-avatar {
+  background: #1e4048;
+  color: var(--recruiter-cyan);
 }
 
 /* Бейдж "HR" (28.08.2026, макет "11 · Рекрутер") — раньше был плоской
@@ -1966,13 +2888,16 @@ select {
    бейдж компании (company-verified-badge), но своим цветом. */
 .recruiter-role-badge {
   position: absolute;
-  left: 0;
-  top: 42px;
-  padding: 1px 8px;
-  border-radius: 8px;
-  background: var(--bg-deep);
-  border: 1px solid var(--recruiter-cyan);
-  color: var(--recruiter-cyan);
+  /* Аватар 56px + рамка 2px = 60px; 30px — его середина. */
+  left: 30px;
+  transform: translateX(-50%);
+  top: 46px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  /* В макете это сплошная голубая пилюля с тёмным текстом. */
+  background: var(--recruiter-cyan);
+  border: none;
+  color: #051410;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -1987,26 +2912,73 @@ select {
    друге в одной точке (второй прятал первый), а в TeamScreen бейдж
    роли наезжал на строку под ним (position_text). Тот же внешний вид,
    но в потоке документа — не абсолютно, для этих двух мест. */
+/* Бейдж роли в команде ("18 · Компания — Команда") — сплошная плашка без
+   рамки; роль различается цветом текста, а не цветом рамки. */
 .role-badge {
   display: inline-block;
-  padding: 1px 8px;
-  border-radius: 8px;
-  background: var(--bg-deep);
-  border: 1px solid var(--recruiter-cyan);
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #1e4048;
+  border: none;
   color: var(--recruiter-cyan);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
 
+.role-badge--owner {
+  color: var(--gold);
+}
+
+/* "Это вы" — не роль, а пометка, поэтому подана тише остальных. */
+.role-badge--you {
+  background: var(--tile);
+  color: var(--text-muted);
+}
+
+/* Карточка участника/запроса: аватарка слева, всё остальное — колонкой
+   справа от неё (кнопки в макете выровнены по имени, а не по аватарке). */
+.team-member-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.team-member-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.team-member-row .avatar-dot {
+  background: #1e4048;
+  color: var(--recruiter-cyan);
+}
+
+/* Кнопки участника — стопкой и по ширине содержимого, как в макете. */
+.team-member-main .recruiter-quick-actions {
+  /* 07.09.2026, эталонный экран 18: пара действий стоит в РЯД (flex,
+     gap 8), а не столбиком — иначе карточка заявки вдвое выше макетной.
+     Перенос разрешён: подписи «Удалить из команды» / «Передать владение»
+     в одну строку на 390px не помещаются. */
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.team-member-main .recruiter-quick-actions .btn {
+  flex: 1 1 auto;
+  width: auto;
+}
+
 /* "Кабинет: Рекрутер" — бейдж в шапке общих экранов (Вакансии/Поиск
    кандидатов), см. WorkspaceCabinetBadge, Shared.jsx. */
 .workspace-cabinet-badge {
   display: inline-block;
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: 999px;
-  background: rgba(62, 207, 234, 0.12);
-  border: 1px solid var(--recruiter-cyan);
+  background: #1e4048;
+  border: none;
   color: var(--recruiter-cyan);
   font-size: 11px;
   font-weight: 600;
@@ -2018,7 +2990,7 @@ select {
    но нейтрального цвета (не привязан к конкретному кабинету/акценту). */
 .team-counter-badge {
   display: inline-block;
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: 999px;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -2031,19 +3003,28 @@ select {
 .recruiter-vertical-line {
   color: var(--recruiter-cyan);
   font-size: 13px;
-  margin-top: 2px;
+  margin-top: 4px;
+}
+
+/* В макете "Настройки" — компактная пилюля в правом верхнем углу над
+   визиткой, а не широкая кнопка во всю ширину под ней. */
+.settings-gear-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
 }
 
 .settings-gear-btn {
-  width: 100%;
-  text-align: left;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #122e33;
+  border: none;
+  border-radius: 999px;
   padding: 12px 16px;
   color: var(--text);
+  font-family: inherit;
   font-size: 14px;
-  margin-bottom: 16px;
   cursor: pointer;
 }
 
@@ -2053,16 +3034,32 @@ select {
   gap: 12px;
 }
 
-.recruiter-metric {
-  text-align: center;
-  padding: 10px 6px;
+/* Блок "Коммуникация" в кабинете рекрутера ("11 · Кабинет Рекрутер") —
+   отдельные плитки с зазором, а не строки с разделителями, как в меню
+   личного профиля. */
+.recruiter-menu .profile-menu-item {
+  margin-top: 12px;
+  padding: 16px 16px;
+  border: none;
   border-radius: 12px;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
+  background: #122e33;
+}
+
+.recruiter-menu .profile-menu-item:first-of-type {
+  margin-top: 0;
+}
+
+.recruiter-metric {
+  /* В макете плитка — сплошная заливка без рамки, содержимое слева. */
+  text-align: left;
+  padding: 16px 12px;
+  border-radius: 12px;
+  background: #122e33;
+  border: none;
 }
 
 .recruiter-metric-value {
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 22px;
   color: var(--gold);
@@ -2081,18 +3078,18 @@ select {
 .recruiter-metric-label {
   font-size: 11px;
   color: var(--text-dim);
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .activity-status-toggle {
   display: flex;
   gap: 8px;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .activity-status-toggle button {
   flex: 1 1 auto;
-  padding: 10px;
+  padding: 12px;
   /* 29.08.2026, аудит скруглений — было 12px, единственный из пяти
      сегментированных переключателей похожей высоты (workspace-switch,
      work-status-option, tristate-option, rate-widget-buttons — везде
@@ -2113,7 +3110,7 @@ select {
 .activity-status-toggle button.is-active.hiring {
   background: var(--ok);
   border-color: var(--ok);
-  color: #08210f;
+  color: #171708;
   font-weight: 600;
 }
 
@@ -2129,16 +3126,16 @@ select {
 }
 
 .percentile-badge {
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 16px;
   color: var(--gold);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .recruiter-quick-actions {
   display: flex;
-  gap: 10px;
+  gap: 12px;
 }
 
 .recruiter-quick-actions .btn {
@@ -2169,6 +3166,40 @@ select {
 /* Вакансии (26.08.2026, ТЗ "Recruitment — ВАКАНСИИ") */
 .vacancy-card {
   cursor: pointer;
+  /* Точка отсчёта для кнопки-закладки в углу (04.09.2026). */
+  position: relative;
+}
+
+/* Закладка на обычной карточке доски — тот же смысл, что звезда на
+   премиальной, но карточка проще: кнопка ложится в правый верхний угол
+   абсолютом, а заголовку добавлен отступ справа, чтобы длинное название
+   не подлезало под звезду. */
+.vacancy-card__bookmark {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.vacancy-card__bookmark[aria-pressed="true"] {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.vacancy-card__title {
+  padding-right: 38px;
 }
 
 /* 28.08.2026 (макет "15 · Рекрутер — Мои вакансии") — залитая пилюля
@@ -2176,7 +3207,11 @@ select {
 .vacancy-status-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  /* В макете статус — плашка, а не голый цветной текст. */
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #1e4048;
   font-size: 12px;
   font-weight: 600;
 }
@@ -2206,7 +3241,57 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 6px;
+  margin-top: 8px;
+}
+
+/* Статус отклика — цветная точка в капсуле, без подписи (правка в Figma
+   "P2 · Отклики — статус цветом иконки", новее User Flow). Размеры сняты
+   с рендера: капсула 33x17, точка 16px прижата вправо. */
+.vacancy-response-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 33px;
+  height: 17px;
+  padding-right: 4px;
+  border-radius: 999px;
+  background: #122e33;
+  flex-shrink: 0;
+}
+
+.vacancy-response-status i {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #6b858c;
+}
+
+.vacancy-response-status--forward i {
+  background: var(--gold);
+}
+
+.vacancy-response-status--rejected i {
+  background: #db5257;
+}
+
+/* Маркер перед датой — тем же цветом, что точка. */
+.vacancy-response-mark {
+  font-weight: 700;
+}
+
+.vacancy-response-mark--forward {
+  color: var(--gold);
+}
+
+.vacancy-response-mark--rejected {
+  color: #db5257;
+}
+
+/* В строке отклика статус и дата стоят рядом слева, а не разнесены
+   по краям, как счётчики у своей вакансии. */
+.vacancy-mine-status-row--response {
+  justify-content: flex-start;
+  gap: 12px;
 }
 
 /* Отклики (28.08.2026, макет "16 · Рекрутер — Отклики") — имя кандидата +
@@ -2216,36 +3301,41 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
 }
 
+/* В макете это пилюля по ширине содержимого, а не круг. */
 .vacancy-response-rating {
-  width: 30px;
-  height: 30px;
+  width: auto;
+  height: auto;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border-width: 1px;
   font-size: 13px;
 }
 
-/* "Найм подтверждён" — финальный позитивный статус, отдельный (не зелёный
-   "в процессе", как interview/offer) цвет-акцент. */
-.vacancy-response-status-hired {
-  color: var(--gold);
-}
-
-/* Пояснительная карточка про кнопку "Подтвердить найм" — тот же паттерн,
-   что .profile-privacy-locked-note, но в бирюзовом (кабинет Рекрутера). */
+/* Пояснение про кнопку "Подтвердить найм". В макете это обычная карточка
+   с белым заголовком — бирюзовой подкраски, которая была тут раньше, в
+   макете нет. */
 .vacancy-hire-explainer {
-  border-color: rgba(62, 207, 234, 0.35);
-  background: rgba(62, 207, 234, 0.08);
+  border-color: var(--divider);
+  background: transparent;
 }
 
 .vacancy-hire-explainer-title {
-  color: var(--recruiter-cyan);
+  color: var(--text);
 }
 
 .vacancy-mine-counts {
   font-size: 12px;
   color: var(--text-dim);
   white-space: nowrap;
+}
+
+/* Число откликов в макете выделено лаймом — просмотры остаются нейтральными. */
+.vacancy-mine-counts-responses {
+  color: var(--gold);
+  font-weight: 600;
 }
 
 .title-suggestions {
@@ -2261,7 +3351,7 @@ select {
   justify-content: space-between;
   gap: 8px;
   text-align: left;
-  padding: 8px 10px;
+  padding: 8px 12px;
   border-radius: 10px;
   border: 1px solid var(--glass-border);
   background: #ffffff0d;
@@ -2276,11 +3366,11 @@ select {
 .mismatch-banner {
   font-size: 12px;
   color: var(--danger);
-  background: rgba(224, 101, 90, 0.12);
-  border: 1px solid rgba(224, 101, 90, 0.4);
+  background: rgba(204, 77, 61, 0.12);
+  border: 1px solid rgba(204, 77, 61, 0.4);
   border-radius: 10px;
-  padding: 8px 10px;
-  margin: -6px 0 12px;
+  padding: 8px 12px;
+  margin: -8px 0 12px;
 }
 
 /* Кабинет "Компания" — визуальная идентичность (26.08.2026, ТЗ "Компания.
@@ -2294,8 +3384,8 @@ select {
 }
 
 .company-cover {
-  height: 96px;
-  margin: 0 -18px;
+  height: 104px;
+  margin: 0 -20px;
   cursor: pointer;
 }
 
@@ -2307,7 +3397,7 @@ select {
 .company-cover-filled {
   width: 100%;
   height: 100%;
-  background-color: #123524;
+  background-color: var(--bg-mid);
   background-size: cover;
   background-position: center;
 }
@@ -2322,7 +3412,7 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-image: linear-gradient(135deg, #123524, #1e5c3d);
+  background-image: linear-gradient(135deg, var(--bg-mid), var(--bg-deep));
   border: 2px dashed var(--glass-border);
   color: var(--text-dim);
   font-size: 12px;
@@ -2331,9 +3421,9 @@ select {
 .company-header {
   display: flex;
   align-items: flex-end;
-  gap: 14px;
+  gap: 16px;
   margin-top: -30px;
-  padding-bottom: 14px;
+  padding-bottom: 16px;
 }
 
 .company-logo-upload {
@@ -2353,7 +3443,8 @@ select {
   height: 64px;
   border-radius: 16px;
   flex-shrink: 0;
-  border: 3px solid var(--bg-mid);
+  /* В макете логотип обведён голубым, а не отбит цветом фона. */
+  border: 3px solid var(--recruiter-cyan);
 }
 
 .company-logo {
@@ -2367,29 +3458,41 @@ select {
 }
 
 .company-logo-fallback {
-  background: linear-gradient(135deg, #1e5c3d, #123524);
+  background: var(--bg-deep);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 24px;
-  color: #eafff0;
+  color: var(--recruiter-cyan);
 }
 
+/* В макете верификация — голубая пилюля с подписью, а не одиночная
+   галочка рядом с названием. */
 .company-verified-badge {
-  display: inline-block;
-  margin-left: 6px;
-  color: #4fd17a;
-  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--recruiter-cyan);
+  color: #051410;
+  font-size: 12px;
+  font-weight: 700;
+  vertical-align: middle;
 }
 
 .company-vertical-big {
-  font-family: Lora, serif;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 16px;
-  color: var(--text);
-  margin-top: 2px;
+  /* В макете вертикаль набрана голубым капсом. */
+  color: var(--recruiter-cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 4px;
 }
 
 .company-rating-badge {
@@ -2398,26 +3501,27 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 8px 14px;
-  border-radius: 10px;
-  background: linear-gradient(120deg, #1e5c3d, #123524);
-  color: #eafff0;
-  font-family: Lora, serif;
+  padding: 8px 16px;
+  border-radius: 12px;
+  /* В макете это сплошная лаймовая плашка с тёмным числом. */
+  background: var(--gold);
+  color: #051410;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
-  font-size: 15px;
-  border: 1px solid rgba(79, 209, 122, 0.4);
+  font-size: 18px;
+  border: none;
 }
 
 .company-types-chips {
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
 /* Инструкция про верификацию по почте — нейтральный бокс, отделяет
    "как подать заявку" от объясняющего абзаца выше (29.08.2026, макет
    "17b · Компания — только что создана"). */
 .company-verify-note {
-  margin-top: 10px;
-  padding: 12px 14px;
+  margin-top: 12px;
+  padding: 12px 16px;
   border-radius: 12px;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -2431,16 +3535,16 @@ select {
 }
 
 .company-verify-status.is-verified {
-  color: #4fd17a;
+  color: var(--recruiter-cyan);
 }
 
 .company-verify-status.is-pending {
-  color: var(--gold);
+  color: var(--amber);
 }
 
 /* Вакансия от лица "Компании" — премиальное оформление (раздел 4 ТЗ). */
 .vacancy-card.vacancy-card-company {
-  border-left: 3px solid #4fd17a;
+  border-left: 3px solid var(--recruiter-cyan);
 }
 
 .vacancy-official-badge {
@@ -2448,11 +3552,13 @@ select {
   align-items: center;
   gap: 4px;
   margin-bottom: 8px;
-  padding: 2px 8px;
+  padding: 4px 8px;
   border-radius: 8px;
-  background: rgba(79, 209, 122, 0.16);
-  border: 1px solid rgba(79, 209, 122, 0.5);
-  color: #4fd17a;
+  /* В макете плашка — та же плашка-плитка #1e4048, что у тегов, но с
+     лаймовым текстом; голубой заливки с рамкой там нет. */
+  background: #1e4048;
+  border: none;
+  color: var(--gold);
   font-size: 11px;
   font-weight: 700;
 }
@@ -2464,22 +3570,23 @@ select {
 .vacancy-tag-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   margin-top: 8px;
 }
 
 .vacancy-tag-chip {
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius: 999px;
-  background: #ffffff0d;
-  border: 1px solid var(--glass-border);
+  /* В макете тег карточки — сплошная плашка без рамки. */
+  background: #1e4048;
+  border: none;
   color: var(--text-dim);
   font-size: 12px;
 }
 
 .vacancy-salary {
-  margin-top: 10px;
-  font-family: Lora, serif;
+  margin-top: 12px;
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 16px;
   color: var(--gold);
@@ -2488,10 +3595,10 @@ select {
 .vacancy-poster-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--divider);
 }
 
 .vacancy-poster-avatar {
@@ -2503,9 +3610,9 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--gold), #2f8f66);
-  color: #071510;
-  font-family: Lora, serif;
+  background: #1e4048;
+  color: var(--text);
+  font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 13px;
 }
@@ -2531,4 +3638,298 @@ select {
   height: 36px;
   font-size: 14px;
   flex-shrink: 0;
+}
+
+/* ============================================================
+   Премиальная карточка вакансии верифицированной компании
+   (03.09.2026) — перенесена 1:1 из рабочего прототипа владельца
+   (GURO_ID_Mini_App-2/styles/app.css, Figma node 15048:22109).
+   Показывается ВМЕСТО обычной карточки на доске, когда вакансия
+   опубликована от лица компании И у компании есть бейдж верификации.
+   04.09.2026, сверка с Figma (фрейм "A2 · Карточка вакансии"):
+   разноцветные контурные теги, иконки в мете, кольцевая галочка,
+   пояснение о верификации ОТДЕЛЬНОЙ плашкой под карточкой. Светлого
+   варианта в макете нет — он был выдумкой прототипа, снят.
+   Имена токенов прототипа (--text-muted/--border-subtle/
+   --brand-gradient) заменены на наши эквиваленты с теми же
+   значениями; локальные --premium-* оставлены как есть.
+   ============================================================ */
+
+
+
+
+
+
+
+
+.premium-vacancy-card {
+  --premium-ink: #f7fbf7;
+  --premium-muted: #8aa0a0;
+  --premium-line: rgba(178, 246, 115, .2);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid transparent;
+  border-radius: 17px;
+  /* Фон и обводка сняты пипеткой с макета (фрейм A2): тело #0d262b,
+     кольцо — фирменный градиент лайм->циан. */
+  background:
+    linear-gradient(#0d262b, #0d262b) padding-box,
+    linear-gradient(135deg, var(--gold), #0fd5f0) border-box;
+  color: var(--premium-ink);
+  box-shadow: 0 17px 38px rgba(0, 0, 0, .32);
+}
+
+
+.premium-vacancy-card__brand-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.premium-vacancy-card__logo {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  background: var(--bg-deep);
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+
+.premium-vacancy-card__brand-copy {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.premium-vacancy-card__brand-copy strong {
+  color: var(--premium-ink);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .07em;
+}
+
+.premium-vacancy-card__brand-copy span {
+  color: var(--premium-muted);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .12em;
+}
+
+.premium-vacancy-card__official {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  color: #aaf64a;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .035em;
+}
+
+.premium-vacancy-card__official span {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), #0fd5f0);
+  color: var(--bg-deep);
+  font-size: 9px;
+}
+
+
+.premium-vacancy-card__bookmark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  padding: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: 11px;
+  background: transparent;
+  color: var(--premium-muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.premium-vacancy-card__bookmark[aria-pressed="true"] {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.premium-vacancy-card__title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.premium-vacancy-card__title-row h3 {
+  flex: 1 1 auto;
+  color: var(--premium-ink);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.16;
+  letter-spacing: -.025em;
+}
+
+.premium-vacancy-card__verified {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background:
+    linear-gradient(#0d262b, #0d262b) padding-box,
+    linear-gradient(135deg, var(--gold), #0fd5f0) border-box;
+  color: var(--premium-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.premium-vacancy-card__tags,
+.premium-vacancy-card__meta,
+.premium-vacancy-card__footer {
+  display: flex;
+  align-items: center;
+}
+
+.premium-vacancy-card__tags {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Теги премиальной карточки — контурные капсулы с цветом по смыслу тега
+   (фрейм "A2 · Карточка вакансии"). Отличие от обычной карточки, где все
+   теги — одинаковые плашки #1e4048, здесь намеренное. */
+.premium-vacancy-card__tags span,
+.premium-vacancy-card__tags > span {
+  padding: 8px 12px;
+  border: 1px solid var(--premium-line);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+.premium-vacancy-card__tag--grade {
+  border-color: rgba(170, 246, 74, .45);
+  color: var(--gold);
+}
+
+.premium-vacancy-card__tag--position {
+  border-color: rgba(15, 213, 240, .45);
+  color: #0fd5f0;
+}
+
+.premium-vacancy-card__tag--muted {
+  border-color: var(--glass-border);
+  color: var(--premium-muted);
+}
+
+.premium-vacancy-card__divider {
+  width: 100%;
+  height: 1px;
+  background: var(--premium-line);
+}
+
+.premium-vacancy-card__meta-icon {
+  font-style: normal;
+  color: #6a7b7b;
+}
+
+.premium-vacancy-card__meta {
+  gap: 16px;
+  color: var(--premium-muted);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.premium-vacancy-card__footer {
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: auto;
+}
+
+.premium-vacancy-card__salary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.premium-vacancy-card__salary strong {
+  background: linear-gradient(135deg, var(--gold), #0fd5f0);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -.03em;
+}
+
+
+.premium-vacancy-card__salary span {
+  color: var(--premium-muted);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: .12em;
+}
+
+.premium-vacancy-card__cta {
+  min-height: 38px;
+  padding: 12px 16px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, var(--gold), #0fd5f0);
+  color: var(--bg-deep);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+
+.premium-vacancy-card__cta span {
+  padding-left: 4px;
+  font-size: 15px;
+  line-height: 0;
+}
+
+/* Пояснение про верификацию (04.09.2026, Figma "A2 · Карточка вакансии") —
+   отдельный блок ПОД премиальной карточкой; раньше это был бейдж внутри
+   карточки, чего в макете нет. Заголовок — циановый, как в макете. */
+.premium-verified-note {
+  width: 100%;
+  margin: -8px 0 4px;
+  padding: 16px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  background: var(--bg-deep);
+}
+
+.premium-verified-note__title {
+  margin-bottom: 8px;
+  color: var(--recruiter-cyan);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.premium-verified-note p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.5;
 }

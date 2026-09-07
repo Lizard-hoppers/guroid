@@ -38,7 +38,7 @@ function TariffCard({ product, plan, highlighted }) {
     <div className={`card tariff-card${highlighted ? " is-highlighted" : ""}`}>
       <div className="project-head">
         <h3>{t(`tariffs.product.${product}.title`)}</h3>
-        {highlighted && <span className="chip">{t("tariffs.hitBadge")}</span>}
+        {highlighted && <span className="chip chip--hit">{t("tariffs.hitBadge")}</span>}
       </div>
       {monthly && (
         <div className="tariff-price">
@@ -69,7 +69,7 @@ export function TariffsScreen({ onBack }) {
       <div className="card">
         <div className="project-head">
           <h3>{t("tariffs.title")}</h3>
-          <span className="chip">{t("tariffs.mvpBadge")}</span>
+          <span className="chip chip--note">{t("tariffs.mvpBadge")}</span>
         </div>
       </div>
 

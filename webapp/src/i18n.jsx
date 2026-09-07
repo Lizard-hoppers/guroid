@@ -32,7 +32,10 @@ const STRINGS = {
 
   "tab.profile": { ru: "Профиль", en: "Profile" },
   "tab.search": { ru: "Поиск", en: "Search" },
-  "tab.confirm": { ru: "Сделки", en: "Deals" },
+  // Дизайнер перечисляет вкладки поимённо: «Профиль · Поиск · Вакансии ·
+  // Подтвердить · Подписка» (раздел 5). У нас четвёртая называлась
+  // «Сделки» — расхождение с перечнем, а не вкусовая разница.
+  "tab.confirm": { ru: "Подтвердить", en: "Confirm" },
   "tab.subscribe": { ru: "Подписка", en: "Subscribe" },
 
   "common.back": { ru: "‹ Профиль", en: "‹ Profile" },
@@ -66,7 +69,8 @@ const STRINGS = {
   "hub.menu.offers": { ru: "Мои офферы", en: "My offers" },
   "hub.menu.messages": { ru: "Мои сообщения", en: "My messages" },
   "hub.menu.qr": { ru: "Мой QR", en: "My QR" },
-  "hub.ratingLocked": { ru: "🔒", en: "🔒" },
+  // hub.ratingLocked снят 07.09.2026: строка состояла из одного эмодзи,
+  // а замок в этом месте рисуется иконкой (Shared.jsx, скрытое значение).
   "hub.daysInCommunity": { ru: "В сообществе {count} {unit}", en: "{count} {unit} in the community" },
   // Карточка рейтинга на главном экране Профиля (28.08.2026, макет
   // "01 · Профиль (личный)") — кольцо-прогресс 0/100 + название уровня,
@@ -139,6 +143,23 @@ const STRINGS = {
   "metric.rating": { ru: "Рейтинг", en: "Rating" },
   "metric.partnerships": { ru: "Партнёрств", en: "Partnerships" },
   "metric.daysInCommunity": { ru: "Дней в комьюнити", en: "Days in community" },
+  // Счётчики оборота (ТЗ «Верификация транзакций», разделы 7-8, 12).
+  "turnover.title": { ru: "Оборот", en: "Turnover" },
+  "turnover.received": { ru: "Получено", en: "Received" },
+  "turnover.paid": { ru: "Оплачено", en: "Paid" },
+  "turnover.confirmed": { ru: "подтверждено", en: "confirmed" },
+  "turnover.hint": {
+    ru: "Суммы, подтверждённые транзакцией в блокчейне",
+    en: "Amounts confirmed by an on-chain transaction",
+  },
+  "turnover.empty": {
+    ru: "Счётчик начнётся с первой сделки, где указан хеш транзакции.",
+    en: "The counter starts with your first deal that includes a transaction hash.",
+  },
+  "turnover.unverified": {
+    ru: "заявлено без подтверждения: {amount}",
+    en: "stated without verification: {amount}",
+  },
   "partner.amountReceived": { ru: "Получено", en: "Received" },
   "partner.amountPaid": { ru: "Оплачено", en: "Paid" },
   "partner.amountNote": { ru: "(со слов инициатора)", en: "(as stated by the initiator)" },
@@ -148,8 +169,22 @@ const STRINGS = {
   "partner.wordsYours": { ru: "Ваши слова", en: "Your words" },
   "partner.wordsInitiator": { ru: "Слова инициатора", en: "Initiator's words" },
   "partner.notRated": { ru: "не влияет на рейтинг", en: "doesn't affect rating" },
-  "partner.txHash": { ru: "Хэш транзакции", en: "Transaction hash" },
-  "partner.txVerified": { ru: "подтверждено ончейн", en: "verified on-chain" },
+  // Три состояния ончейн-проверки (ТЗ «Верификация транзакций», разделы
+  // 2 и 10). Прежние partner.txHash/txVerified сняты вместе со старым
+  // блоком, который ставил отметку без сверки суммы.
+  "partner.tx.none": { ru: "Сумма со слов сторон", en: "Amount as stated by the parties" },
+  // ТЗ «Hash_Uniqueness», раздел 5.
+  "partner.tx.tooOld": {
+    ru: "Транзакция старше 12 месяцев — ончейн-подтверждение не применяется",
+    en: "The transaction is over 12 months old — on-chain confirmation doesn't apply",
+  },
+  "partner.tx.mismatch": { ru: "Сумма в блокчейне не совпадает", en: "On-chain amount doesn't match" },
+  "partner.tx.declared": { ru: "Указано", en: "Stated" },
+  "partner.tx.onchain": { ru: "В транзакции", en: "In transaction" },
+  "partner.tx.verified": { ru: "Подтверждено ончейн", en: "Verified on-chain" },
+  "partner.tx.copy": { ru: "Копировать", en: "Copy" },
+  "partner.tx.copied": { ru: "Скопировано", en: "Copied" },
+  "partner.tx.explorer": { ru: "Проверить в блокчейне →", en: "Check on the blockchain →" },
   "rating.ratePrompt": { ru: "Как прошло сотрудничество?", en: "How did the collaboration go?" },
   "rating.verdict.success": { ru: "Успешно", en: "Success" },
   "rating.verdict.nuance": { ru: "Были нюансы", en: "Had nuances" },
@@ -174,9 +209,9 @@ const STRINGS = {
   "characteristic.hide": { ru: "Скрыть характеристику", en: "Hide characteristic" },
   "characteristic.offersTitle": { ru: "Офферы", en: "Offers" },
   "characteristic.emptyOffers": { ru: "Офферы не заполнены.", en: "No offers filled in." },
-  "cv.viewBtn": { ru: "👁 Посмотреть моё CV", en: "👁 View my CV" },
+  "cv.viewBtn": { ru: "Посмотреть моё CV", en: "View my CV" },
   "cv.backToEdit": { ru: "‹ К редактированию", en: "‹ Back to editing" },
-  "cv.shareBtn": { ru: "📤 Поделиться CV", en: "📤 Share CV" },
+  "cv.shareBtn": { ru: "Поделиться CV", en: "Share CV" },
   "cv.shareBusy": { ru: "Готовим ссылку…", en: "Preparing link…" },
   "cv.shareError": { ru: "Не получилось создать ссылку, попробуйте ещё раз", en: "Couldn't create the link, try again" },
   "cv.shareText": {
@@ -268,10 +303,10 @@ const STRINGS = {
   // --- Мои контакты ---
   "contacts.title": { ru: "Мои контакты", en: "My contacts" },
   "contacts.telegram": { ru: "Telegram", en: "Telegram" },
-  "contacts.linkedinEmpty": { ru: "LinkedIn не указан в анкете", en: "LinkedIn not specified in the questionnaire" },
+  "contacts.linkedinLabel": { ru: "LinkedIn", en: "LinkedIn" },
   "contacts.websiteLabel": { ru: "Сайт", en: "Website" },
   "contacts.showQr": { ru: "Показать мой QR (визитка)", en: "Show my QR (business card)" },
-  "contacts.inviteBtn": { ru: "🔗 Пригласить коллегу", en: "🔗 Invite a colleague" },
+  "contacts.inviteBtn": { ru: "Пригласить коллегу", en: "Invite a colleague" },
   "contacts.inviteBusy": { ru: "Готовим ссылку…", en: "Preparing link…" },
   "contacts.inviteError": { ru: "Не удалось получить ссылку. Попробуйте ещё раз.", en: "Couldn't get the link. Please try again." },
   "contacts.inviteShareText": {
@@ -324,9 +359,9 @@ const STRINGS = {
   },
   "thread.error.EMPTY_BODY": { ru: "Сообщение не может быть пустым.", en: "Message can't be empty." },
   "thread.error.generic": { ru: "Не получилось отправить сообщение.", en: "Couldn't send the message." },
-  "messageBtn": { ru: "✉️ Написать", en: "✉️ Message" },
-  "recruiterViewBtn": { ru: "🧑‍💼 Посмотреть как рекрутера", en: "🧑‍💼 View as recruiter" },
-  "companyViewBtn": { ru: "🏢 Посмотреть как компанию", en: "🏢 View as company" },
+  "messageBtn": { ru: "Написать", en: "Message" },
+  "recruiterViewBtn": { ru: "Посмотреть как рекрутера", en: "View as recruiter" },
+  "companyViewBtn": { ru: "Посмотреть как компанию", en: "View as company" },
 
   // --- Онбординг ---
   "onboarding.title": { ru: "Это ваша ID-карта", en: "This is your ID card" },
@@ -342,7 +377,10 @@ const STRINGS = {
     ru: "При отсутствии активной подписки ваш рейтинг в индустрии скрывается — сотни сделок и успешных наймов пропадают из виду (сами данные не удаляются: как только подписка возобновится, всё вернётся как было).",
     en: "Without an active subscription your industry rating is hidden — hundreds of deals and successful hires disappear from view (the data itself isn't deleted: as soon as the subscription is renewed, everything comes back).",
   },
-  "onboarding.priceLine": { ru: "Подписка: {monthly}/месяц или {yearly}/год (в звёздах — 650⭐ / 6600⭐).", en: "Subscription: {monthly}/month or {yearly}/year (in Stars — 650⭐ / 6600⭐)." },
+  "onboarding.priceLine": {
+    ru: "Подписка: {monthly}/месяц или {yearly}/год (в звёздах — 650 / 6600).",
+    en: "Subscription: {monthly}/month or {yearly}/year (in Stars — 650 / 6600).",
+  },
   "onboarding.ctaHint": {
     ru: "Чтобы начать строить репутацию и карьеру — заполните анкету. В конце у вас будет выбор, какая информация будет общедоступна, а какая нет.",
     en: "To start building your reputation and career — fill in the questionnaire. At the end you'll choose what information is public and what isn't.",
@@ -363,9 +401,13 @@ const STRINGS = {
   "search.placeholder": { ru: "Юзернейм, например @igamingschool", en: "Username, e.g. @igamingschool" },
   "search.submit": { ru: "Найти", en: "Search" },
   "search.submitting": { ru: "Ищем…", en: "Searching…" },
+  "search.backToList": { ru: "‹ К списку", en: "‹ Back to list" },
+  // Два режима раздела «Поиск» для владельцев кабинета (стр. 7 отчёта).
+  "search.mode.classic": { ru: "Пробить по юзернейму", en: "Check by username" },
+  "search.mode.candidates": { ru: "Найти кандидата", en: "Find a candidate" },
   "search.cabinetsHint": {
-    ru: "⭐ Нужен поиск по описанию, должности и вертикали? Оформите кабинет Рекрутер или Компания в «Профиль».",
-    en: "⭐ Need to search by description, position and vertical? Activate the Recruiter or Company cabinet in \"Profile\".",
+    ru: "Нужен поиск по описанию, должности и вертикали? Оформите кабинет Рекрутер или Компания в «Профиль».",
+    en: "Need to search by description, position and vertical? Activate the Recruiter or Company cabinet in \"Profile\".",
   },
   "search.browseHint": {
     ru: "Фильтр по вертикали — демо-версия (по подписке). Сейчас с реальными данными работает только Gambling:",
@@ -379,7 +421,7 @@ const STRINGS = {
     ru: "Дневной лимит просмотров профилей исчерпан. Обновится {date}.",
     en: "Daily profile view limit reached. Resets on {date}.",
   },
-  "search.topToggle": { ru: "🏆 Сначала высокий рейтинг", en: "🏆 Highest rating first" },
+  "search.topToggle": { ru: "Сначала высокий рейтинг", en: "Highest rating first" },
   "search.emptyList": { ru: "Ничего не нашлось. Попробуйте другое описание или вертикаль.", en: "Nothing found. Try another description or vertical." },
   "search.truncated": { ru: "Показаны не все совпадения — уточните запрос.", en: "Not all matches shown — refine your query." },
   "search.resumesToggle": {
@@ -389,6 +431,10 @@ const STRINGS = {
   "search.resumesShowAll": { ru: "Показать всех, кто ищет работу", en: "Show everyone looking for work" },
   "identity.vertical": { ru: "Вертикаль: ", en: "Vertical: " },
   "identity.company": { ru: "Компания: ", en: "Company: " },
+  "identity.visibilityHint": {
+    ru: "Рейтинг и стаж видны всегда с активной подпиской — независимо от настроек приватности собеседника.",
+    en: "Rating and tenure are always visible with an active subscription — regardless of the other side's privacy settings.",
+  },
   "recruiterCard.company": { ru: "Компания: ", en: "Company: " },
   "recruiterCard.vertical": { ru: "Вертикаль: ", en: "Vertical: " },
   "recruiterCard.profession": { ru: "Должность: ", en: "Position: " },
@@ -403,8 +449,8 @@ const STRINGS = {
   // тип партнёрства тут жёстко "Найм", переключатель скрыт.
   "confirm.title.hire": { ru: "Подтвердить найм", en: "Confirm a hire" },
   "confirm.asCompanyHint": {
-    ru: "✓ Вы действуете от лица компании — сделка попадёт в общую историю бренда.",
-    en: "✓ You're acting on behalf of the company — the deal will go into the brand's shared history.",
+    ru: "Вы действуете от лица компании — сделка попадёт в общую историю бренда.",
+    en: "You're acting on behalf of the company — the deal will go into the brand's shared history.",
   },
   // 28.08.2026 (макет "06 · Сделки — шаг 1", Untitled-9): текст был устаревшим
   // — упоминал "офер и отзыв видны всем чужим", хотя отзыв убран с этого шага
@@ -427,12 +473,27 @@ const STRINGS = {
     ru: "Сделка — разовое сотрудничество (10 баллов к рейтингу) · Найм — трудоустройство (15 баллов к рейтингу)",
     en: "Deal — one-off cooperation (10 rating points) · Hire — employment (15 rating points)",
   },
-  "confirm.verticalLabel": { ru: "Вертикаль (необязательно)", en: "Vertical (optional)" },
+  "confirm.verticalLabel": { ru: "Вертикаль", en: "Vertical" },
   "confirm.geoLabel": { ru: "Гео (необязательно)", en: "Geo (optional)" },
   "confirm.geoPlaceholder": { ru: "Одесса, Кипр…", en: "Odesa, Cyprus…" },
-  "confirm.offerLabel": { ru: "Оффер — суть сделки (необязательно)", en: "Offer — deal summary (optional)" },
+  "confirm.offerLabel": { ru: "Оффер — суть сделки", en: "Offer — deal summary" },
   "confirm.offerPlaceholder": { ru: "Например: привёл байера на казино-трафик", en: "E.g.: brought in a buyer for casino traffic" },
-  "confirm.amountLabel": { ru: "Сумма (необязательно)", en: "Amount (optional)" },
+  "confirm.amountLabel": { ru: "Сумма", en: "Amount" },
+  // Безоплатное партнёрство (ТЗ раздел 9.1).
+  "confirm.noPaymentLabel": {
+    ru: "Без прямой оплаты между нами",
+    en: "No direct payment between us",
+  },
+  "confirm.noPaymentHint": {
+    ru: "Отметьте, если денег между вами не было: платил работодатель или третья сторона, бартер, реферальная схема.",
+    en: "Check this if no money changed hands between you: an employer or third party paid, barter, or a referral scheme.",
+  },
+  // Сумма — два поля (получил/заплатил), сделка обычно односторонняя,
+  // поэтому требуем заполнить любое одно (05.09.2026).
+  "confirm.amountRequiredHint": {
+    ru: "Заполните хотя бы одно поле — сколько получили или сколько заплатили.",
+    en: "Fill in at least one — how much you received or how much you paid.",
+  },
   "confirm.amountReceivedPlaceholder": { ru: "Я получил, $", en: "I received, $" },
   "confirm.amountPaidPlaceholder": { ru: "Я заплатил, $", en: "I paid, $" },
   "confirm.amountVisible": { ru: "Показывать сумму чужим (по умолчанию скрыта)", en: "Show amount to others (hidden by default)" },
@@ -441,7 +502,7 @@ const STRINGS = {
   // extract_tx_hash, решение 25.08.2026 — юзер вставляет ЛЮБОЙ формат, поле
   // само вырезает хэш из ссылки), текст поля обновлён, чтобы явно показать
   // оба принимаемых формата вместо одного только "хэш".
-  "confirm.txHashLabel": { ru: "Хэш или ссылка на транзакцию (необязательно)", en: "Transaction hash or link (optional)" },
+  "confirm.txHashLabel": { ru: "Хэш или ссылка на транзакцию", en: "Transaction hash or link" },
   "confirm.txHashPlaceholder": {
     ru: "Например: 0x71c4…e9a3 или https://etherscan.io/tx/0x71c4…e9a3",
     en: "E.g.: 0x71c4…e9a3 or https://etherscan.io/tx/0x71c4…e9a3",
@@ -450,8 +511,33 @@ const STRINGS = {
     ru: "Подтверждает реальность перевода. Виден вместе с суммой — по той же галочке выше.",
     en: "Backs up the transfer as real. Shown together with the amount — same checkbox above.",
   },
+  // Формулировка владельца («рекрутер каб.pdf», стр. 4).
+  "confirm.txHashRequired": {
+    ru: "Нет хеша — нет сделки: мы не верим на слово. Если перевода между вами не было, отметьте «Без прямой оплаты» выше.",
+    en: "No hash, no deal — we don't take your word for it. If no money changed hands, check \"No direct payment\" above.",
+  },
+  "confirm.error.TX_HASH_REQUIRED": {
+    ru: "Добавьте хеш транзакции — без него сделка не засчитывается.",
+    en: "Add the transaction hash — without it the deal doesn't count.",
+  },
+  // Раздел 3, случай A — объясняем, а не ругаем: человек чаще всего просто
+  // не понял, что сделка уже зафиксирована с обеих сторон.
+  "confirm.error.TX_HASH_USED_BY_OWN": {
+    ru: "Этот перевод уже зафиксирован в партнёрстве с {partner} от {date}. Сделка засчитана вам обоим — создавать вторую запись не нужно.",
+    en: "This transfer is already recorded in your partnership with {partner} from {date}. It counts for both of you — no need to create a second entry.",
+  },
+  "confirm.error.TX_HASH_USED_BY_OWN_SHORT": {
+    ru: "Этот перевод уже зафиксирован в одном из ваших партнёрств. Создавать вторую запись не нужно.",
+    en: "This transfer is already recorded in one of your partnerships. No need to create a second entry.",
+  },
+  // Раздел 3, случай B — строго и БЕЗ деталей чужой сделки.
+  "confirm.error.TX_HASH_ALREADY_USED": {
+    ru: "Этот хеш уже использован в другом партнёрстве.",
+    en: "This hash is already used in another partnership.",
+  },
   "confirm.txNetworkLabel": { ru: "Сеть транзакции", en: "Transaction network" },
   "confirm.txNetworkPlaceholder": { ru: "Выберите сеть…", en: "Select network…" },
+  "confirm.flagFraudLabel": { ru: "Отметить как проблемную сделку (анти-фрод флаг)", en: "Flag as a problematic deal (anti-fraud flag)" },
   "confirm.submit": { ru: "Отправить на подтверждение — шаг 1", en: "Send for confirmation — step 1" },
   "confirm.submitting": { ru: "Отправляем…", en: "Sending…" },
   "confirm.sentOk": { ru: "Заявка отправлена. Ждём подтверждения от контрагента.", en: "Request sent. Waiting for the counterparty to confirm." },
@@ -460,6 +546,19 @@ const STRINGS = {
   "confirm.error.NO_CONFIRMER_PROFILE": {
     ru: "Этот пользователь ещё не проходил анкету @GamblingCommunitybot — бот не может ему написать.",
     en: "This user hasn't filled in the @GamblingCommunitybot questionnaire yet — the bot can't message them.",
+  },
+  // Формулировка смягчена по ТЗ (раздел 5): это не окрик, а пояснение.
+  "confirm.error.INVALID_NETWORK": {
+    ru: "Укажите сеть — это нужно для проверки хеша.",
+    en: "Please select the network — it's needed to verify the hash.",
+  },
+  "confirm.error.INVALID_TYPE": {
+    ru: "Выберите тип партнёрства — «Сделка» или «Найм».",
+    en: "Choose the partnership type — Deal or Hire.",
+  },
+  "confirm.error.COMPANY_SUBSCRIPTION_REQUIRED": {
+    ru: "Действовать от лица компании можно только с активной подпиской кабинета «Компания». Оформить её можно в разделе «Подписка».",
+    en: "Acting on behalf of a company requires an active Company cabinet subscription. You can get it in the Subscription tab.",
   },
   "confirm.error.generic": { ru: "Не получилось отправить заявку.", en: "Couldn't send the request." },
   "confirm.error.DAILY_REQUEST_LIMIT_REACHED": {
@@ -493,15 +592,18 @@ const STRINGS = {
   "confirm.rate.verdictBtn.nuance": { ru: "Нюансы", en: "Nuances" },
   "confirm.rate.verdictBtn.problematic": { ru: "Проблема", en: "Problem" },
   "confirm.rate.commentRule": {
-    ru: "Комментарий обязателен при ⚠ «Были нюансы» или ❌ «Проблемная сделка». При ✅ «Успешно» можно оставить пустым.",
-    en: "A comment is required for ⚠ \"Had nuances\" or ❌ \"Problematic deal\". For ✅ \"Success\" it can be left empty.",
+    ru: "Комментарий обязателен, если выбрано «Были нюансы» или «Проблемная сделка». При «Успешно» можно оставить пустым.",
+    en: "A comment is required if you choose \"Had nuances\" or \"Problematic deal\". For \"Success\" it can be left empty.",
   },
-  "confirm.rate.commentLabel": { ru: "Комментарий (обязателен при ⚠ или ❌)", en: "Comment (required for ⚠ or ❌)" },
+  "confirm.rate.commentLabel": {
+    ru: "Комментарий (обязателен при нюансах и проблемной сделке)",
+    en: "Comment (required for nuances and problematic deals)",
+  },
   "confirm.rate.commentPlaceholder": { ru: "Опишите, что пошло не так и почему", en: "Describe what went wrong and why" },
   "confirm.rate.commentRequired": { ru: "Комментарий обязателен для этой оценки.", en: "A comment is required for this rating." },
   "confirm.rate.footerNote": {
-    ru: "🔒 Антифрод-механизм: оценки скрыты 14 дней и публикуются только одновременно (если хоть один участник ответит взаимностью) — это защищает от мести за честный отзыв.",
-    en: "🔒 Anti-fraud mechanism: ratings are hidden for 14 days and published only simultaneously (if at least one participant reciprocates) — this protects against retaliation for an honest review.",
+    ru: "Антифрод-механизм: оценки скрыты 14 дней и публикуются только одновременно (если хоть один участник ответит взаимностью) — это защищает от мести за честный отзыв.",
+    en: "Anti-fraud mechanism: ratings are hidden for 14 days and published only simultaneously (if at least one participant reciprocates) — this protects against retaliation for an honest review.",
   },
   "confirm.rate.submitBtn": { ru: "Опубликовать оценку", en: "Publish rating" },
   "confirm.rate.submitting": { ru: "Публикуем…", en: "Publishing…" },
@@ -548,6 +650,18 @@ const STRINGS = {
   "subscribe.compare.rating": { ru: "Ваш рейтинг и история сделок/найма", en: "Your rating and deal/hire history" },
   "subscribe.compare.search": { ru: "Полный поиск по юзернейму", en: "Full username search" },
   "subscribe.compare.history": { ru: "История партнёрств контрагента", en: "Counterparty's partnership history" },
+  // Чек-листы "что даёт подписка" для кабинетов (05.09.2026) — разобраны
+  // из утверждённых описаний тарифов (tariffs.product.*.blurb), чтобы
+  // формулировки не разошлись с экраном «Тарифы».
+  "subscribe.benefitRecruiter.showcase": { ru: "Отдельная витрина рекрутера", en: "Separate recruiter showcase" },
+  "subscribe.benefitRecruiter.vacancies": { ru: "Публикация вакансий на общей доске", en: "Posting vacancies on the shared board" },
+  "subscribe.benefitRecruiter.candidates": { ru: "Поиск кандидатов по вертикали и грейду", en: "Candidate search by vertical and grade" },
+  "subscribe.benefitRecruiter.hire": { ru: "Отклики и подтверждение найма", en: "Responses and hire confirmation" },
+  "subscribe.benefitCompany.brand": { ru: "Бренд-страница компании", en: "Company brand page" },
+  "subscribe.benefitCompany.recruiter": { ru: "Весь функционал рекрутера от лица бренда", en: "Full recruiter functionality on behalf of the brand" },
+  "subscribe.benefitCompany.teamBasic": { ru: "Команда до 5 участников", en: "Team of up to 5 members" },
+  "subscribe.benefitCompany.teamPro": { ru: "Команда до 15–20 участников", en: "Team of up to 15–20 members" },
+  "subscribe.benefitCompany.limitsPro": { ru: "Увеличенные лимиты активности", en: "Higher activity limits" },
   "subscribe.compareRecruiter.rating": { ru: "Рейтинг и партнёрства (общие с личным профилем)", en: "Rating and partnerships (shared with personal profile)" },
   "subscribe.compareRecruiter.showcase": { ru: "Отдельная витрина: имя/компания/CV рекрутера", en: "Separate showcase: recruiter name/company/CV" },
   "subscribe.compareRecruiter.visibility": { ru: "Видимость витрины другим участникам GURO ID", en: "Showcase visibility to other GURO ID members" },
@@ -571,7 +685,7 @@ const STRINGS = {
   },
   "subscribe.free": { ru: "бесплатно", en: "free" },
   "subscribe.paid": { ru: "по подписке", en: "subscription only" },
-  "subscribe.economy": { ru: "экономия {amount} ⭐", en: "save {amount} ⭐" },
+  "subscribe.economy": { ru: "экономия {amount} звёзд", en: "save {amount} Stars" },
 
   // Чек-лист "Что даёт подписка" + продление (28.08.2026, макет "10 ·
   // Подписка", Untitled-13) — только product="guro_id" пока, см.
@@ -595,8 +709,8 @@ const STRINGS = {
   },
   "subscribe.renewSectionTitle": { ru: "Продлить", en: "Renew" },
   "subscribe.bestValueBadge": { ru: "Выгодно", en: "Best value" },
-  "subscribe.renewStars": { ru: "Продлить · {price} ⭐ Telegram Stars", en: "Renew · {price} ⭐ Telegram Stars" },
-  "subscribe.payStars": { ru: "Оформить · {price} ⭐ Telegram Stars", en: "Subscribe · {price} ⭐ Telegram Stars" },
+  "subscribe.renewStars": { ru: "Продлить · {price} Telegram Stars", en: "Renew · {price} Telegram Stars" },
+  "subscribe.payStars": { ru: "Оформить · {price} Telegram Stars", en: "Subscribe · {price} Telegram Stars" },
   "subscribe.preparingInvoice": { ru: "Готовим счёт…", en: "Preparing invoice…" },
   "subscribe.payCrypto": { ru: "Оплатить {amount} {asset} (крипто)", en: "Pay {amount} {asset} (crypto)" },
   "subscribe.starsError": { ru: "Не получилось создать счёт. Попробуйте ещё раз.", en: "Couldn't create an invoice. Please try again." },
@@ -624,8 +738,12 @@ const STRINGS = {
   "recruiter.field.websitePlaceholder": { ru: "example.com", en: "example.com" },
   "recruiter.field.offering": { ru: "Чем полезен", en: "What you offer" },
   "recruiter.field.offeringPlaceholder": { ru: "Какие вакансии/услуги предлагаете", en: "What roles/services you offer" },
-  "recruiter.field.logoUrl": { ru: "Логотип (ссылка на картинку)", en: "Logo (image link)" },
-  "recruiter.field.logoUrlPlaceholder": { ru: "https://…/logo.png", en: "https://…/logo.png" },
+  // Поле-ссылка снято 06.09.2026, ключи оставлены неиспользуемыми:
+  // логотип теперь только файлом, см. recruiter.logoInSettings.
+  "recruiter.logoInSettings": {
+    ru: "Логотип: нажмите на аватар в шапке кабинета и выберите файл из галереи. Квадрат, от 256×256, PNG/JPG/WEBP, до 3 МБ.",
+    en: "Logo: tap the avatar at the top of the cabinet and pick a file from your gallery. Square, at least 256×256, PNG/JPG/WEBP, up to 3 MB.",
+  },
   "recruiter.privacy.name": { ru: "Имя / подпись", en: "Name / title" },
   "recruiter.privacy.company": { ru: "Компания", en: "Company" },
   "recruiter.privacy.vertical": { ru: "Вертикаль", en: "Vertical" },
@@ -652,7 +770,12 @@ const STRINGS = {
   "recruiter.characteristic.vacancies": { ru: "Активных вакансий", en: "Active vacancies" },
   "recruiter.characteristic.responses": { ru: "Откликов за 7 дней", en: "Responses (7 days)" },
   "recruiter.characteristic.tenure": { ru: "Стаж в роли, дней", en: "Days in role" },
-  "recruiter.activity.label": { ru: "Статус", en: "Status" },
+  "recruiter.activity.label": { ru: "Статус активности", en: "Activity status" },
+  // Заголовки карточек кабинета (04.09.2026, сверка с макетом
+  // "11 · Кабинет Рекрутер" — там у каждой карточки есть свой заголовок).
+  "recruiter.quickActions.title": { ru: "Быстрые действия", en: "Quick actions" },
+  "company.quickActions.title": { ru: "Быстрые действия", en: "Quick actions" },
+  "recruiter.communication.title": { ru: "Коммуникация", en: "Communication" },
   "recruiter.activity.hiring": { ru: "Активно нанимаю", en: "Actively hiring" },
   "recruiter.activity.notHiring": { ru: "Не набираю сейчас", en: "Not hiring right now" },
   "recruiter.percentile.top": { ru: "Топ-{tier}% рекрутеров", en: "Top {tier}% of recruiters" },
@@ -707,6 +830,10 @@ const STRINGS = {
   // "Показать кандидатов" без числа.
   "recruiter.candidates.submitBtn": { ru: "Показать кандидатов", en: "Show candidates" },
   "recruiter.candidates.submitBtnCount": { ru: "Показать {count} кандидатов", en: "Show {count} candidates" },
+  "recruiter.candidates.foundTruncated": {
+    ru: "Показано {n} — уточните фильтры, чтобы увидеть нужных",
+    en: "Showing {n} — narrow the filters to find the right people",
+  },
   "recruiter.candidates.foundCount": { ru: "Найдено: {n}", en: "Found: {n}" },
   "thread.viaWorkspace": { ru: "Написал(а) через кабинет: {workspace}", en: "Sent via cabinet: {workspace}" },
 
@@ -744,6 +871,10 @@ const STRINGS = {
     ru: "Логотип: квадрат, от 256×256, PNG/JPG/WEBP, до 3 МБ.",
     en: "Logo: square, at least 256×256, PNG/JPG/WEBP, up to 3 MB.",
   },
+  "recruiter.upload.logoHint": {
+    ru: "Логотип: квадрат, от 256×256, PNG/JPG/WEBP, до 3 МБ.",
+    en: "Logo: square, at least 256×256, PNG/JPG/WEBP, up to 3 MB.",
+  },
   "company.upload.tooLarge": { ru: "Файл слишком большой.", en: "File is too large." },
   "company.upload.unsupported": { ru: "Формат не поддерживается — только PNG, JPG или WEBP.", en: "Unsupported format — PNG, JPG, or WEBP only." },
   "company.upload.error": { ru: "Не получилось загрузить файл.", en: "Couldn't upload the file." },
@@ -770,13 +901,35 @@ const STRINGS = {
   "company.create.submit": { ru: "Создать", en: "Create" },
   "company.create.submitting": { ru: "Создаём…", en: "Creating…" },
   "company.create.error": { ru: "Не получилось создать компанию.", en: "Couldn't create the company." },
-  "company.create.similarWarning": {
-    ru: "Похожие названия уже есть в GURO ID: {names}. Если это не вы — возможно, стоит выбрать другое название.",
-    en: "Similar names already exist in GURO ID: {names}. If that's not you, consider a different name.",
+  // Раздел 3.0.1: занятое название ведёт к присоединению. Прежняя подсказка
+  // «найдите её карточку через поиск» снята — теперь система показывает
+  // найденную компанию сама, отправлять человека искать её вручную незачем.
+  "company.create.taken": {
+    ru: "Компания с таким названием уже зарегистрирована. Вы можете запросить присоединение к ней — отдельная подписка для этого не нужна.",
+    en: "A company with this name is already registered. You can request to join it — no separate subscription is needed.",
   },
-  "company.create.joinHint": {
-    ru: "Хотите присоединиться к уже существующей компании? Найдите её карточку через доску вакансий или поиск и нажмите «Запросить присоединение».",
-    en: "Want to join an existing company instead? Find its card via the vacancy board or search and tap \"Request to join\".",
+  "company.create.joinBtn": { ru: "Запросить присоединение", en: "Request to join" },
+  "company.create.positionLabel": { ru: "Ваша должность в компании", en: "Your position at the company" },
+  "company.create.positionPlaceholder": { ru: "Например: Affiliate Manager", en: "E.g.: Affiliate Manager" },
+  "company.create.differentCompany": {
+    ru: "Это другая компания — создать свою",
+    en: "This is a different company — create my own",
+  },
+  "company.create.joinSent": {
+    ru: "Запрос отправлен. Владелец компании получит уведомление и подтвердит ваше присоединение.",
+    en: "Request sent. The company owner will get a notification and confirm your join.",
+  },
+  "company.join.alreadyRequested": {
+    ru: "Вы уже отправляли запрос — дождитесь ответа владельца.",
+    en: "You've already sent a request — wait for the owner's reply.",
+  },
+  "company.join.alreadyMember": {
+    ru: "Вы уже состоите в компании.",
+    en: "You're already part of a company.",
+  },
+  "company.join.error": {
+    ru: "Не получилось отправить запрос. Попробуйте ещё раз.",
+    en: "Couldn't send the request. Please try again.",
   },
   "company.types.title": { ru: "Тип компании", en: "Company type" },
   "company.types.hint": {
@@ -837,6 +990,24 @@ const STRINGS = {
   "team.counter": { ru: "{count} из {limit} участников", en: "{count} of {limit} members" },
   "team.tabRequests": { ru: "Запросы", en: "Requests" },
   "team.tabMembers": { ru: "Участники", en: "Members" },
+  // Заголовки секций (05.09.2026, сверка с макетом "18 · Компания —
+  // Команда": там обе секции видны сразу, а не переключаются табами).
+  "team.requestsTitle": { ru: "Входящие запросы", en: "Incoming requests" },
+  // Эталонный экран 18: пояснение про две роли под списком участников.
+  "team.rolesTitle": {
+    ru: "Всего две роли — без градации по функциям",
+    en: "Only two roles — no per-function grading",
+  },
+  "team.rolesOwner": {
+    ru: "Владелец: управляет составом команды, передаёт владение, оплачивает подписку — и всё, что может Админ/Рекрутер.",
+    en: "Owner: manages the team, transfers ownership, pays for the subscription — plus everything an Admin/Recruiter can do.",
+  },
+  "team.rolesAdmin": {
+    ru: "Админ/Рекрутер: публикует вакансии, ищет кандидатов, подтверждает найм, редактирует бренд-страницу. Реальная должность человека прав не добавляет.",
+    en: "Admin/Recruiter: posts vacancies, searches candidates, confirms hires, edits the brand page. A person's actual job title grants no extra rights.",
+  },
+  "team.membersTitle": { ru: "Участники", en: "Members" },
+  "team.membersCounter": { ru: "{count} из {limit}", en: "{count} of {limit}" },
   "team.approvalsLeftToday": { ru: "Одобрений сегодня осталось: {n}", en: "{n} approvals left today" },
   "team.requestsEmpty": { ru: "Пока нет заявок на присоединение.", en: "No join requests yet." },
   "team.approveBtn": { ru: "Принять", en: "Accept" },
@@ -851,6 +1022,7 @@ const STRINGS = {
   "team.loadError": { ru: "Не удалось загрузить команду.", en: "Couldn't load the team." },
   "team.role.owner": { ru: "Владелец", en: "Owner" },
   "team.role.admin": { ru: "Админ/Рекрутер", en: "Admin/Recruiter" },
+  "team.isYou": { ru: "Это вы", en: "That's you" },
   "team.errors.generic": { ru: "Не получилось выполнить действие.", en: "Couldn't complete the action." },
   // 29.08.2026 (макет "18 · Компания — Команда") — проактивное предупреждение
   // при достижении лимита (до неудачного клика "Принять", не после); proLimit
@@ -937,7 +1109,7 @@ const STRINGS = {
     en: "GURO ID job board — posted by Recruiter and Company cabinet subscribers, visible to any GURO ID subscriber.",
   },
   "vacancies.allVerticals": { ru: "Все", en: "All" },
-  "vacancies.publishBtn": { ru: "➕ Опубликовать вакансию", en: "➕ Post a vacancy" },
+  "vacancies.publishBtn": { ru: "Опубликовать вакансию", en: "Post a vacancy" },
   "vacancies.upsellText": {
     ru: "Публиковать вакансии могут подписчики кабинета Рекрутер или Компания — оформите в «Профиль».",
     en: "Only Recruiter or Company cabinet subscribers can post vacancies — subscribe under \"Profile\".",
@@ -945,8 +1117,8 @@ const STRINGS = {
   "vacancies.empty": { ru: "Пока нет активных вакансий по этому фильтру.", en: "No active vacancies match this filter." },
   "vacancies.loadError": { ru: "Не удалось загрузить вакансии.", en: "Couldn't load vacancies." },
   "vacancies.salaryNegotiable": { ru: "По договорённости", en: "Negotiable" },
-  "vacancies.applyBtn": { ru: "✉️ Откликнуться", en: "✉️ Apply" },
-  "vacancies.respondSentOk": { ru: "Отклик отправлен ✅", en: "Response sent ✅" },
+  "vacancies.applyBtn": { ru: "Откликнуться", en: "Apply" },
+  "vacancies.respondSentOk": { ru: "Отклик отправлен", en: "Response sent" },
   "vacancies.respondError.ALREADY_RESPONDED": { ru: "Вы уже откликались на эту вакансию.", en: "You've already applied to this vacancy." },
   "vacancies.respondError.generic": { ru: "Не получилось отправить отклик. Попробуйте ещё раз.", en: "Couldn't send the response. Please try again." },
   "vacancies.tabBoard": { ru: "Доска", en: "Board" },
@@ -965,9 +1137,22 @@ const STRINGS = {
   },
   "vacancies.closeBtn": { ru: "Закрыть", en: "Close" },
   "vacancies.statusClosed": { ru: "Закрыта", en: "Closed" },
+  // Сегменты статуса над списком своих вакансий (05.09.2026, правка в
+  // Figma "P3 · Мои вакансии — сегменты статуса вверху"). Отдельно от
+  // vacancies.status.* — там статус одной вакансии ("Активна"), тут
+  // фильтр по группе ("Активные").
+  "vacancies.mine.filterAll": { ru: "Все", en: "All" },
+  "vacancies.mine.filter.active": { ru: "Активные", en: "Active" },
+  "vacancies.mine.filter.paused": { ru: "На паузе", en: "Paused" },
+  "vacancies.mine.filter.closed": { ru: "Закрытые", en: "Closed" },
+  "vacancies.mine.filterEmpty": {
+    ru: "В этой группе вакансий нет.",
+    en: "No vacancies in this group.",
+  },
   "vacancies.status.active": { ru: "Активна", en: "Active" },
   "vacancies.status.paused": { ru: "На паузе", en: "Paused" },
   "vacancies.status.closed": { ru: "Закрыта", en: "Closed" },
+  "vacancies.posterRating": { ru: "рейтинг {n}", en: "rating {n}" },
   "vacancies.verifiedCompany": { ru: "верифицированная компания", en: "verified company" },
   "vacancies.postedToday": { ru: "Опубликована сегодня", en: "Posted today" },
   "vacancies.postedAgo": { ru: "Опубликована {days} дн. назад", en: "Posted {days}d ago" },
@@ -979,13 +1164,14 @@ const STRINGS = {
     en: "Not all results are shown — narrow down your filters.",
   },
   "vacancies.showDescription": { ru: "Показать описание", en: "Show description" },
-  "vacancies.writeBtn": { ru: "✉️ Написать", en: "✉️ Message" },
+  "vacancies.writeBtn": { ru: "Написать", en: "Message" },
   "vacancies.workFormat.remote": { ru: "Удалённо", en: "Remote" },
   "vacancies.workFormat.office": { ru: "Офис", en: "Office" },
   "vacancies.workFormat.hybrid": { ru: "Гибрид", en: "Hybrid" },
   "vacancies.employment.full": { ru: "Полная занятость", en: "Full-time" },
   "vacancies.employment.part": { ru: "Частичная занятость", en: "Part-time" },
   "vacancies.employment.project": { ru: "Проектная работа", en: "Project-based" },
+  "vacancies.manage.preview": { ru: "Показать", en: "Preview" },
   "vacancies.manage.edit": { ru: "Редактировать", en: "Edit" },
   "vacancies.manage.pause": { ru: "Пауза", en: "Pause" },
   "vacancies.manage.resume": { ru: "Возобновить", en: "Resume" },
@@ -1001,6 +1187,19 @@ const STRINGS = {
   "vacancies.responses.status.offer": { ru: "Оффер отправлен", en: "Offer sent" },
   "vacancies.responses.status.hired": { ru: "Найм подтверждён", en: "Hired" },
   "vacancies.responses.status.rejected": { ru: "Отказ", en: "Rejected" },
+  // Эталонный экран 16.
+  "vacancies.responses.filterTitle": {
+    ru: "Фильтр по статусу воронки",
+    en: "Filter by funnel status",
+  },
+  "vacancies.responses.hiredNoteTitle": {
+    ru: "Статус «Найм подтверждён»",
+    en: "The \"Hired\" status",
+  },
+  "vacancies.responses.hiredNoteText": {
+    ru: "Активирует кнопку найма: переход в раздел «Подтвердить», шаг 1, с заранее заполненными полями — юзернейм кандидата и вертикаль вакансии подставляются сами.",
+    en: "It activates the hire button: you go to \"Confirm\", step 1, with fields pre-filled — the candidate's username and the vacancy's vertical are inserted automatically.",
+  },
   "vacancies.responses.confirmHireBtn": { ru: "Подтвердить найм →", en: "Confirm hire →" },
   // 28.08.2026 (макет "16 · Рекрутер — Отклики (мини-ATS)", Untitled-20) —
   // раньше кнопка подтверждения найма была доступна ДЛЯ ЛЮБОГО отклика
@@ -1063,6 +1262,22 @@ const STRINGS = {
   "vacancies.form.durationLabel": { ru: "12 · Срок публикации", en: "12 · Listing duration" },
   "vacancies.form.durationDays": { ru: "{days} дней", en: "{days} days" },
   "vacancies.form.langLabel": { ru: "Язык публикации", en: "Posting language" },
+  "vacancies.premium.perMonth": { ru: "В МЕСЯЦ", en: "PER MONTH" },
+  "vacancies.premium.applyBtn": { ru: "Откликнуться", en: "Apply" },
+  // Плашка под премиальной карточкой (04.09.2026, сверка с Figma, фрейм
+  // "A2 · Карточка вакансии — компания vs рекрутер"): в макете пояснение
+  // про верификацию — ОТДЕЛЬНЫЙ блок под карточкой, а не бейдж внутри неё.
+  "vacancies.premium.verifiedTitle": {
+    ru: "Проверено сообществом GURO",
+    en: "Verified by the GURO community",
+  },
+  "vacancies.premium.verifiedText": {
+    ru: "На основании доступных лицензионных данных. Верификация — привилегия, которая выдаётся по нашему усмотрению и может быть отозвана.",
+    en: "Based on available licensing data. Verification is a privilege granted at our discretion and may be revoked.",
+  },
+  "vacancies.bookmark.add": { ru: "Сохранить вакансию", en: "Save vacancy" },
+  "vacancies.bookmark.remove": { ru: "Убрать из сохранённых", en: "Remove from saved" },
+  "vacancies.bookmark.filter": { ru: "Только сохранённые", en: "Saved only" },
   "vacancies.form.submit": { ru: "Опубликовать", en: "Publish" },
   "vacancies.form.saveBtn": { ru: "Сохранить", en: "Save" },
   "vacancies.form.submitting": { ru: "Публикуем…", en: "Publishing…" },
@@ -1110,7 +1325,7 @@ const STRINGS = {
     ru: "Каждое поле можно скрыть от чужого поиска по отдельности. Это не влияет на Рейтинг и Стаж — см. отдельное правило ниже.",
     en: "Each field can be hidden from others' search individually. This doesn't affect Rating and Tenure — see the separate rule below.",
   },
-  "profile.privacy.lockedTitle": { ru: "🔓 Рейтинг и Стаж — без переключателя", en: "🔓 Rating and Tenure — no toggle" },
+  "profile.privacy.lockedTitle": { ru: "Рейтинг и Стаж — без переключателя", en: "Rating and Tenure — no toggle" },
   "profile.privacy.lockedText": {
     ru: "Эти два поля всегда видны участникам с активной подпиской GURO ID и не скрываются приватностью — они формируют доверие в комьюнити и не должны обходиться настройками.",
     en: "These two fields are always visible to members with an active GURO ID subscription and can't be hidden by privacy settings — they build trust in the community and shouldn't be bypassable.",

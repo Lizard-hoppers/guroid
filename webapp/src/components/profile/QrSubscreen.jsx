@@ -18,7 +18,7 @@ export function QrSubscreen({ onBack, workspace }) {
         const dataUrl = await QRCode.toDataURL(deeplink, {
           margin: 1,
           width: 480,
-          color: { dark: "#0e2a1c", light: "#ffffff" },
+          color: { dark: "#0b2024", light: "#ffffff" },
         });
         if (!cancelled) setState({ loading: false, dataUrl, error: null });
       })

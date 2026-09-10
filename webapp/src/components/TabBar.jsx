@@ -97,7 +97,7 @@ export function TabBar({ active, onChange }) {
   // и разгорается тем сильнее, чем быстрее она едет.
   const specX = useTransform(smoothVelocity, [-3000, 0, 3000], [14, 0, -14], { clamp: true });
   const specOpacity = useTransform(
-    smoothVelocity, [-3000, -600, 0, 600, 3000], [0.5, 0.34, 0.28, 0.34, 0.5], { clamp: true },
+    smoothVelocity, [-3000, -600, 0, 600, 3000], [0.36, 0.22, 0.16, 0.22, 0.36], { clamp: true },
   );
   // Готовим строку на ВЕРХНЕМ уровне компонента: сама капля отрисовывается
   // условно (tabWidth > 0), и вызов хука внутри той ветки сделал бы его

@@ -837,15 +837,17 @@ label {
      по z-index (.tab-icon/.tab-label), под ней только сплошной фон бара —
      поэтому blur(2px) здесь ничего не «замыливает», в отличие от
      заходов 15.08, когда размытие мешало контурам иконки. */
-  backdrop-filter: blur(2px) saturate(220%) brightness(1.35);
-  -webkit-backdrop-filter: blur(2px) saturate(220%) brightness(1.35);
+  /* 10.09.2026, владелец: «капля очень мутная» — blur убран совсем,
+     оставлено только собирание света (saturate/brightness). */
+  backdrop-filter: saturate(200%) brightness(1.25);
+  -webkit-backdrop-filter: saturate(200%) brightness(1.25);
   /* Тело линзы — блик из левого верхнего угла. Само тело прозрачное:
      блик отрисован в ::before, чтобы двигаться вместе с --spec-x. */
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.4);
   box-shadow:
     /* внутреннее свечение по всему контуру */
-    inset 0 0 14px rgba(255, 255, 255, 0.22),
+    inset 0 0 14px rgba(255, 255, 255, 0.08),
     /* затемнение снизу — линза толще у нижней кромки */
     inset 0 -8px 12px rgba(0, 0, 0, 0.12),
     /* хроматическая аберрация: голубой край слева, розовый справа */
@@ -873,8 +875,8 @@ label {
   pointer-events: none;
   background: radial-gradient(
     circle at calc(32% + var(--spec-x, 0px)) 26%,
-    rgba(255, 255, 255, var(--spec-opacity, 0.28)) 0%,
-    rgba(255, 255, 255, 0.04) 45%,
+    rgba(255, 255, 255, var(--spec-opacity, 0.16)) 0%,
+    rgba(255, 255, 255, 0.02) 45%,
     transparent 72%
   );
 }

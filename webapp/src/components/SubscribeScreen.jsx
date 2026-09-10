@@ -195,6 +195,8 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed, me: meProp,
   }
 
   const isSubscribed = justPaid || me?.[cfg.subscribedKey];
+  // Крипта настроена на сервере -> она главный способ оплаты (10.09.2026).
+  const cryptoFirst = !!plansData?.crypto_enabled;
   const expiresAt = me?.[cfg.expiresKey];
   const cycleDays = cfg.cycleKey ? me?.[cfg.cycleKey] : null;
   const daysLeft = daysUntil(expiresAt);
@@ -286,37 +288,66 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed, me: meProp,
                 >
                   {p.stars_price_full && <span className="plan-card-value-badge">{t("subscribe.bestValueBadge")}</span>}
                   <div className="plan-card-label">{p.label}</div>
-                  {p.stars_price_full && (
-                    <span className="plan-card-price-full">
-                      {p.stars_price_full} <IconStar />
-                    </span>
-                  )}
-                  <div className="plan-card-price-main">
-                    {p.stars_price} <IconStar />
-                  </div>
-                  {p.stars_price_full && (
-                    <div className="plan-card-badge">
-                      {t("subscribe.economy", { amount: p.stars_price_full - p.stars_price })}
-                    </div>
+                  {/* 10.09.2026, владелец: крипта — основной способ оплаты,
+                      звёзды — дополнительный. Главная цена в долларах,
+                      звёзды второй строкой. Без настроенной крипты
+                      (crypto_enabled=false) показываем как раньше — звёзды. */}
+                  {cryptoFirst ? (
+                    <>
+                      {p.crypto_price_usd_full && (
+                        <span className="plan-card-price-full">${p.crypto_price_usd_full}</span>
+                      )}
+                      <div className="plan-card-price-main">${p.crypto_price_usd}</div>
+                      <div className="plan-card-alt-price">
+                        {t("subscribe.orStars", { price: p.stars_price })} <IconStar />
+                      </div>
+                      {p.crypto_price_usd_full && (
+                        <div className="plan-card-badge">
+                          {t("subscribe.economyUsd", {
+                            amount: Math.round((p.crypto_price_usd_full - p.crypto_price_usd) * 100) / 100,
+                          })}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {p.stars_price_full && (
+                        <span className="plan-card-price-full">
+                          {p.stars_price_full} <IconStar />
+                        </span>
+                      )}
+                      <div className="plan-card-price-main">
+                        {p.stars_price} <IconStar />
+                      </div>
+                      {p.stars_price_full && (
+                        <div className="plan-card-badge">
+                          {t("subscribe.economy", { amount: p.stars_price_full - p.stars_price })}
+                        </div>
+                      )}
+                    </>
                   )}
                 </button>
               ))}
             </div>
           )}
 
-          <button className="btn" onClick={onSubscribeStars} disabled={busy || !plan}>
-            {busy
-              ? t("subscribe.preparingInvoice")
-              : t(isSubscribed ? "subscribe.renewStars" : "subscribe.payStars", { price: plan ? plan.stars_price : "…" })}
-          </button>
-
-          {plansData?.crypto_enabled && plan && (
-            <button className="btn secondary" onClick={onSubscribeCrypto} disabled={busy}>
+          {/* Крипта — основная кнопка, звёзды — вторичная (10.09.2026).
+              Без настроенной крипты звёзды остаются единственной и основной. */}
+          {cryptoFirst && plan && (
+            <button className="btn" onClick={onSubscribeCrypto} disabled={busy}>
               {busy
                 ? t("subscribe.preparingInvoice")
-                : t("subscribe.payCrypto", { amount: plan.crypto_price_usd, asset: plan.crypto_asset })}
+                : t(isSubscribed ? "subscribe.renewCrypto" : "subscribe.payCrypto",
+                    { amount: plan.crypto_price_usd, asset: plan.crypto_asset })}
             </button>
           )}
+
+          <button className={`btn${cryptoFirst ? " secondary" : ""}`} onClick={onSubscribeStars} disabled={busy || !plan}>
+            {busy
+              ? t("subscribe.preparingInvoice")
+              : t(cryptoFirst ? "subscribe.orPayStars" : isSubscribed ? "subscribe.renewStars" : "subscribe.payStars",
+                  { price: plan ? plan.stars_price : "…" })}
+          </button>
 
           <Msg type="error">{error}</Msg>
         </>

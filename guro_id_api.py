@@ -2886,6 +2886,10 @@ async def handle_get_plans(request: web.Request) -> web.Response:
             "crypto_price_usd": round(cfg["stars_price"] * GC.STARS_TO_USD_RATE, 2),
             "crypto_asset": GC.CRYPTO_ASSET,
         }
+        # 10.09.2026, крипта — основной способ оплаты: зачёркнутая полная
+        # цена и «экономия» на карточке плана тоже в долларах.
+        if cfg.get("stars_price_full"):
+            plans[key]["crypto_price_usd_full"] = round(cfg["stars_price_full"] * GC.STARS_TO_USD_RATE, 2)
     return web.json_response({
         "plans": plans,
         "crypto_enabled": bool(settings.cryptobot_api_token or settings.cryptobot_api_token_new),

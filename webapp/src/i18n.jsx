@@ -733,7 +733,11 @@ const STRINGS = {
   "subscribe.renewStars": { ru: "Продлить · {price} Telegram Stars", en: "Renew · {price} Telegram Stars" },
   "subscribe.payStars": { ru: "Оформить · {price} Telegram Stars", en: "Subscribe · {price} Telegram Stars" },
   "subscribe.preparingInvoice": { ru: "Готовим счёт…", en: "Preparing invoice…" },
-  "subscribe.payCrypto": { ru: "Оплатить {amount} {asset} (крипто)", en: "Pay {amount} {asset} (crypto)" },
+  "subscribe.payCrypto": { ru: "Оплатить · ${amount} {asset}", en: "Pay · ${amount} {asset}" },
+  "subscribe.renewCrypto": { ru: "Продлить · ${amount} {asset}", en: "Renew · ${amount} {asset}" },
+  "subscribe.orPayStars": { ru: "или {price} Telegram Stars", en: "or {price} Telegram Stars" },
+  "subscribe.orStars": { ru: "или {price}", en: "or {price}" },
+  "subscribe.economyUsd": { ru: "экономия ${amount}", en: "save ${amount}" },
   "subscribe.starsError": { ru: "Не получилось создать счёт. Попробуйте ещё раз.", en: "Couldn't create an invoice. Please try again." },
   "subscribe.cryptoError": { ru: "Не получилось создать крипто-счёт. Попробуйте ещё раз.", en: "Couldn't create a crypto invoice. Please try again." },
 

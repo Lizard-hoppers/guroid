@@ -70,7 +70,7 @@ export function SubscriptionsScreen() {
         <div className="card">
           <h3>{t("company.title")}</h3>
           <p className="partner-meta">{t("company.upsellText")}</p>
-          <div className="vertical-chips" style={{ marginTop: 10 }}>
+          <div className="vertical-chips" style={{ marginTop: 12 }}>
             <button
               type="button"
               className={`vertical-chip${tierChoice === "basic" ? " is-selected" : ""}`}

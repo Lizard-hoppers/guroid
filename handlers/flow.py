@@ -670,11 +670,34 @@ async def _finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if banned:
         await _show(context, "banned_notice")
     else:
+        # Медиакит в ОБЕИХ ветках: он объясняет ценность сообщества и нужен
+        # ровно перед решением платить.
         await _send_media_kit(context, user, c)
-        invite_url = await _make_invite_link(context, user)
-        await _show(context, "final", ui.final_kb(c, invite_url, settings.guro_id_webapp_url))
+        if _needs_payment(context, user.id):
+            await _show(context, "paywall", ui.paywall_kb(c))
+        else:
+            invite_url = await _make_invite_link(context, user)
+            await _show(context, "final", ui.final_kb(c, invite_url, settings.guro_id_webapp_url))
     context.user_data.clear()
     return ConversationHandler.END
+
+
+def _needs_payment(context, user_id: int) -> bool:
+    """Нужно ли этому человеку платить за вход (09.09.2026).
+
+    Не платят двое: у кого стоит признак «доступ без оплаты» (все, кто
+    прошёл анкету до запуска правила, и ручные выдачи админом) и у кого уже
+    есть действующая подписка — например, оплатил в приложении раньше, чем
+    дошёл до конца анкеты. Второе не формальность: без него оплативший
+    увидел бы экран оплаты повторно и решил, что деньги пропали.
+    """
+    storage = context.bot_data["storage"]
+    if storage.has_community_access(user_id):
+        return False
+    guro = context.bot_data.get("guro_storage")
+    if guro is not None and guro.is_subscribed(user_id):
+        return False
+    return True
 
 
 async def _send_media_kit(context, user, c) -> None:

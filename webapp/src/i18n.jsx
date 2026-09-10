@@ -32,10 +32,11 @@ const STRINGS = {
 
   "tab.profile": { ru: "Профиль", en: "Profile" },
   "tab.search": { ru: "Поиск", en: "Search" },
-  // Дизайнер перечисляет вкладки поимённо: «Профиль · Поиск · Вакансии ·
-  // Подтвердить · Подписка» (раздел 5). У нас четвёртая называлась
-  // «Сделки» — расхождение с перечнем, а не вкусовая разница.
-  "tab.confirm": { ru: "Подтвердить", en: "Confirm" },
+  // 07.09.2026: название «Сделки» возвращено по решению владельца. В
+  // перечне дизайн-системы вкладка названа «Подтвердить» — расхождение
+  // осознанное, вопрос вынесен дизайнеру. Иконка остаётся галочкой: её
+  // просили отдельно и привязывали к разделу, а не к слову.
+  "tab.confirm": { ru: "Сделки", en: "Deals" },
   "tab.subscribe": { ru: "Подписка", en: "Subscribe" },
 
   "common.back": { ru: "‹ Профиль", en: "‹ Profile" },
@@ -66,6 +67,22 @@ const STRINGS = {
   "hub.menu.rating": { ru: "Мой рейтинг", en: "My rating" },
   "hub.menu.cv": { ru: "Моё CV", en: "My CV" },
   "hub.menu.contacts": { ru: "Мои контакты", en: "My contacts" },
+  "hub.menu.edit": { ru: "Редактировать", en: "Edit profile" },
+  "editProfile.title": { ru: "Анкета", en: "Profile details" },
+  "editProfile.name": { ru: "Имя / подпись", en: "Name" },
+  "editProfile.company": { ru: "Компания", en: "Company" },
+  "editProfile.profession": { ru: "Должность", en: "Position" },
+  "editProfile.vertical": { ru: "Вертикаль", en: "Vertical" },
+  "editProfile.grade": { ru: "Грейд", en: "Grade" },
+  "editProfile.choosePlaceholder": { ru: "Не выбрано", en: "Not selected" },
+  "editProfile.verticalHint": {
+    ru: "Вертикаль и грейд выбираются из списка: по ним работает поиск, и произвольное значение сделает вас ненаходимым.",
+    en: "Vertical and grade are picked from a list: search relies on them, and a free-form value would make you unfindable.",
+  },
+  "editProfile.lockedHint": {
+    ru: "Юзернейм подставляется из Telegram, а страну меняет бот — она хранится вместе с кодом страны, который используется в рассылках.",
+    en: "The username comes from Telegram, and the country is changed via the bot — it is stored together with a country code used for mailings.",
+  },
   "hub.menu.offers": { ru: "Мои офферы", en: "My offers" },
   "hub.menu.messages": { ru: "Мои сообщения", en: "My messages" },
   "hub.menu.qr": { ru: "Мой QR", en: "My QR" },
@@ -538,7 +555,11 @@ const STRINGS = {
   "confirm.txNetworkLabel": { ru: "Сеть транзакции", en: "Transaction network" },
   "confirm.txNetworkPlaceholder": { ru: "Выберите сеть…", en: "Select network…" },
   "confirm.flagFraudLabel": { ru: "Отметить как проблемную сделку (анти-фрод флаг)", en: "Flag as a problematic deal (anti-fraud flag)" },
-  "confirm.submit": { ru: "Отправить на подтверждение — шаг 1", en: "Send for confirmation — step 1" },
+  // Средняя точка вместо длинного тире: с тире текст 279px при 276px
+  // доступной ширины и переносится на вторую строку. Короткое тире
+  // влезает с запасом в 1px — ненадёжно, точка даёт 5px и совпадает с
+  // разделителем, принятым в макетах.
+  "confirm.submit": { ru: "Отправить на подтверждение · шаг 1", en: "Send for confirmation · step 1" },
   "confirm.submitting": { ru: "Отправляем…", en: "Sending…" },
   "confirm.sentOk": { ru: "Заявка отправлена. Ждём подтверждения от контрагента.", en: "Request sent. Waiting for the counterparty to confirm." },
   "confirm.error.SELF_PARTNERSHIP": { ru: "Нельзя подтвердить партнёрство с самим собой.", en: "You can't confirm a partnership with yourself." },
@@ -1197,8 +1218,8 @@ const STRINGS = {
     en: "The \"Hired\" status",
   },
   "vacancies.responses.hiredNoteText": {
-    ru: "Активирует кнопку найма: переход в раздел «Подтвердить», шаг 1, с заранее заполненными полями — юзернейм кандидата и вертикаль вакансии подставляются сами.",
-    en: "It activates the hire button: you go to \"Confirm\", step 1, with fields pre-filled — the candidate's username and the vacancy's vertical are inserted automatically.",
+    ru: "Активирует кнопку найма: переход в раздел «Сделки», шаг 1, с заранее заполненными полями — юзернейм кандидата и вертикаль вакансии подставляются сами.",
+    en: "It activates the hire button: you go to \"Deals\", step 1, with fields pre-filled — the candidate's username and the vacancy's vertical are inserted automatically.",
   },
   "vacancies.responses.confirmHireBtn": { ru: "Подтвердить найм →", en: "Confirm hire →" },
   // 28.08.2026 (макет "16 · Рекрутер — Отклики (мини-ATS)", Untitled-20) —

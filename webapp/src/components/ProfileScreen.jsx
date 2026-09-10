@@ -5,6 +5,7 @@ import { ProfileHub } from "./profile/ProfileHub.jsx";
 import { RatingSubscreen } from "./profile/RatingSubscreen.jsx";
 import { CvSubscreen } from "./profile/CvSubscreen.jsx";
 import { ContactsSubscreen } from "./profile/ContactsSubscreen.jsx";
+import { EditProfileSubscreen } from "./profile/EditProfileSubscreen.jsx";
 import { OffersSubscreen } from "./profile/OffersSubscreen.jsx";
 import { PrivacySubscreen } from "./profile/PrivacySubscreen.jsx";
 import { QrSubscreen } from "./profile/QrSubscreen.jsx";
@@ -345,6 +346,15 @@ export function ProfileScreen({
         onFieldSaved={updateField}
         onBack={() => setSub(null)}
         onNavigateSub={setSub}
+      />
+    );
+  }
+  if (sub === "edit") {
+    return (
+      <EditProfileSubscreen
+        profile={p}
+        onFieldSaved={updateField}
+        onBack={() => setSub(null)}
       />
     );
   }

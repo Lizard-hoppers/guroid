@@ -182,11 +182,14 @@ def counts_toward_rating(a_created_at: datetime | None, b_created_at: datetime |
     return True
 
 
-def rate_limited(last_request_at: datetime | None, now: datetime) -> bool:
-    """True, если между той же парой уже была заявка младше RATE_LIMIT_HOURS."""
-    if last_request_at is None:
-        return False
-    return (now - last_request_at) < timedelta(hours=GC.RATE_LIMIT_HOURS)
+def rate_limited(recent_requests: int) -> bool:
+    """True, если между этой парой за последние RATE_LIMIT_HOURS уже набрано
+    RATE_LIMIT_REQUESTS_PER_PAIR заявок.
+
+    Принимает КОЛИЧЕСТВО за окно, а не время последней заявки: по времени
+    получалась бы пауза между заявками, а нужен потолок за сутки — три
+    сделки подряд с одним контрагентом должны заводиться без ожидания."""
+    return recent_requests >= GC.RATE_LIMIT_REQUESTS_PER_PAIR
 
 
 def subscription_expires_at(

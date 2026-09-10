@@ -29,7 +29,7 @@ function InviteColleagueButton() {
   }
 
   return (
-    <div style={{ marginTop: 14 }}>
+    <div style={{ marginTop: 16 }}>
       <button type="button" className="btn secondary" onClick={onClick} disabled={state.loading}>
         {state.loading ? t("contacts.inviteBusy") : t("contacts.inviteBtn")}
       </button>
@@ -67,7 +67,7 @@ export function ContactsSubscreen({ profile, privacy, onPrivacyChange, onFieldSa
         <button
           type="button"
           className="profile-menu-item"
-          style={{ marginTop: 10 }}
+          style={{ marginTop: 12 }}
           onClick={() => onNavigateSub?.("qr")}
         >
           <span>{t("contacts.showQr")}</span>

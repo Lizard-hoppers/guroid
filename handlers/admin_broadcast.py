@@ -420,10 +420,34 @@ async def _send_to_user(context, user_id: int, items: list[dict]) -> str:
     return "success"
 
 
+async def remove_from_community(context, user_id: int) -> bool:
+    """Удаляет человека из группы сообщества. True, если удаление прошло.
+
+    Кик, а не вечный бан: ban + unban убирает из группы, но не оставляет в
+    чёрном списке — разблокирует бота и сможет вернуться. Причина ухода
+    устранима, поэтому запирать дверь насовсем незачем.
+
+    Никогда не поднимает исключение: вызывается из цикла рассылки по тысяче
+    человек, и один отказ Telegram (нет прав, участника уже нет) не повод
+    прерывать рассылку целиком.
+    """
+    settings = context.bot_data["settings"]
+    chat_id = getattr(settings, "community_chat_id", 0)
+    if not chat_id:
+        return False
+    try:
+        await context.bot.ban_chat_member(chat_id, user_id)
+        await context.bot.unban_chat_member(chat_id, user_id, only_if_banned=True)
+        return True
+    except Exception:  # noqa: BLE001
+        logger.exception("не удалось удалить %s из группы сообщества", user_id)
+        return False
+
+
 async def run_broadcast(context, admin_id: int, items: list[dict], targets: list,
                          audience_label: str) -> None:
     storage = context.bot_data["storage"]
-    success = blocked = errors = 0
+    success = blocked = errors = removed = 0
     for row in targets:
         user_id = row["user_id"]
         outcome = await _send_to_user(context, user_id, items)
@@ -432,19 +456,26 @@ async def run_broadcast(context, admin_id: int, items: list[dict], targets: list
         elif outcome == "blocked":
             storage.mark_blocked(user_id)
             blocked += 1
+            # Заблокировал бота — значит вышел из сообщества (просьба
+            # владельца 08.09.2026). Блокировка выясняется только здесь, по
+            # отказу Telegram при отправке, поэтому и удаляем здесь же.
+            if await remove_from_community(context, user_id):
+                removed += 1
         else:
             errors += 1
     storage.log_action(
         admin_id, "broadcast",
         f"{audience_label}: получателей {len(targets)}, успешно {success}, "
-        f"заблокировали {blocked}, ошибок {errors}",
+        f"заблокировали {blocked} (удалено из группы {removed}), ошибок {errors}",
     )
     try:
         await context.bot.send_message(
             admin_id,
             f"📢 Рассылка завершена ({logic.html_escape(audience_label)})\n\n"
             f"Получателей: {len(targets)}\nУспешно: {success}\n"
-            f"Заблокировали бота: {blocked}\nОшибок: {errors}",
+            f"Заблокировали бота: {blocked}\n"
+            f"Удалено из группы: {removed}\n"
+            f"Ошибок: {errors}",
         )
     except Exception:  # noqa: BLE001
         logger.exception("broadcast: не удалось отправить отчёт админу %s", admin_id)

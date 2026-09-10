@@ -9,6 +9,7 @@ from handlers.admin_guro import build_guro_limits_handlers
 from handlers.guro_partnerships import build_guro_partnerships_handlers
 from handlers.guro_payments import build_guro_payments_handlers
 from handlers.news import build_news_handlers
+from handlers.paywall import build_paywall_handlers
 from handlers.referral import build_referral_group_handlers, build_referral_handlers
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "build_admin_users_handlers",
     "build_group_captcha",
     "build_news_handlers",
+    "build_paywall_handlers",
     "build_gossip_handlers",
     "build_referral_handlers",
     "build_referral_group_handlers",

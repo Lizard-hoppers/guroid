@@ -136,6 +136,54 @@ ASK_LINKEDIN = (
     "<blockquote>Если не хотите указывать контакт, нажмите кнопку «Пропустить».</blockquote>"
 )
 
+PAYWALL_TEXT = (
+    "Анкета сохранена.\n\n"
+    "Вход в сообщество и GURO ID — по подписке.\n\n"
+    "<b>Что она даёт</b>\n"
+    "• Доступ в закрытую группу сообщества\n"
+    "• Ваш рейтинг и стаж видны рекрутерам и партнёрам — без подписки "
+    "на вашем профиле у них отображается 0\n"
+    "• Поиск людей по вертикали, должности и описанию\n"
+    "• Доска вакансий и отклики\n"
+    "• Фиксация сделок: подтверждение обеими сторонами и сверка суммы "
+    "с блокчейном по хешу транзакции\n\n"
+    "<b>Стоимость</b>\n"
+    "Месяц — 400 ⭐ или $6 в крипте\n"
+    "Год — 3350 ⭐ или $50 в крипте\n\n"
+    "Выберите способ оплаты:"
+)
+
+PAYWALL_LATER_TEXT = (
+    "Хорошо, анкета сохранена — она никуда не денется.\n\n"
+    "Это сообщение остаётся у вас в переписке: когда будете готовы, "
+    "нажмите нужную кнопку ниже. Доступ в сообщество откроется сразу "
+    "после оплаты."
+)
+
+PAYWALL_GRANTED_TEXT = (
+    "Оплата получена. Добро пожаловать.\n\n"
+    "Ссылка в группу ниже — она одноразовая и рассчитана на вас. "
+    "Там же кнопка входа в GURO ID."
+)
+
+PAYWALL_ADMIN_GRANTED_TEXT = (
+    "Вам открыт доступ в сообщество — без оплаты.\n\n"
+    "Ссылка в группу ниже — она одноразовая и рассчитана на вас. "
+    "Там же кнопка входа в GURO ID."
+)
+
+PAYWALL_EXPIRING_TEXT = (
+    "Через 2 дня заканчивается подписка на GURO ID и доступ в сообщество.\n\n"
+    "Если не продлить, доступ в группу закроется. Вернуться можно "
+    "в любой момент — после оплаты придёт новая ссылка."
+)
+
+PAYWALL_EXPIRED_TEXT = (
+    "Подписка закончилась, доступ в группу закрыт.\n\n"
+    "Чтобы вернуться, оплатите подписку — ссылка придёт сразу после оплаты. "
+    "Ваш профиль, рейтинг и история сделок сохранены."
+)
+
 FINAL_TEXT = (
     "<tg-emoji emoji-id=\"5436011369197484799\">🏆</tg-emoji> <b>Спасибо за заполнение анкеты!</b>\n\n"
     "<tg-emoji emoji-id=\"5319306413296599737\">✅</tg-emoji> Ваша регистрация успешно завершена.\n\n"
@@ -421,6 +469,12 @@ BUTTON_DEFAULTS: dict[str, str] = {
     "skip": BTN_SKIP,
     "done": BTN_DONE,
     "join": BTN_JOIN,
+    "pay_crypto_month": "Криптой · $6 / месяц",
+    "pay_crypto_year": "Криптой · $50 / год",
+    "pay_stars_month": "Звёздами · 400 ⭐ / месяц",
+    "pay_stars_year": "Звёздами · 3350 ⭐ / год",
+    "pay_later": "Оплачу позже",
+    "pay_now": "Оплатить доступ",
     "prev": BTN_PREV,
     "next": BTN_NEXT,
     "g_inv": INVESTOR_GRADE,
@@ -493,6 +547,12 @@ TEXT_DEFAULTS: dict[str, str] = {
     "ask_company": ASK_COMPANY,
     "ask_linkedin": ASK_LINKEDIN,
     "final": FINAL_TEXT,
+    "paywall": PAYWALL_TEXT,
+    "paywall_later": PAYWALL_LATER_TEXT,
+    "paywall_granted": PAYWALL_GRANTED_TEXT,
+    "paywall_admin_granted": PAYWALL_ADMIN_GRANTED_TEXT,
+    "paywall_expiring": PAYWALL_EXPIRING_TEXT,
+    "paywall_expired": PAYWALL_EXPIRED_TEXT,
     "media_kit_caption": MEDIA_KIT_CAPTION,
     "banned_notice": BANNED_NOTICE_TEXT,
     "lang_select": LANG_SELECT_TEXT,

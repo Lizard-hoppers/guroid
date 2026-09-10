@@ -114,7 +114,7 @@ export function TeamScreen({ onBack }) {
           <span className="team-counter-badge">{t("team.counter", { count: data.member_count, limit: data.member_limit })}</span>
         </div>
         {isOwner && typeof data.approvals_left_today === "number" && (
-          <div className="partner-meta" style={{ marginTop: 6 }}>
+          <div className="partner-meta" style={{ marginTop: 8 }}>
             {t("team.approvalsLeftToday", { n: data.approvals_left_today })}
           </div>
         )}
@@ -164,7 +164,7 @@ export function TeamScreen({ onBack }) {
                     {r.position_text ? `${r.position_text} · ` : ""}
                     {formatDate(r.created_at)}
                   </div>
-                  <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
+                  <div className="recruiter-quick-actions" style={{ marginTop: 12 }}>
                     <button
                       type="button"
                       className="btn secondary accent-lime"
@@ -220,7 +220,7 @@ export function TeamScreen({ onBack }) {
                   <span className="role-badge role-badge--you">{t("team.isYou")}</span>
                 )}
                 {isOwner && m.role !== "owner" && (
-                  <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
+                  <div className="recruiter-quick-actions" style={{ marginTop: 12 }}>
                     <button type="button" className="btn secondary" onClick={() => onRemove(m.user_id, m.name || m.username)}>
                       {t("team.removeBtn")}
                     </button>

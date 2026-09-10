@@ -18,6 +18,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import CallbackQueryHandler, ContextTypes
 
+import community_access as CA
 import logic
 from handlers import admin_ui
 from handlers import group_captcha as gate
@@ -131,7 +132,18 @@ async def pf_search_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return BROWSE
 
 
-def _card_text(r, mute_chats: list[int]) -> str:
+def _access_line(context, user_id: int) -> str:
+    """Строка «Вход в сообщество» (09.09.2026, платный вход). Три состояния:
+    освобождён (старые участники и ручные выдачи), по подписке, не оплачен."""
+    if context.bot_data["storage"].has_community_access(user_id):
+        return "Вход в сообщество: 🎟 без оплаты"
+    guro = context.bot_data.get("guro_storage")
+    if guro is not None and guro.is_subscribed(user_id):
+        return "Вход в сообщество: 💳 по подписке (активна)"
+    return "Вход в сообщество: ⛔ не оплачен"
+
+
+def _card_text(r, mute_chats: list[int], access_line: str = "") -> str:
     lines = [
         f"📋 <b>Анкета #{r['id']}</b>\n",
         f"Дата: {r['created_at']}",
@@ -152,6 +164,8 @@ def _card_text(r, mute_chats: list[int]) -> str:
         "",
         f"Связались: {'✅ да' if r['contacted'] else '⬜ нет'}",
     ]
+    if access_line:
+        lines.append(access_line)
     if mute_chats:
         lines.append(f"🔒 Замучен гейтом в {len(mute_chats)} чате(ах)")
     if r["blocked"]:
@@ -159,10 +173,14 @@ def _card_text(r, mute_chats: list[int]) -> str:
     return "\n".join(lines)
 
 
-def _card_kb(r, mute_chats: list[int], sheets_url: str | None, back_page: int) -> InlineKeyboardMarkup:
+def _card_kb(r, mute_chats: list[int], sheets_url: str | None, back_page: int,
+             access_granted: bool = False) -> InlineKeyboardMarkup:
     rows = []
     contact_label = "⬜ Пометить: связались" if not r["contacted"] else "✅ Связались (убрать отметку)"
     rows.append([InlineKeyboardButton(contact_label, callback_data=f"acms_pf_contact:{r['id']}")])
+    # Платный вход (09.09.2026): «для своих этот шаг оплаты не проходить».
+    access_label = "✖ Снять доступ без оплаты" if access_granted else "🎟 Пустить без оплаты"
+    rows.append([InlineKeyboardButton(access_label, callback_data=f"acms_pf_access:{r['id']}")])
     if mute_chats:
         rows.append([InlineKeyboardButton("🔓 Размутить в группе", callback_data=f"acms_pf_unmute:{r['id']}")])
     action_row = [InlineKeyboardButton("📩 Написать", url=f"tg://user?id={r['user_id']}")]
@@ -192,7 +210,9 @@ async def _show_card(context, profile_id: int):
     mute_chats = storage.user_mute_chats(r["user_id"])
     back_page = context.user_data.get("pf_page", 0)
     await admin_ui.edit_screen(
-        context, _card_text(r, mute_chats), _card_kb(r, mute_chats, _sheets_url(context), back_page),
+        context, _card_text(r, mute_chats, _access_line(context, r["user_id"])),
+        _card_kb(r, mute_chats, _sheets_url(context), back_page,
+                 storage.has_community_access(r["user_id"])),
     )
 
 
@@ -208,8 +228,9 @@ async def send_card_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, pr
         return
     mute_chats = storage.user_mute_chats(r["user_id"])
     msg = await context.bot.send_message(
-        chat_id, _card_text(r, mute_chats),
-        reply_markup=_card_kb(r, mute_chats, _sheets_url(context), 0),
+        chat_id, _card_text(r, mute_chats, _access_line(context, r["user_id"])),
+        reply_markup=_card_kb(r, mute_chats, _sheets_url(context), 0,
+                              storage.has_community_access(r["user_id"])),
         parse_mode=ParseMode.HTML,
     )
     await admin_ui.store_screen(context, msg)
@@ -257,6 +278,41 @@ async def pf_unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return BROWSE
 
 
+async def grant_access_by_admin(context, admin_id: int, user_id: int) -> str:
+    """Общая часть кнопки карточки и /guro_access: ставит признак, пишет в
+    журнал действий и сразу отправляет человеку ссылку в группу. Возвращает
+    короткий итог для ответа админу."""
+    storage = context.bot_data["storage"]
+    if not storage.grant_community_access(user_id):
+        return "Анкеты нет — доступ выдавать нечему"
+    storage.log_action(admin_id, "community_access_grant", f"user_id={user_id}: пущен без оплаты")
+    content = context.bot_data["content"]
+    delivered = await CA.grant_access(
+        context.bot, context.bot_data["settings"], user_id,
+        content.txt("paywall_admin_granted"), content.btn("join"), content.btn("guro_id"),
+    )
+    return "Доступ выдан, ссылка отправлена ✅" if delivered else "Доступ выдан, но ссылку доставить не удалось (бот заблокирован?)"
+
+
+async def pf_toggle_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    pid = int(q.data.split(":", 1)[1])
+    storage = context.bot_data["storage"]
+    r = storage.get_profile(pid)
+    if r is None:
+        await q.answer("Анкета не найдена", show_alert=True)
+        return BROWSE
+    if storage.has_community_access(r["user_id"]):
+        storage.revoke_community_access(r["user_id"])
+        storage.log_action(update.effective_user.id, "community_access_revoke",
+                           f"анкета #{pid}, user_id={r['user_id']}: освобождение снято")
+        await q.answer("Освобождение снято — теперь по общему правилу")
+    else:
+        await q.answer(await grant_access_by_admin(context, update.effective_user.id, r["user_id"]))
+    await _show_card(context, pid)
+    return BROWSE
+
+
 def build_admin_profiles_handlers() -> list:
     """Кнопки карточки анкеты вне ConversationHandler-состояний (group=1 в
     bot.py) — работают и без активной сессии /admin (см. докстринг модуля)."""
@@ -264,4 +320,5 @@ def build_admin_profiles_handlers() -> list:
         CallbackQueryHandler(pf_open, pattern=r"^acms_pf_open:\d+$"),
         CallbackQueryHandler(pf_toggle_contact, pattern=r"^acms_pf_contact:\d+$"),
         CallbackQueryHandler(pf_unmute, pattern=r"^acms_pf_unmute:\d+$"),
+        CallbackQueryHandler(pf_toggle_access, pattern=r"^acms_pf_access:\d+$"),
     ]

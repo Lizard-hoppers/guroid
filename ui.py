@@ -232,6 +232,20 @@ def linkedin_kb(content: Content) -> InlineKeyboardMarkup:
     )
 
 
+def paywall_kb(content: Content) -> InlineKeyboardMarkup:
+    """Экран оплаты после анкеты (09.09.2026). Крипта первой — приоритет
+    владельца. «Оплачу позже» обязательна: без неё человек без денег на
+    руках упирается в тупик и уходит совсем, а так анкета уже сохранена и
+    он вернётся по /start."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(content.btn("pay_crypto_month"), callback_data="paywall:crypto:monthly")],
+        [InlineKeyboardButton(content.btn("pay_crypto_year"), callback_data="paywall:crypto:yearly")],
+        [InlineKeyboardButton(content.btn("pay_stars_month"), callback_data="paywall:stars:monthly")],
+        [InlineKeyboardButton(content.btn("pay_stars_year"), callback_data="paywall:stars:yearly")],
+        [InlineKeyboardButton(content.btn("pay_later"), callback_data="paywall:later")],
+    ])
+
+
 def final_kb(content: Content, invite_url: str, guro_id_url: str | None = None) -> InlineKeyboardMarkup:
     rows = [[link_button(
         content.btn("join"), invite_url, emoji_id=C.JOIN_BUTTON_EMOJI_ID

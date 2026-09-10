@@ -104,7 +104,7 @@ function RecruiterResultCard({ p, onBackToPersonal, onWrite }) {
   const heading = p.name || (p.username ? `@${p.username}` : t("common.noName"));
   return (
     <div className="card">
-      <button type="button" className="subscreen-back" onClick={onBackToPersonal} style={{ marginBottom: 10 }}>
+      <button type="button" className="subscreen-back" onClick={onBackToPersonal} style={{ marginBottom: 12 }}>
         {t("common.backToPersonal")}
       </button>
       <div className="profile-header-card">
@@ -169,19 +169,19 @@ function JoinCompanyForm({ companyId }) {
   }
 
   if (state.done) {
-    return <div className="partner-meta" style={{ marginTop: 10 }}>{t("team.join.sentOk")}</div>;
+    return <div className="partner-meta" style={{ marginTop: 12 }}>{t("team.join.sentOk")}</div>;
   }
 
   if (!open) {
     return (
-      <button type="button" className="btn secondary" style={{ marginTop: 10 }} onClick={() => setOpen(true)}>
+      <button type="button" className="btn secondary" style={{ marginTop: 12 }} onClick={() => setOpen(true)}>
         {t("team.join.requestBtn")}
       </button>
     );
   }
 
   return (
-    <form onSubmit={submit} style={{ marginTop: 10 }}>
+    <form onSubmit={submit} style={{ marginTop: 12 }}>
       <label>{t("team.join.positionLabel")}</label>
       <input
         type="text"
@@ -202,7 +202,7 @@ function CompanyResultCard({ p, onBackToPersonal }) {
   const heading = p.name || (p.username ? `@${p.username}` : t("common.noName"));
   return (
     <div className="card">
-      <button type="button" className="subscreen-back" onClick={onBackToPersonal} style={{ marginBottom: 10 }}>
+      <button type="button" className="subscreen-back" onClick={onBackToPersonal} style={{ marginBottom: 12 }}>
         {t("common.backToPersonal")}
       </button>
       <div className="profile-header-card">
@@ -231,7 +231,7 @@ function CompanyResultCard({ p, onBackToPersonal }) {
         </div>
       )}
       {p.can_join && <JoinCompanyForm companyId={p.company_id} />}
-      {p.is_member && <div className="partner-meta" style={{ marginTop: 10 }}>{t("team.join.alreadyMember")}</div>}
+      {p.is_member && <div className="partner-meta" style={{ marginTop: 12 }}>{t("team.join.alreadyMember")}</div>}
     </div>
   );
 }
@@ -453,7 +453,7 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, deepLinkWorkspace, 
     <div>
       <div className="card">
         <h3>{t("search.title")}</h3>
-        <div className="partner-meta" style={{ marginBottom: 10 }}>
+        <div className="partner-meta" style={{ marginBottom: 12 }}>
           {t("search.hint")}
         </div>
         {/* Выбор режима — только тем, у кого кабинет оплачен: остальным
@@ -513,7 +513,7 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, deepLinkWorkspace, 
             </button>
           ))}
         </div>
-        <label className="checkbox-row" style={{ marginTop: 10 }}>
+        <label className="checkbox-row" style={{ marginTop: 12 }}>
           <input type="checkbox" checked={resumesOnly} onChange={(e) => setResumesOnly(e.target.checked)} />
           {t("search.resumesToggle")}
         </label>
@@ -522,7 +522,7 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, deepLinkWorkspace, 
             <span className="link-underline">{t("search.resumesShowAll")}</span>
           </button>
         )}
-        <label className="checkbox-row" style={{ marginTop: 10 }}>
+        <label className="checkbox-row" style={{ marginTop: 12 }}>
           <input type="checkbox" checked={sortTop} onChange={toggleTop} />
           {t("search.topToggle")}
         </label>

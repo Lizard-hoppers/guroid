@@ -88,13 +88,13 @@ export function RecruiterResponsesSubscreen({ onBack, onWrite, onConfirmHire }) 
                 ? ` · ${t("vacancies.posterRating", { n: Math.round(r.reputation_score) })}`
                 : ""}
           </div>
-          {r.message && <div className="partner-meta" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{r.message}</div>}
-          <select value={r.status} onChange={(e) => setStatus(r.id, e.target.value)} style={{ marginTop: 10 }}>
+          {r.message && <div className="partner-meta" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{r.message}</div>}
+          <select value={r.status} onChange={(e) => setStatus(r.id, e.target.value)} style={{ marginTop: 12 }}>
             {RESPONSE_STATUSES.map((s) => (
               <option key={s} value={s}>{t(`vacancies.responses.status.${s}`)}</option>
             ))}
           </select>
-          <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
+          <div className="recruiter-quick-actions" style={{ marginTop: 12 }}>
             {r.candidate_username && (
               <button type="button" className="btn secondary" onClick={() => onWrite(r.candidate_id)}>
                 {t("vacancies.writeBtn")}

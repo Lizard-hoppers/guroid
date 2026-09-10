@@ -20,14 +20,17 @@ from pathlib import Path
 from aiohttp import web
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, WebAppInfo
 
+import constants as C
 import guro_chain_verify as GCV
 import guro_constants as GC
+import community_access as CA
 import guro_crypto as GCR
 import guro_logic as GL
 import guro_tags as GT
 from config import Settings
 from guro_storage import GuroStorage
 from professions_data import PROFESSIONS
+from content import Content
 from storage import Storage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -1635,6 +1638,34 @@ async def handle_set_privacy(request: web.Request) -> web.Response:
     return web.json_response(privacy)
 
 
+async def handle_set_anketa_field(request: web.Request) -> web.Response:
+    """Правка полей САМОЙ анкеты из приложения (09.09.2026, просьба
+    владельца): имя, компания, должность, вертикаль, грейд.
+
+    Вертикаль и грейд принимаются только из справочника — по ним работает
+    поиск, и свободный текст сделал бы человека ненаходимым (см.
+    GC.ANKETA_CHOICE_FIELDS).
+    """
+    settings, storage = request.app["settings"], request.app["storage"]
+    user = _auth(request, settings)
+    body = await request.json()
+    field = _body_text(body, "field").strip()
+    value = _body_text(body, "value").strip()[:200] or None
+
+    if field in GC.ANKETA_CHOICE_FIELDS:
+        allowed = C.VERTICALS if field == "vertical" else C.GRADES + (C.INVESTOR_GRADE,)
+        if value is not None and value not in allowed:
+            return web.json_response({"error": "INVALID_VALUE"}, status=400)
+    elif field not in GC.ANKETA_EDITABLE_FIELDS:
+        return web.json_response({"error": "UNKNOWN_FIELD"}, status=400)
+
+    try:
+        storage.update_profile_field(user["id"], field, value)
+    except ValueError:
+        return web.json_response({"error": "NO_PROFILE"}, status=404)
+    return web.json_response({"field": field, "value": value})
+
+
 async def handle_set_profile_field(request: web.Request) -> web.Response:
     """Редактирование НОВЫХ полей профиля (GC.EXTRA_PROFILE_FIELDS: CV-текст,
     сайт, "чем полезен"). В отличие от полей анкеты (только чтение в Mini
@@ -2884,39 +2915,12 @@ async def handle_subscribe(request: web.Request) -> web.Response:
     return web.json_response({"invoice_link": link})
 
 
-def _crypto_token_sequence(settings) -> list[tuple[str, str]]:
-    """29.08.2026 (владелец: "прикрутить новый ключ, 5 платежей на него и
-    1 на старый, по кругу") — кольцо распределения НОВЫХ инвойсов между
-    двумя приложениями CryptoBot. Оба токена настроены — 5 инвойсов на
-    cryptobot_api_token_new, 1 на cryptobot_api_token (старый), затем
-    сначала. Настроен только один — тривиальное кольцо из одного звена
-    (тот же эффект, что и до этой правки)."""
-    if settings.cryptobot_api_token_new and settings.cryptobot_api_token:
-        return (
-            [(settings.cryptobot_api_token_new, "new")] * 5
-            + [(settings.cryptobot_api_token, "old")]
-        )
-    token = settings.cryptobot_api_token_new or settings.cryptobot_api_token
-    return [(token, "single")] if token else []
-
-
-def _pick_crypto_token(settings, storage: GuroStorage) -> tuple[str, str] | None:
-    """Возвращает (token, label) следующего звена кольца — позиция
-    персистентна (guro_config), переживает рестарт процесса guro-id-api."""
-    sequence = _crypto_token_sequence(settings)
-    if not sequence:
-        return None
-    pos = storage.get_config(GC.CRYPTO_TOKEN_CYCLE_KEY, 0) % len(sequence)
-    storage.set_config(GC.CRYPTO_TOKEN_CYCLE_KEY, (pos + 1) % len(sequence))
-    return sequence[pos]
-
-
 async def handle_subscribe_crypto(request: web.Request) -> web.Response:
     """Альтернатива Stars — оплата подписки в крипте через CryptoBot (Crypto
     Pay API). Подтверждение приходит асинхронно вебхуком (handle_crypto_
     webhook), а не сразу в ответе, в отличие от Stars-инвойса."""
     settings, storage = request.app["settings"], request.app["storage"]
-    picked = _pick_crypto_token(settings, storage)
+    picked = GCR.pick_token(settings, storage)
     if picked is None:
         return web.json_response({"error": "CRYPTO_NOT_CONFIGURED"}, status=503)
     token, token_label = picked
@@ -3050,6 +3054,19 @@ async def handle_crypto_webhook(request: web.Request) -> web.Response:
                 bot, settings.community_chat_id, storage, user_id,
                 reason="subscription_activated_crypto",
             )
+            # Платный вход в сообщество (09.09.2026): ссылка в группу —
+            # только тем, кто пришёл через оплату. У старых участников
+            # стоит признак «доступ без оплаты», они уже внутри.
+            if not request.app["main_storage"].has_community_access(user_id):
+                # Тексты через Content, а не из констант напрямую: владелец
+                # правит их в CMS бота, и правка должна работать одинаково
+                # при оплате звёздами и криптой.
+                content = Content(request.app["main_storage"])
+                await CA.grant_access(
+                    bot, settings, user_id,
+                    content.txt("paywall_granted"),
+                    content.btn("join"), content.btn("guro_id"),
+                )
     except Exception:  # noqa: BLE001
         logger.exception("guro_id: не удалось уведомить/обновить тег после crypto-оплаты user_id=%s", user_id)
 
@@ -3080,6 +3097,7 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/crypto/webhook", handle_crypto_webhook)
     app.router.add_post("/api/privacy", handle_set_privacy)
     app.router.add_post("/api/profile", handle_set_profile_field)
+    app.router.add_post("/api/anketa", handle_set_anketa_field)
     app.router.add_post("/api/work_status", handle_set_work_status)
     app.router.add_post("/api/recruiter/activity_status", handle_set_recruiter_activity_status)
     app.router.add_post("/api/cv/field", handle_set_cv_field)

@@ -61,6 +61,13 @@ function MenuIcon({ name }) {
           <path d="M5.5 20c.9-3.6 3.4-5.5 6.5-5.5s5.6 1.9 6.5 5.5" />
         </svg>
       );
+    case "edit": // карандаш
+      return (
+        <svg {...props}>
+          <path d="M4 20h4l10-10a2.8 2.8 0 0 0-4-4L4 16v4Z" />
+          <path d="M13.5 6.5l4 4" />
+        </svg>
+      );
     case "privacy": // замок — в макете этого пункта нет, см. комментарий к MENU
       return (
         <svg {...props}>
@@ -76,6 +83,9 @@ function MenuIcon({ name }) {
 // Порядок пунктов — по макету владельца ("рейтинг порядок.pdf", 16.08.2026):
 // Офферы, Сообщения, Рейтинг, QR, CV, Контакты.
 const MENU = [
+  // 09.09.2026, просьба владельца: правка анкеты прямо в приложении. Стоит
+  // первым — остальной порядок задан макетом владельца, его не трогаем.
+  { key: "edit", labelKey: "hub.menu.edit" },
   { key: "offers", labelKey: "hub.menu.offers" },
   { key: "messages", labelKey: "hub.menu.messages" },
   { key: "rating", labelKey: "hub.menu.rating" },

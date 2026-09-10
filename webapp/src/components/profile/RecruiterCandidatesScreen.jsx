@@ -152,7 +152,7 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
             onChange={(e) => setUsername(e.target.value)}
           />
 
-          <label style={{ marginTop: 14 }}>{t("recruiter.candidates.verticalLabel")}</label>
+          <label style={{ marginTop: 16 }}>{t("recruiter.candidates.verticalLabel")}</label>
           <div className="vertical-chips">
             {VERTICALS.map((v) => (
               <button
@@ -170,7 +170,7 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
             ))}
           </div>
 
-          <label style={{ marginTop: 10 }}>{t("recruiter.candidates.gradeLabel")}</label>
+          <label style={{ marginTop: 12 }}>{t("recruiter.candidates.gradeLabel")}</label>
           <div className="vertical-chips">
             {positions.grades.map((g) => (
               <button
@@ -187,7 +187,7 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
             ))}
           </div>
 
-          <label style={{ marginTop: 10 }}>{t("recruiter.candidates.positionLabel")}</label>
+          <label style={{ marginTop: 12 }}>{t("recruiter.candidates.positionLabel")}</label>
           <select value={position} disabled={!vertical || !grade} onChange={(e) => setPosition(e.target.value)}>
             <option value="">{t("recruiter.candidates.positionPlaceholder")}</option>
             {positionOptions.map(([code, label]) => (
@@ -195,7 +195,7 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
             ))}
           </select>
 
-          <label className="checkbox-row" style={{ marginTop: 10 }}>
+          <label className="checkbox-row" style={{ marginTop: 12 }}>
             <input type="checkbox" checked={lookingOnly} onChange={(e) => setLookingOnly(e.target.checked)} />
             {t("recruiter.candidates.lookingOnlyLabel")}
           </label>
@@ -204,7 +204,7 @@ export function RecruiterCandidatesScreen({ onBack, onWrite }) {
             {t("recruiter.candidates.topRatingLabel")}
           </label>
 
-          <button type="submit" className="btn" style={{ marginTop: 10 }} disabled={state.loading}>
+          <button type="submit" className="btn" style={{ marginTop: 12 }} disabled={state.loading}>
             {candidateCount != null && !username.trim()
               ? t("recruiter.candidates.submitBtnCount", { count: candidateCount })
               : t("recruiter.candidates.submitBtn")}

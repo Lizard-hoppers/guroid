@@ -201,6 +201,15 @@ class Storage:
             ("country", "TEXT"),
             ("country_iso2", "TEXT"),
             ("lang", "TEXT"),
+            # Платный вход в сообщество (09.09.2026). 1 — доступ есть без
+            # оплаты: так помечены все, кто зарегистрировался ДО запуска
+            # правила, и те, кому доступ выдали вручную. 0 (по умолчанию) —
+            # доступ открывается только оплаченной подпиской.
+            #
+            # Признак, а не сравнение дат: у части людей анкет несколько, и
+            # старый участник, пройдя регистрацию заново, получил бы свежую
+            # дату и стал бы «новым».
+            ("community_access_granted", "INTEGER DEFAULT 0"),
         ):
             self._ensure_column("profiles", col, ddl)
         self._ensure_column("group_mutes", "prompt_msg_id", "INTEGER")
@@ -675,6 +684,35 @@ class Storage:
     def set_contacted(self, profile_id: int, value: bool) -> None:
         self._conn.execute(
             "UPDATE profiles SET contacted=? WHERE id=?", (int(value), profile_id)
+        )
+        self._conn.commit()
+
+    def has_community_access(self, user_id: int) -> bool:
+        """Освобождён ли человек от платного входа (09.09.2026).
+
+        Признак стоит у всех, кто прошёл анкету ДО запуска правила, и у тех,
+        кому доступ выдал админ. У оплативших его нет: их доступ держится
+        подпиской, иначе выселение по истечении срока их бы не касалось.
+        """
+        row = self._conn.execute(
+            "SELECT MAX(community_access_granted) AS granted FROM profiles WHERE user_id=?",
+            (user_id,),
+        ).fetchone()
+        return bool(row and row["granted"])
+
+    def grant_community_access(self, user_id: int) -> bool:
+        """Выдать доступ без оплаты. False, если анкеты нет — выдавать
+        доступ человеку, которого нет в реестре, нечему."""
+        cur = self._conn.execute(
+            "UPDATE profiles SET community_access_granted=1 WHERE user_id=?", (user_id,)
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def revoke_community_access(self, user_id: int) -> None:
+        """Снять освобождение — доступ снова будет зависеть от подписки."""
+        self._conn.execute(
+            "UPDATE profiles SET community_access_granted=0 WHERE user_id=?", (user_id,)
         )
         self._conn.commit()
 

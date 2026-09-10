@@ -22,11 +22,14 @@ function IconSearch(props) {
   );
 }
 
-function IconHandshake(props) {
+// Галочка — как в макете таб-бара (полный набор, стр. 3) и по правилу
+// раздела 6 «один смысл — одна иконка»: галочка у нас уже означает
+// «подтверждено», и вкладка про подтверждение рисуется тем же знаком.
+// Прежнее рукопожатие снято — после замены его никто не использовал.
+function IconConfirm(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="tab-icon" {...props}>
-      <path d="M3 12l4-4 4 3 3-3 3 3h4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9 11l3 3.5L16 11" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M20 6 9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -53,7 +56,7 @@ const TABS = [
   { key: "profile", labelKey: "tab.profile", Icon: IconUser },
   { key: "search", labelKey: "tab.search", Icon: IconSearch },
   { key: "vacancies", labelKey: "tab.vacancies", Icon: IconBriefcase },
-  { key: "confirm", labelKey: "tab.confirm", Icon: IconHandshake },
+  { key: "confirm", labelKey: "tab.confirm", Icon: IconConfirm },
   { key: "subscribe", labelKey: "tab.subscribe", Icon: IconStar },
 ];
 

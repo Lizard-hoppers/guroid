@@ -384,6 +384,16 @@ export function checkCompanyName(name) {
   return request(`/api/company/name_check?name=${encodeURIComponent(name)}`);
 }
 
+// Правка полей САМОЙ анкеты (09.09.2026): имя, компания, должность,
+// вертикаль, грейд. Отдельно от setProfileField — тот пишет расширенные
+// поля GURO ID, а эти лежат в анкете, заполнявшейся раньше только ботом.
+export function setAnketaField(field, value) {
+  return request("/api/anketa", {
+    method: "POST",
+    body: JSON.stringify({ field, value }),
+  });
+}
+
 export function requestJoinCompany(companyId, positionText) {
   return request("/api/company/join_request", {
     method: "POST",

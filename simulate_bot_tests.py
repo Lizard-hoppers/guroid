@@ -429,6 +429,22 @@ class FakeBot:
         self.member_tag_map[user_id] = tag
         return True
 
+    # платный вход (09.09.2026): выселение = ban + unban, инвойс Stars из бота
+    async def ban_chat_member(self, chat_id, user_id, **kw):
+        self.bans = getattr(self, "bans", [])
+        self.bans.append((chat_id, user_id))
+        return True
+
+    async def unban_chat_member(self, chat_id, user_id, only_if_banned=None, **kw):
+        self.unbans = getattr(self, "unbans", [])
+        self.unbans.append((chat_id, user_id, only_if_banned))
+        return True
+
+    async def send_invoice(self, chat_id, **kw):
+        self.invoices = getattr(self, "invoices", [])
+        self.invoices.append((chat_id, kw))
+        return FakeMessage("[invoice]", chat_id)
+
 
 class FakeUser:
     def __init__(self, uid=42, username="tester"):
@@ -601,23 +617,28 @@ async def _run_scenarios():
         check(p["country"] == "Украина", "A: страна сохранена")
         check(p["linkedin"] == C.SKIPPED_VALUE, "A: linkedin пропущен")
         check(len(ctx.bot.sent) >= 1, "A: уведомление админу отправлено")
-        check(len(ctx.bot.invite_links) == 1, "A: одноразовая ссылка создана")
-        inv_chat, inv_limit, inv_name, inv_link = ctx.bot.invite_links[0]
-        check(inv_chat == bd["settings"].community_chat_id, "A: ссылка на community_chat_id")
-        check(inv_limit == 1, "A: member_limit=1 (одноразовая)")
-        # linkedin_skip не передаёт user= в FakeUpdate -> FakeUser() дефолт id=42
-        check(inv_name == "pgc_42", "A: имя ссылки помечено user_id")
-        check(ctx.bot.last_markup.inline_keyboard[0][0].url == inv_link,
-              "A: кнопка финала ведёт на созданную одноразовую ссылку")
-        check(len(ctx.bot.documents) == 1, "A: медиакит отправлен один раз")
+        # Платный вход (09.09.2026): новый человек в финале видит экран
+        # оплаты, ссылку в группу получает только после оплаты.
+        check(len(ctx.bot.invite_links) == 0, "A: новому ссылка в группу ДО оплаты не создаётся")
+        check(ctx.bot.last_text == C.PAYWALL_TEXT, "A: финал нового — экран оплаты")
+        a_btns = kb_texts(ctx.bot.last_markup)
+        check(a_btns[0].startswith("Криптой") and a_btns[-1] == "Оплачу позже",
+              f"A: под экраном оплаты кнопки, крипта первой: {a_btns}")
+        check(len(ctx.bot.documents) == 1, "A: медиакит отправлен и перед экраном оплаты — один раз")
         doc_chat, doc_name, doc_caption = ctx.bot.documents[0]
         check(doc_name == "GURO-Mediakit-RU.pdf", "A: медиакит RU-файл (lang=ru)")
         check(doc_caption == C.MEDIA_KIT_CAPTION, "A: подпись медиакита RU из CMS-дефолта")
         check(doc_chat == 555, "A: медиакит уходит в тот же чат, что и анкета (screen_chat)")
 
     # --- сценарий B: инвестор-ветка (Gambling) ---
+    # Платный вход (09.09.2026): у 999 подписка уже есть (оплатил в
+    # приложении до конца анкеты) — он должен получить ПРЕЖНИЙ финал со
+    # ссылкой, минуя экран оплаты. Подписка на id=42, а не 999: последний
+    # шаг (linkedin_text) идёт через FakeUpdate без user=, и финал видит
+    # дефолтного FakeUser() с id=42 — тот же нюанс, что в сценарии A.
     with tempfile.TemporaryDirectory() as d:
         bd = _bot_data(d)
+        bd["guro_storage"].activate_subscription(42, 30)
         ctx = FakeContext(bd)
         await F.start(FakeUpdate(message=FakeMessage("/start"), user=FakeUser(999)), ctx)
         await F.choose_lang(FakeUpdate(query=FakeQuery("lang:ru")), ctx)
@@ -646,10 +667,21 @@ async def _run_scenarios():
         check(p["grade"] == "Инвестор" and p["investor_type"] and p["investor_amount"], "B: инвестор-поля")
         check(p["investor_needs"] == logic.needs_to_text([0, 2]), "B: needs текст")
         check(not p["profession"], "B: профессия пуста у инвестора")
+        check(len(ctx.bot.invite_links) == 1, "B: оплатившему заранее — одноразовая ссылка сразу, без экрана оплаты")
+        inv_chat, inv_limit, inv_name, inv_link = ctx.bot.invite_links[0]
+        check(inv_chat == bd["settings"].community_chat_id, "B: ссылка на community_chat_id")
+        check(inv_limit == 1, "B: member_limit=1 (одноразовая)")
+        check(inv_name == "pgc_42", "B: имя ссылки помечено user_id")
+        check(ctx.bot.last_markup.inline_keyboard[0][0].url == inv_link,
+              "B: кнопка финала ведёт на созданную одноразовую ссылку")
+        check(ctx.bot.last_text != C.PAYWALL_TEXT, "B: экран оплаты подписчику не показан")
 
     # --- сценарий C: Other-вертикаль + Другое-профессия + back ---
+    # Подписка на 42 (см. сценарий B): иначе финал — экран оплаты, и путь
+    # «сбой одноразовой ссылки → запасная общая» остался бы непроверенным.
     with tempfile.TemporaryDirectory() as d:
         bd = _bot_data(d)
+        bd["guro_storage"].activate_subscription(42, 30)
         ctx = FakeContext(bd)
         await F.start(FakeUpdate(message=FakeMessage("/start"), user=FakeUser(999)), ctx)
         await F.choose_lang(FakeUpdate(query=FakeQuery("lang:ru")), ctx)
@@ -2440,9 +2472,12 @@ def test_guro_id_reputation_formula():
     check(not GLm.counts_toward_rating(old_join, fresh, now), "один младше 14 дней -> НЕ учитывается")
     check(not GLm.counts_toward_rating(None, old_join, now), "нет даты -> НЕ учитывается")
 
-    check(not GLm.rate_limited(None, now), "нет прошлой заявки -> не залимичено")
-    check(GLm.rate_limited(now - timedelta(hours=1), now), "заявка час назад -> залимичено (<24ч)")
-    check(not GLm.rate_limited(now - timedelta(hours=25), now), "заявка 25ч назад -> уже не залимичено")
+    # 08.09.2026: правило стало потолком за сутки (три заявки на пару),
+    # а не паузой между заявками, поэтому функция принимает КОЛИЧЕСТВО.
+    check(not GLm.rate_limited(0), "заявок за сутки не было -> не залимичено")
+    check(not GLm.rate_limited(2), "две заявки за сутки -> ещё можно")
+    check(GLm.rate_limited(3), "три заявки за сутки -> потолок достигнут")
+    check(GLm.rate_limited(4), "сверх потолка -> тоже залимичено")
 
 
 def test_guro_id_storage():
@@ -2540,11 +2575,9 @@ def test_guro_id_storage():
         check(p["status"] == "pending", "новое партнёрство в статусе pending")
         check(p["ptype"] == "deal", "ptype по умолчанию = 'deal'")
 
-        try:
-            gst.create_partnership(1, 2, "casino", "Odessa")
-            check(False, "повторная заявка <24ч должна кидать RATE_LIMITED")
-        except ValueError as e:
-            check(str(e) == "RATE_LIMITED", "анти-фрод: <24ч между той же парой -> ValueError(RATE_LIMITED)")
+        # Проверка потолка «три заявки на пару за сутки» вынесена в КОНЕЦ
+        # этой функции: она создаёт лишние строки, а ниже по тесту
+        # dashboard_stats считает все партнёрства разом.
 
         try:
             gst.respond_partnership(p["id"], responder_id=1, accept=True)
@@ -2705,6 +2738,22 @@ def test_guro_id_storage():
             check(False, "запись сверх CV_EXPERIENCE_MAX должна кидать LIMIT_REACHED")
         except ValueError as e:
             check(str(e) == "LIMIT_REACHED", "потолок записей опыта -> ValueError(LIMIT_REACHED)")
+
+        # 08.09.2026: на пару разрешено ТРИ заявки за скользящие сутки (было
+        # одна). Стоит в самом конце — проверка создаёт строки, а
+        # dashboard_stats выше считает все партнёрства разом. Проверяем оба
+        # края: иначе тест перестанет ловить снятие ограничителя вовсе.
+        # Первая заявка между 1 и 2 уже была заведена в начале функции.
+        gst3.create_partnership(1, 2, "casino", "Odessa")
+        check(True, "вторая заявка на ту же пару за сутки проходит")
+        gst3.create_partnership(1, 2, "casino", "Odessa")
+        check(True, "третья заявка на ту же пару за сутки проходит")
+        try:
+            gst3.create_partnership(1, 2, "casino", "Odessa")
+            check(False, "четвёртая заявка за сутки должна кидать RATE_LIMITED")
+        except ValueError as e:
+            check(str(e) == "RATE_LIMITED",
+                  "анти-фрод: четвёртая заявка на ту же пару за сутки -> RATE_LIMITED")
 
 
 def test_guro_id_recruiter_dashboard():
@@ -3388,9 +3437,20 @@ async def _run_guro_id_api_sim():
                 check(resp.status == 404,
                       'строка "None" в поле хеша не считается хешем (иначе -> 400 про сеть)')
 
+                # 08.09.2026: на пару разрешено ТРИ заявки за скользящие сутки.
+                # Первая была заведена выше по тесту, поэтому вторая и третья
+                # обязаны пройти, а отказ приходит на четвёртой. Проверяем оба
+                # края: одна лишь проверка отказа не поймала бы случайное
+                # ужесточение ограничителя обратно до одной заявки.
                 resp = await client.post("/api/partnerships", headers=auth_100,
                                           json={"confirmer_username": "confirmer", "ptype": "deal"})
-                check(resp.status == 409, "повторная заявка <24ч -> 409 (анти-фрод)")
+                check(resp.status == 200, "вторая заявка на ту же пару за сутки -> 200")
+                resp = await client.post("/api/partnerships", headers=auth_100,
+                                          json={"confirmer_username": "confirmer", "ptype": "deal"})
+                check(resp.status == 200, "третья заявка на ту же пару за сутки -> 200")
+                resp = await client.post("/api/partnerships", headers=auth_100,
+                                          json={"confirmer_username": "confirmer", "ptype": "deal"})
+                check(resp.status == 409, "четвёртая заявка на ту же пару за сутки -> 409 (анти-фрод)")
 
                 # --- Фаза 2 (11.08.2026): офер/суммы/отзыв в партнёрстве -------
                 st.save_profile({"user_id": 450, "username": "dealmaker", "name": "Deal Maker"})
@@ -5114,6 +5174,185 @@ async def _run_admin_guro_sim():
               "перетирает last_answer_text — тот же паттерн, что у guro_addr_review, не баг)")
 
 
+async def _run_paywall_sim():
+    print("== платный вход в сообщество (09.09.2026) ==")
+    import tempfile
+    from datetime import timedelta
+
+    import community_access as CA
+    import guro_crypto as GCR
+    import guro_logic as GL
+    import ui
+    from handlers import admin_guro, admin_profiles, flow, guro_payments, paywall
+
+    with tempfile.TemporaryDirectory() as d:
+        bot_data = _bot_data(d)
+        st, gst, content = bot_data["storage"], bot_data["guro_storage"], bot_data["content"]
+        # 1 — старый участник (освобождён), 2 — новый, 3 — новый, но уже оплатил в приложении
+        for uid, uname in ((1, "old"), (2, "newbie"), (3, "prepaid")):
+            st.save_profile({"user_id": uid, "username": uname, "name": uname})
+        st.grant_community_access(1)
+        gst.activate_subscription(3, 30)
+
+        # --- признак и развилка ---------------------------------------
+        check(st.has_community_access(1) and not st.has_community_access(2), "признак: у старого есть, у нового нет")
+        check(not st.grant_community_access(999), "выдача без анкеты -> False (нечему выдавать)")
+        ctx = FakeContext(bot_data)
+        check(not flow._needs_payment(ctx, 1), "освобождённый -> оплата не нужна")
+        check(flow._needs_payment(ctx, 2), "новый без подписки -> экран оплаты")
+        check(not flow._needs_payment(ctx, 3), "оплатил в приложении до конца анкеты -> экран оплаты НЕ показываем")
+        st.revoke_community_access(1)
+        check(flow._needs_payment(ctx, 1), "снятие освобождения возвращает под общее правило")
+        st.grant_community_access(1)
+
+        # --- кнопки экрана оплаты -------------------------------------
+        kb = ui.paywall_kb(content)
+        labels = kb_texts(kb)
+        check(labels[0].startswith("Криптой") and labels[1].startswith("Криптой"), f"крипта первой (приоритет владельца): {labels}")
+        check(labels[-1] == "Оплачу позже", "последняя кнопка — «Оплачу позже»")
+        datas = [b.callback_data for row in kb.inline_keyboard for b in row]
+        check(datas[0] == "paywall:crypto:monthly" and datas[2] == "paywall:stars:monthly", f"callback_data самодостаточна: {datas}")
+
+        async def _press(data, uid=2):
+            q = FakeQuery(data, chat_id=uid)
+            q.from_user = FakeUser(uid, "newbie")
+            upd = FakeUpdate(query=q, user=q.from_user)
+            c2 = FakeContext(bot_data)
+            await paywall.on_paywall(upd, c2)
+            return c2
+
+        c2 = await _press("paywall:later")
+        check(any(content.txt("paywall_later") == t for _, t in c2.bot.sent), "«Оплачу позже» -> текст с точкой возврата")
+        check("Оплачу позже" in kb_texts(c2.bot.last_send_kwargs.get("reply_markup")), "«Оплачу позже» -> под ответом те же кнопки оплаты")
+
+        c2 = await _press("paywall:stars:monthly")
+        inv = getattr(c2.bot, "invoices", [])
+        check(len(inv) == 1 and inv[0][1]["currency"] == "XTR", "звёзды -> нативный инвойс XTR")
+        check(inv[0][1]["payload"] == "guro_id_subscription:monthly:2",
+              f"payload тот же, что у приложения (иначе подтверждение никто не обработает): {inv[0][1]['payload']}")
+        check(inv[0][1]["prices"][0].amount == 400, "цена месяца = 400 звёзд")
+
+        c2 = await _press("paywall:stars:bogus")
+        check(not getattr(c2.bot, "invoices", []) and not c2.bot.sent, "неизвестный план -> ничего не шлём, не падаем")
+
+        c2 = await _press("paywall:crypto:yearly")
+        check(any("недоступна" in t for _, t in c2.bot.sent), "крипта не настроена -> подсказка платить звёздами, не 500")
+
+        bot_data["settings"].cryptobot_api_token = "tok"
+        captured = {}
+
+        async def _fake_create_invoice(api_token, **kw):
+            captured.update(kw, token=api_token)
+            return {"invoice_id": 7, "pay_url": "https://t.me/CryptoBot?start=IV7"}
+
+        real_create = GCR.create_invoice
+        GCR.create_invoice = _fake_create_invoice
+        try:
+            c2 = await _press("paywall:crypto:yearly")
+        finally:
+            GCR.create_invoice = real_create
+        check(captured.get("payload") == "guro_id_subscription:yearly:2", f"крипта: payload приложения: {captured.get('payload')}")
+        check(captured.get("amount") == 50.25 and captured.get("asset") == "USDT", f"крипта: год = 50.25 USDT: {captured}")
+        mk = c2.bot.last_send_kwargs.get("reply_markup")
+        check(mk and mk.inline_keyboard[0][0].url == "https://t.me/CryptoBot?start=IV7", "крипта: кнопка ведёт на pay_url")
+        bot_data["settings"].cryptobot_api_token = ""
+
+        # --- выдача после оплаты звёздами -----------------------------
+        class _Pay:
+            def __init__(self, payload):
+                self.invoice_payload = payload
+
+        async def _paid(uid):
+            msg = FakeMessage("", chat_id=uid)
+            msg.successful_payment = _Pay(f"guro_id_subscription:monthly:{uid}")
+            upd = FakeUpdate(message=msg, user=FakeUser(uid, "u"))
+            c3 = FakeContext(bot_data)
+            await guro_payments.on_guro_successful_payment(upd, c3)
+            return c3
+
+        c3 = await _paid(2)
+        check(gst.is_subscribed(2), "оплата звёздами активирует подписку")
+        check(len(c3.bot.invite_links) == 1 and c3.bot.invite_links[0][1] == 1, "новому после оплаты -> ОДНОРАЗОВАЯ ссылка в группу")
+        check(any(content.txt("paywall_granted") == t for _, t in c3.bot.sent), "новому после оплаты -> текст «оплата получена»")
+        check(not st.has_community_access(2), "оплата НЕ ставит признак освобождения (иначе выселение не сработает)")
+        c3 = await _paid(1)
+        check(not c3.bot.invite_links, "освобождённому после продления ссылку НЕ шлём — он уже в группе")
+
+        # --- выборки задания: напоминание и выселение ------------------
+        now = gst._now()
+        fmt = GL.format_db_datetime
+
+        def _set_exp(uid, dt, status="active"):
+            gst.get_or_create_guro_user(uid)
+            gst._conn.execute("UPDATE guro_users SET subscription_status=?, subscription_expires_at=? WHERE user_id=?",
+                              (status, fmt(dt), uid))
+            gst._conn.commit()
+
+        st.save_profile({"user_id": 4, "username": "later", "name": "later"})  # «Оплачу позже», ни разу не платил
+        gst.get_or_create_guro_user(4)
+        _set_exp(1, now - timedelta(days=3))            # освобождённый с истёкшей подпиской
+        _set_exp(2, now + timedelta(days=1))            # новый, истекает завтра
+        _set_exp(3, now - timedelta(hours=1))           # новый, истёк час назад
+
+        exp_ids = [r["user_id"] for r in gst.list_paywall_expiring(2)]
+        check(exp_ids == [2], f"напомнить только тому, чей срок в окне 2 дней и кто не освобождён: {exp_ids}")
+        gst.mark_paywall_reminded(2, fmt(now + timedelta(days=1)))
+        check(gst.list_paywall_expiring(2) == [], "об одном сроке напоминаем один раз")
+
+        kick_ids = [r["user_id"] for r in gst.list_paywall_expired()]
+        check(kick_ids == [3], f"выселить только неосвобождённого с истёкшей подпиской: {kick_ids}")
+        check(4 not in kick_ids, "«Оплачу позже» без единой оплаты не выселяется — его в группе нет")
+        check(1 not in kick_ids, "освобождённый с истёкшей подпиской НЕ выселяется")
+        gst.mark_paywall_kicked(3, fmt(now - timedelta(hours=1)))
+        check(gst.list_paywall_expired() == [], "по одному сроку выселяем один раз")
+        gst.activate_subscription(3, 30)
+        _set_exp(3, now - timedelta(minutes=5))
+        check([r["user_id"] for r in gst.list_paywall_expired()] == [3],
+              "новый оплаченный цикл с новым сроком -> отметка о прошлом выселении не мешает")
+
+        fb = FakeBot()
+        ok = await CA.revoke_access(fb, bot_data["settings"], 3)
+        check(ok and fb.bans == [(-100999888777, 3)] and fb.unbans[0][2] is True,
+              "выселение = ban + unban(only_if_banned): кик без вечного бана")
+
+        # --- админ: пустить без оплаты -----------------------------------
+        pid = st._conn.execute("SELECT id FROM profiles WHERE user_id=4").fetchone()[0]
+        ctx4 = FakeContext(bot_data)
+        ctx4.user_data["adm_chat"], ctx4.user_data["adm_mid"] = 555, 1
+        q = FakeQuery(f"acms_pf_access:{pid}", chat_id=555)
+        q.from_user = FakeUser(42, "admin")
+        await admin_profiles.pf_toggle_access(FakeUpdate(query=q, user=q.from_user), ctx4)
+        check(st.has_community_access(4), "кнопка карточки -> признак освобождения поставлен")
+        check(len(ctx4.bot.invite_links) == 1 and any(content.txt("paywall_admin_granted") == t for _, t in ctx4.bot.sent),
+              "кнопка карточки -> человеку сразу уходит одноразовая ссылка")
+        check("без оплаты" in (ctx4.bot.last_text or ""), "карточка после выдачи показывает «🎟 без оплаты»")
+        check(any("Снять доступ без оплаты" in t for t in kb_texts(ctx4.bot.last_markup)), "кнопка переключилась на снятие")
+        logs = st._conn.execute("SELECT action FROM admin_audit_log WHERE action LIKE 'community_access%'").fetchall()
+        check([r[0] for r in logs] == ["community_access_grant"], f"выдача записана в журнал действий: {[r[0] for r in logs]}")
+
+        await admin_profiles.pf_toggle_access(FakeUpdate(query=q, user=q.from_user), ctx4)
+        check(not st.has_community_access(4), "второе нажатие снимает освобождение")
+        check(any("Пустить без оплаты" in t for t in kb_texts(ctx4.bot.last_markup)), "кнопка вернулась к выдаче")
+
+        replies = []
+        msg = FakeMessage("/guro_access", chat_id=555)
+
+        async def _cap(text, **kw):
+            replies.append(text)
+
+        msg.reply_text = _cap
+        ctx5 = FakeContext(bot_data)
+        ctx5.args = ["4"]
+        await admin_guro.guro_access_command(FakeUpdate(message=msg, user=FakeUser(42, "admin")), ctx5)
+        check(st.has_community_access(4) and "выдан" in replies[-1], f"/guro_access <id> выдаёт доступ: {replies[-1]}")
+        ctx5.args = ["999"]
+        await admin_guro.guro_access_command(FakeUpdate(message=msg, user=FakeUser(42, "admin")), ctx5)
+        check("Анкеты нет" in replies[-1], "/guro_access без анкеты -> понятный ответ")
+        ctx5.args = ["4", "revoke"]
+        await admin_guro.guro_access_command(FakeUpdate(message=msg, user=FakeUser(42, "admin")), ctx5)
+        check(not st.has_community_access(4), "/guro_access <id> revoke снимает")
+
+
 def main():
     test_data()
     test_logic()
@@ -5145,6 +5384,7 @@ def main():
     asyncio.run(_run_guro_partnerships_sim())
     asyncio.run(_run_guro_tags_sim())
     asyncio.run(_run_admin_guro_sim())
+    asyncio.run(_run_paywall_sim())
     print(f"\nPASS={PASS} FAIL={FAIL}")
     raise SystemExit(1 if FAIL else 0)
 

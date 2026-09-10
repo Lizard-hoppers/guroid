@@ -272,7 +272,7 @@ function SalaryField({ salaryFrom, salaryTo, negotiable, onSaved }) {
         />
         {t("cv.salary.negotiableLabel")}
       </label>
-      <button className="btn" style={{ marginTop: 10 }} onClick={save} disabled={saving}>
+      <button className="btn" style={{ marginTop: 12 }} onClick={save} disabled={saving}>
         {saving ? t("common.saving") : t("common.save")}
       </button>
       <Msg type="error">{error}</Msg>
@@ -445,7 +445,7 @@ function ExperienceList({ entries, onChange }) {
         showForm ? (
           <ExperienceForm onAdded={onAdded} onCancel={() => setShowForm(false)} />
         ) : (
-          <button type="button" className="btn secondary" style={{ marginTop: 10 }} onClick={() => setShowForm(true)}>
+          <button type="button" className="btn secondary" style={{ marginTop: 12 }} onClick={() => setShowForm(true)}>
             {t("cv.experience.addBtn")}
           </button>
         )
@@ -491,7 +491,7 @@ ${deeplink}`;
   }
 
   return (
-    <div className="card" style={{ marginTop: 14 }}>
+    <div className="card" style={{ marginTop: 16 }}>
       <button type="button" className="btn" onClick={onClick} disabled={state.loading}>
         {state.loading ? t("cv.shareBusy") : t("cv.shareBtn")}
       </button>

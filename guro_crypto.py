@@ -15,6 +15,8 @@ import logging
 
 import aiohttp
 
+import guro_constants as GC
+
 logger = logging.getLogger(__name__)
 
 API_BASE = "https://pay.crypt.bot/api"
@@ -23,6 +25,38 @@ _TIMEOUT = aiohttp.ClientTimeout(total=15)
 
 class CryptoBotError(Exception):
     pass
+
+
+def token_sequence(settings) -> list[tuple[str, str]]:
+    """29.08.2026 (владелец: "прикрутить новый ключ, 5 платежей на него и
+    1 на старый, по кругу") — кольцо распределения НОВЫХ инвойсов между
+    двумя приложениями CryptoBot. Оба токена настроены — 5 инвойсов на
+    cryptobot_api_token_new, 1 на cryptobot_api_token (старый), затем
+    сначала. Настроен только один — тривиальное кольцо из одного звена.
+    """
+    if settings.cryptobot_api_token_new and settings.cryptobot_api_token:
+        return (
+            [(settings.cryptobot_api_token_new, "new")] * 5
+            + [(settings.cryptobot_api_token, "old")]
+        )
+    token = settings.cryptobot_api_token_new or settings.cryptobot_api_token
+    return [(token, "single")] if token else []
+
+
+def pick_token(settings, storage) -> tuple[str, str] | None:
+    """(token, label) следующего звена кольца. None — крипта не настроена.
+
+    Позиция лежит в БД (guro_config), а не в памяти процесса: счета
+    выставляют ДВА процесса — мини-приложение и бот (экран оплаты после
+    анкеты, 09.09.2026). Счётчик в памяти означал бы два независимых
+    кольца и разъехавшуюся пропорцию 5:1.
+    """
+    sequence = token_sequence(settings)
+    if not sequence:
+        return None
+    pos = storage.get_config(GC.CRYPTO_TOKEN_CYCLE_KEY, 0) % len(sequence)
+    storage.set_config(GC.CRYPTO_TOKEN_CYCLE_KEY, (pos + 1) % len(sequence))
+    return sequence[pos]
 
 
 async def create_invoice(

@@ -8,6 +8,7 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes, MessageHandler, PreCheckoutQueryHandler, filters
 
+import community_access as CA
 import guro_constants as GC
 import guro_tags as GT
 
@@ -83,6 +84,7 @@ async def on_guro_successful_payment(update: Update, context: ContextTypes.DEFAU
         f"✅ Подписка GURO ID активирована до {expires_at[:10]} — полный поиск и просмотр профилей открыты."
     )
     settings = context.bot_data["settings"]
+    await _grant_community_if_paywalled(context, settings, update.effective_user.id)
     try:
         await GT.sync_member_tag(
             context.bot, settings.community_chat_id, storage, update.effective_user.id,
@@ -90,6 +92,24 @@ async def on_guro_successful_payment(update: Update, context: ContextTypes.DEFAU
         )
     except Exception:  # noqa: BLE001
         logger.exception("guro_payments: tag sync failed for user %s", update.effective_user.id)
+
+
+async def _grant_community_if_paywalled(context, settings, user_id: int) -> None:
+    """Оплата открывает ещё и вход в сообщество (09.09.2026).
+
+    Только тем, кто пришёл через платный вход. У старых участников стоит
+    признак «доступ без оплаты», они уже в группе, и одноразовая ссылка
+    после продления подписки звала бы внутрь того, кто внутри давно.
+    """
+    main_storage = context.bot_data["storage"]
+    if main_storage.has_community_access(user_id):
+        return
+    content = context.bot_data["content"]
+    await CA.grant_access(
+        context.bot, settings, user_id,
+        content.txt("paywall_granted"),
+        content.btn("join"), content.btn("guro_id"),
+    )
 
 
 def build_guro_payments_handlers() -> list:

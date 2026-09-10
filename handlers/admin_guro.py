@@ -15,6 +15,12 @@ from handlers import admin_ui
 logger = logging.getLogger(__name__)
 
 
+def _back_to_guro_kb() -> InlineKeyboardMarkup:
+    """Возврат в раздел GURO ID, а не на главную панель: экран открыт
+    изнутри раздела, и человеку нужны остальные его пункты."""
+    return InlineKeyboardMarkup([[InlineKeyboardButton("‹ Назад", callback_data="acms_guro")]])
+
+
 def _back_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton("‹ Панель управления", callback_data="acms_home")]])
 
@@ -34,6 +40,7 @@ async def _stars_line(context: ContextTypes.DEFAULT_TYPE) -> str:
 
 def _dashboard_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⭐ Подписки", callback_data="acms_guro_subs")],
         [InlineKeyboardButton("🚩 Подозрительная активность", callback_data="acms_guro_flagged")],
         [InlineKeyboardButton("🏢 Адреса компаний на проверку", callback_data="acms_guro_addr")],
         [InlineKeyboardButton("✅ Верификация компаний", callback_data="acms_guro_companyverify")],
@@ -70,6 +77,52 @@ def _flagged_row_kb(user_id: int) -> InlineKeyboardMarkup:
         InlineKeyboardButton("❄️ Заморозить на 24ч", callback_data=f"guro_freeze:{user_id}"),
         InlineKeyboardButton("✅ Снять флаг", callback_data=f"guro_unflag:{user_id}"),
     ]])
+
+
+def _fmt_until(value: str | None) -> str:
+    """Срок в виде «до 5 окт 2026». Столетние сроки (их проставляли вручную
+    прямо в базе) показываем как есть — по ним и видно, что это не покупка."""
+    if not value:
+        return "бессрочно"
+    text = str(value)[:10]
+    months = ("янв", "фев", "мар", "апр", "мая", "июн",
+              "июл", "авг", "сен", "окт", "ноя", "дек")
+    try:
+        y, m, d = text.split("-")
+        return f"до {int(d)} {months[int(m) - 1]} {y}"
+    except (ValueError, IndexError):
+        return f"до {text}"
+
+
+async def nav_guro_subs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.callback_query.answer()
+    guro = context.bot_data["guro_storage"]
+    data = guro.list_active_subscriptions()
+    items, hidden = data["items"], data["hidden_personal_cut"]
+
+    if not items:
+        await admin_ui.edit_screen(context, "⭐ Действующих подписок нет.", _back_to_guro_kb())
+        return admin_ui.BROWSE
+
+    lines = [f"⭐ <b>Действующие подписки — {len(items)}</b>\n"]
+    for kind in ("GURO ID", "Рекрутер", "Компания"):
+        group = [i for i in items if i["kind"] == kind]
+        if not group:
+            continue
+        lines.append(f"\n<b>{kind}</b> — {len(group)}")
+        for i in group:
+            who = f"@{i['username']}" if i["username"] else (i["name"] or f"id{i['user_id']}")
+            cycle = f" · цикл {i['cycle']} дн." if i["cycle"] else ""
+            lines.append(f"• {who} — <code>{i['user_id']}</code>\n"
+                         f"   {_fmt_until(i['exp'])}{cycle}")
+
+    if hidden:
+        lines.append(
+            f"\n<i>Не показано: {hidden} — оплата ушла на личный кошелёк "
+            f"(кольцо 5:1), в бизнес-статистику такие не идут.</i>"
+        )
+    await admin_ui.edit_screen(context, "\n".join(lines), _back_to_guro_kb())
+    return admin_ui.BROWSE
 
 
 async def nav_guro_flagged(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -294,5 +347,34 @@ async def guro_limit_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(f"✅ Для {user_id}: {key} = {value}")
 
 
+async def guro_access_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/guro_access <user_id> [revoke] — пустить своего в сообщество без
+    оплаты (09.09.2026) или снять освобождение. То же, что кнопка в карточке
+    анкеты, только без захода в /admin — когда id уже под рукой."""
+    from handlers.admin_profiles import grant_access_by_admin
+
+    args = context.args or []
+    if not args or not args[0].isdigit():
+        await update.message.reply_text(
+            "Формат: /guro_access <user_id> — пустить без оплаты\n"
+            "/guro_access <user_id> revoke — снять освобождение"
+        )
+        return
+    user_id = int(args[0])
+    storage = context.bot_data["storage"]
+    if len(args) > 1 and args[1] == "revoke":
+        storage.revoke_community_access(user_id)
+        storage.log_action(update.effective_user.id, "community_access_revoke",
+                           f"user_id={user_id}: освобождение снято")
+        await update.message.reply_text(f"Освобождение снято для {user_id} — теперь по общему правилу.")
+        return
+    result = await grant_access_by_admin(context, update.effective_user.id, user_id)
+    await update.message.reply_text(f"{user_id}: {result}")
+
+
 def build_guro_limits_handlers(admin_ids) -> list:
-    return [CommandHandler("guro_limit", guro_limit_command, filters=filters.User(user_id=list(admin_ids)))]
+    admin_filter = filters.User(user_id=list(admin_ids))
+    return [
+        CommandHandler("guro_limit", guro_limit_command, filters=admin_filter),
+        CommandHandler("guro_access", guro_access_command, filters=admin_filter),
+    ]

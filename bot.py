@@ -24,6 +24,7 @@ from handlers import (
     build_guro_partnerships_handlers,
     build_guro_payments_handlers,
     build_news_handlers,
+    build_paywall_handlers,
     build_referral_group_handlers,
     build_referral_handlers,
 )
@@ -148,6 +149,12 @@ def main() -> None:
     for h in build_guro_partnerships_handlers():
         app.add_handler(h)
     for h in build_guro_payments_handlers():
+        app.add_handler(h)
+    # Платный вход в сообщество (09.09.2026): кнопки под экраном оплаты,
+    # который показывается сразу после анкеты. Вне ConversationHandler —
+    # к моменту нажатия разговор уже завершён (flow.py чистит user_data),
+    # а сообщение с кнопками должно работать и через неделю.
+    for h in build_paywall_handlers():
         app.add_handler(h)
     app.add_error_handler(on_error)
 

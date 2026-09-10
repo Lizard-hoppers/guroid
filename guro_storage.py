@@ -325,6 +325,13 @@ class GuroStorage:
         # подписка оплачена на личный кошелёк владельца (кольцо 5:1 между
         # двумя токенами CryptoBot), исключена из dashboard_stats().
         self._ensure_column("guro_users", "subscription_personal_cut", "INTEGER DEFAULT 0")
+        # Платный вход в сообщество (09.09.2026, guro_paywall_job.py). Тут
+        # лежит НЕ «напомнили/выселили», а САМ срок, о котором это уже
+        # сделано: после продления срок уезжает вперёд, значения перестают
+        # совпадать, и следующий цикл обслуживается сам собой — без сброса
+        # флагов в момент оплаты.
+        self._ensure_column("guro_users", "paywall_reminder_for", "TEXT")
+        self._ensure_column("guro_users", "paywall_kicked_for", "TEXT")
         # Фаза 2 (11.08.2026) — офер/суммы/отзыв в форме подтверждения
         # партнёрства (см. PDF-фидбек владельца). amount_visible=0 по
         # умолчанию (суммы приватны, owner решает при создании — opt-in,
@@ -503,6 +510,26 @@ class GuroStorage:
         return GL.format_db_datetime(GuroStorage._now())
 
     # --- profiles (только чтение, таблица чужая) ------------------------
+
+    def update_profile_field(self, user_id: int, field: str, value: str | None) -> None:
+        """Правка одного поля анкеты из Mini App (09.09.2026).
+
+        Пишем в ПОСЛЕДНЮЮ анкету пользователя: у части людей их несколько
+        (регистрация проходилась повторно), а всё приложение читает именно
+        последнюю — см. get_profile с ORDER BY id DESC. Правка любой другой
+        строки просто не отобразилась бы.
+
+        Имя поля проверяет вызывающий код: сюда оно подставляется в SQL.
+        """
+        row = self._conn.execute(
+            "SELECT id FROM profiles WHERE user_id=? ORDER BY id DESC LIMIT 1", (user_id,)
+        ).fetchone()
+        if row is None:
+            raise ValueError("NO_PROFILE")
+        self._conn.execute(
+            f"UPDATE profiles SET {field}=? WHERE id=?", (value, row["id"]),
+        )
+        self._conn.commit()
 
     def get_profile(self, user_id: int) -> sqlite3.Row | None:
         return self._conn.execute(
@@ -1376,13 +1403,17 @@ class GuroStorage:
             (GC.PARTNERSHIP_STATUS_CONFIRMED, user_id, user_id),
         ).fetchall()
 
-    def _last_request_between(self, user_a: int, user_b: int) -> datetime | None:
+    def _requests_between_since(self, user_a: int, user_b: int, since: datetime) -> int:
+        """Сколько заявок между этой парой заведено начиная с since (в любую
+        сторону). Раньше бралось время ПОСЛЕДНЕЙ заявки — но по нему можно
+        построить только паузу между заявками, а нужен потолок за сутки."""
         row = self._conn.execute(
-            "SELECT MAX(created_at) AS latest FROM partnerships WHERE "
-            "(initiator_id=? AND confirmer_id=?) OR (initiator_id=? AND confirmer_id=?)",
-            (user_a, user_b, user_b, user_a),
+            "SELECT COUNT(*) AS n FROM partnerships WHERE "
+            "((initiator_id=? AND confirmer_id=?) OR (initiator_id=? AND confirmer_id=?)) "
+            "AND created_at >= ?",
+            (user_a, user_b, user_b, user_a, GL.format_db_datetime(since)),
         ).fetchone()
-        return GL.parse_db_datetime(row["latest"]) if row else None
+        return row["n"] if row else 0
 
     def create_partnership(
         self, initiator_id: int, confirmer_id: int, vertical: str | None, geo: str | None,
@@ -1420,7 +1451,8 @@ class GuroStorage:
             raise ValueError("NO_CONFIRMER_PROFILE")
 
         now = self._now()
-        if GL.rate_limited(self._last_request_between(initiator_id, confirmer_id), now):
+        window_start = now - timedelta(hours=GC.RATE_LIMIT_HOURS)
+        if GL.rate_limited(self._requests_between_since(initiator_id, confirmer_id, window_start)):
             raise ValueError("RATE_LIMITED")
 
         cur = self._conn.execute(
@@ -1445,6 +1477,103 @@ class GuroStorage:
             "SELECT * FROM partnerships WHERE tx_hash = ? AND status <> ? LIMIT 1",
             (tx_hash, GC.PARTNERSHIP_STATUS_DECLINED),
         ).fetchone()
+
+    def list_paywall_expiring(self, days_before: int) -> list[dict]:
+        """Кому пора напомнить об окончании подписки (09.09.2026).
+
+        Берём тех, у кого срок истекает в ближайшие days_before суток и о
+        ЭТОМ сроке ещё не напоминали. Освобождённые от платного входа
+        исключены: их пребывание в группе от подписки не зависит, и
+        напоминание «иначе выселим» было бы неправдой.
+        """
+        now = self._now()
+        return [dict(r) for r in self._conn.execute(
+            "SELECT g.user_id, g.subscription_expires_at AS exp "
+            "FROM guro_users g "
+            "WHERE g.subscription_status = ? "
+            "AND g.subscription_expires_at > ? AND g.subscription_expires_at <= ? "
+            "AND (g.paywall_reminder_for IS NULL OR g.paywall_reminder_for != g.subscription_expires_at) "
+            "AND NOT EXISTS (SELECT 1 FROM profiles p "
+            "                WHERE p.user_id = g.user_id AND p.community_access_granted = 1)",
+            (GC.SUBSCRIPTION_ACTIVE, GL.format_db_datetime(now),
+             GL.format_db_datetime(now + timedelta(days=days_before))),
+        ).fetchall()]
+
+    def mark_paywall_reminded(self, user_id: int, expires_at: str) -> None:
+        self._conn.execute(
+            "UPDATE guro_users SET paywall_reminder_for=? WHERE user_id=?", (expires_at, user_id),
+        )
+        self._conn.commit()
+
+    def list_paywall_expired(self) -> list[dict]:
+        """Кого пора выселить из группы (09.09.2026).
+
+        Только те, у кого подписка КОГДА-ТО была и уже кончилась. Люди,
+        нажавшие «Оплачу позже» и не заплатившие ни разу, сюда не попадают
+        намеренно: ссылки в группу они не получали, выселять их неоткуда.
+        """
+        return [dict(r) for r in self._conn.execute(
+            "SELECT g.user_id, g.subscription_expires_at AS exp "
+            "FROM guro_users g "
+            "WHERE g.subscription_expires_at IS NOT NULL "
+            "AND g.subscription_expires_at <= ? "
+            "AND (g.paywall_kicked_for IS NULL OR g.paywall_kicked_for != g.subscription_expires_at) "
+            "AND NOT EXISTS (SELECT 1 FROM profiles p "
+            "                WHERE p.user_id = g.user_id AND p.community_access_granted = 1)",
+            (self._now_str(),),
+        ).fetchall()]
+
+    def mark_paywall_kicked(self, user_id: int, expires_at: str) -> None:
+        self._conn.execute(
+            "UPDATE guro_users SET paywall_kicked_for=? WHERE user_id=?", (expires_at, user_id),
+        )
+        self._conn.commit()
+
+    def list_active_subscriptions(self) -> dict:
+        """Все действующие подписки для админки (09.09.2026).
+
+        Три вида лежат в разных таблицах, и у одного человека их может быть
+        несколько сразу — поэтому возвращаем список ПОДПИСОК, а не людей.
+
+        Оплаченные на личный кошелёк владельца (subscription_personal_cut=1,
+        кольцо 5:1 у крипто-счетов) в список не попадают: то же правило, что
+        и у dashboard_stats. Их количество отдаём отдельно — прятать совсем
+        хуже, чем показать числом.
+        """
+        now = self._now_str()
+        items = []
+
+        rows = self._conn.execute(
+            "SELECT g.user_id, p.username, p.name, g.subscription_expires_at AS exp, "
+            "g.subscription_cycle_days AS cycle "
+            "FROM guro_users g LEFT JOIN profiles p ON p.user_id = g.user_id "
+            "WHERE g.subscription_status = ? AND g.subscription_expires_at > ? "
+            "AND g.subscription_personal_cut != 1 "
+            "GROUP BY g.user_id ORDER BY g.subscription_expires_at",
+            (GC.SUBSCRIPTION_ACTIVE, now),
+        ).fetchall()
+        items += [dict(r, kind="GURO ID") for r in rows]
+
+        hidden = self._conn.execute(
+            "SELECT COUNT(*) FROM guro_users WHERE subscription_status = ? "
+            "AND subscription_expires_at > ? AND subscription_personal_cut = 1",
+            (GC.SUBSCRIPTION_ACTIVE, now),
+        ).fetchone()[0]
+
+        for table, kind in (
+            ("guro_recruiter_profiles", "Рекрутер"),
+            ("guro_company_profiles", "Компания"),
+        ):
+            rows = self._conn.execute(
+                f"SELECT t.user_id, p.username, p.name, t.subscription_expires_at AS exp, "
+                f"NULL AS cycle FROM {table} t LEFT JOIN profiles p ON p.user_id = t.user_id "
+                f"WHERE t.subscription_status = ? AND t.subscription_expires_at > ? "
+                f"GROUP BY t.user_id ORDER BY t.subscription_expires_at",
+                (GC.SUBSCRIPTION_ACTIVE, now),
+            ).fetchall()
+            items += [dict(r, kind=kind) for r in rows]
+
+        return {"items": items, "hidden_personal_cut": hidden}
 
     def turnover_stats(self, user_id: int) -> dict:
         """Счётчики оборота (ТЗ «Верификация транзакций», разделы 7-8).

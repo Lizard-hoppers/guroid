@@ -519,7 +519,7 @@ function VacancyForm({ editingId, initial, authorWorkspace, canRecruiter, canCom
             </>
           )}
 
-          <button className="btn" type="submit" disabled={state.loading} style={{ marginTop: 14 }}>
+          <button className="btn" type="submit" disabled={state.loading} style={{ marginTop: 16 }}>
             {state.loading
               ? t("vacancies.form.submitting")
               : editingId
@@ -851,7 +851,7 @@ function VacancyDetail({ id, onBack, onOpenMessages, onManage, onOpenResponses, 
           {[v.location, v.work_format && t(`vacancies.workFormat.${v.work_format}`), v.employment_type && t(`vacancies.employment.${v.employment_type}`)]
             .filter(Boolean).join(" · ")}
         </div>
-        {salaryText && <div className="partner-meta" style={{ marginTop: 6 }}>{salaryText}</div>}
+        {salaryText && <div className="partner-meta" style={{ marginTop: 8 }}>{salaryText}</div>}
         <div className="partner-meta" style={{ marginTop: 8 }}>
           {[v.company || v.poster_name, v.verified_company && t("vacancies.verifiedCompany")].filter(Boolean).join(" · ")}
           {/* Было «★ 1.7» — звезда выдавала рабочий рейтинг (шкала 0-100)
@@ -867,7 +867,7 @@ function VacancyDetail({ id, onBack, onOpenMessages, onManage, onOpenResponses, 
           </button>
         )}
         {v.description && descOpen && (
-          <div className="partner-meta" style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>{v.description}</div>
+          <div className="partner-meta" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>{v.description}</div>
         )}
 
         {v.is_owner ? (
@@ -880,7 +880,7 @@ function VacancyDetail({ id, onBack, onOpenMessages, onManage, onOpenResponses, 
                 quick-actions" (MyVacancies, VacancyResponses, AllResponses,
                 RecruiterResponsesSubscreen, оба ряда TeamScreen), где везде
                 10px; выровнено под общий паттерн. */}
-            <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
+            <div className="recruiter-quick-actions" style={{ marginTop: 12 }}>
               <button type="button" className="btn secondary" onClick={() => onManage("edit", v)}>
                 {t("vacancies.manage.edit")}
               </button>
@@ -992,7 +992,7 @@ function MyVacancies({ vacancies, loading, error, onOpen, onPreview, onManage, o
               </span>
             </span>
           </div>
-          <div className="recruiter-quick-actions" style={{ marginTop: 10, flexWrap: "wrap" }}>
+          <div className="recruiter-quick-actions" style={{ marginTop: 12, flexWrap: "wrap" }}>
             {/* Открывает ту же карточку, что видит кандидат, а не отдельный
                 предпросмотр: своя копия разойдётся с оригиналом при первом
                 же изменении вёрстки (стр. 1-2 отчёта). */}
@@ -1156,13 +1156,13 @@ function VacancyResponses({ vacancyId, onBack, onOpenMessages, onOpenHireConfirm
               )}
             </div>
             {r.candidate_vertical && <div className="partner-meta" style={{ marginTop: 4 }}>{r.candidate_vertical}</div>}
-            {r.message && <div className="partner-meta" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{r.message}</div>}
-            <select value={r.status} onChange={(e) => setStatus(r.id, e.target.value)} style={{ marginTop: 10 }}>
+            {r.message && <div className="partner-meta" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{r.message}</div>}
+            <select value={r.status} onChange={(e) => setStatus(r.id, e.target.value)} style={{ marginTop: 12 }}>
               {RESPONSE_STATUSES.map((s) => (
                 <option key={s} value={s}>{t(`vacancies.responses.status.${s}`)}</option>
               ))}
             </select>
-            <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
+            <div className="recruiter-quick-actions" style={{ marginTop: 12 }}>
               {r.candidate_username && (
                 <button type="button" className="btn secondary" onClick={() => onOpenMessages(r.candidate_id)}>
                   {t("vacancies.writeBtn")}
@@ -1297,13 +1297,13 @@ function AllResponses({ onBack, onOpenMessages, onOpenHireConfirm }) {
               {r.candidate_name || (r.candidate_username ? `@${r.candidate_username}` : t("common.noName"))}
               {r.candidate_vertical ? ` · ${r.candidate_vertical}` : ""}
             </div>
-            {r.message && <div className="partner-meta" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{r.message}</div>}
-            <select value={r.status} onChange={(e) => setStatus(r.id, e.target.value)} style={{ marginTop: 10 }}>
+            {r.message && <div className="partner-meta" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{r.message}</div>}
+            <select value={r.status} onChange={(e) => setStatus(r.id, e.target.value)} style={{ marginTop: 12 }}>
               {RESPONSE_STATUSES.map((s) => (
                 <option key={s} value={s}>{t(`vacancies.responses.status.${s}`)}</option>
               ))}
             </select>
-            <div className="recruiter-quick-actions" style={{ marginTop: 10 }}>
+            <div className="recruiter-quick-actions" style={{ marginTop: 12 }}>
               {r.candidate_username && (
                 <button type="button" className="btn secondary" onClick={() => onOpenMessages(r.candidate_id)}>
                   {t("vacancies.writeBtn")}
@@ -1549,7 +1549,7 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
           <h3>{t("vacancies.title")}</h3>
           <WorkspaceCabinetBadge workspace={workspace} />
         </div>
-        <div className="partner-meta" style={{ marginBottom: 10 }}>{t("vacancies.hint")}</div>
+        <div className="partner-meta" style={{ marginBottom: 12 }}>{t("vacancies.hint")}</div>
 
         {/* Верхняя навигация плитками 2×2 (27.08.2026, ТЗ "экраны по ТЗ от
             23.08", "Вакансии") — вместо старого 2-таб переключателя.
@@ -1610,7 +1610,11 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
         </div>
         )}
         {!canPublish && !caps.loading && (
-          <div className="partner-meta" style={{ marginTop: 10 }}>{t("vacancies.upsellText")}</div>
+          <div className="partner-meta" style={{ marginTop: 12, marginBottom: 12 }}>
+            {/* Отступ снизу такой же, как сверху: без него абзац
+                слипался с кнопками под ним. */}
+            {t("vacancies.upsellText")}
+          </div>
         )}
 
         {tab === "board" && (
@@ -1667,7 +1671,7 @@ export function VacanciesScreen({ onNavigate, onOpenMessages, onOpenHireConfirm,
               onChange={(e) => setQ(e.target.value)}
               style={{ marginTop: 8 }}
             />
-            <label className="checkbox-row" style={{ marginTop: 10 }}>
+            <label className="checkbox-row" style={{ marginTop: 12 }}>
               <input
                 type="checkbox"
                 checked={bookmarkedOnly}

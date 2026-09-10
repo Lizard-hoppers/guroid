@@ -356,7 +356,7 @@ function RateWidget({ partnershipId, onRated, onCancel }) {
         </button>
       </div>
       {onCancel && (
-        <button type="button" className="onboarding-more-link" onClick={onCancel} style={{ marginTop: 6 }}>
+        <button type="button" className="onboarding-more-link" onClick={onCancel} style={{ marginTop: 8 }}>
           <span className="link-underline">{t("common.cancel")}</span>
         </button>
       )}

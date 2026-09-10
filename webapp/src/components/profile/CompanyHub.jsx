@@ -173,7 +173,7 @@ function CompanyTypesField({ value, otherValue, onSaved }) {
           </button>
         ))}
       </div>
-      <label style={{ marginTop: 10 }}>{t("company.types.otherLabel")}</label>
+      <label style={{ marginTop: 12 }}>{t("company.types.otherLabel")}</label>
       <input
         type="text"
         placeholder={t("company.types.otherPlaceholder")}
@@ -221,7 +221,7 @@ function VerificationCard({ verified, requestedAt }) {
           {(requestedAt || sent) && (
             <div className="company-verify-status is-pending">{t("company.verify.pending")}</div>
           )}
-          <button type="button" className="btn secondary" style={{ marginTop: 10 }} onClick={submit} disabled={busy}>
+          <button type="button" className="btn secondary" style={{ marginTop: 12 }} onClick={submit} disabled={busy}>
             {t("company.verify.submitBtn")}
           </button>
         </>
@@ -424,7 +424,7 @@ function CreateCompanyCard({ onCreated }) {
         {/* Пока найдена одноимённая компания, создание уступает место
             присоединению (ТЗ 3.0.1): платить за свой тариф незачем. */}
         {matches.length === 0 && (
-          <button className="btn" type="submit" disabled={busy || !name.trim()} style={{ marginTop: 10 }}>
+          <button className="btn" type="submit" disabled={busy || !name.trim()} style={{ marginTop: 12 }}>
             {busy ? t("company.create.submitting") : t("company.create.submit")}
           </button>
         )}
@@ -458,7 +458,7 @@ function CreateCompanyCard({ onCreated }) {
               </button>
             </div>
           ))}
-          <label style={{ marginTop: 10 }}>{t("company.create.positionLabel")}</label>
+          <label style={{ marginTop: 12 }}>{t("company.create.positionLabel")}</label>
           <input
             type="text"
             placeholder={t("company.create.positionPlaceholder")}
@@ -513,7 +513,7 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
         <div className="card">
           <h3>{t("company.title")}</h3>
           <p className="partner-meta">{t("company.upsellText")}</p>
-          <div className="vertical-chips" style={{ marginTop: 10 }}>
+          <div className="vertical-chips" style={{ marginTop: 12 }}>
             <button
               type="button"
               className={`vertical-chip${tierChoice === "basic" ? " is-selected" : ""}`}
@@ -601,7 +601,7 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
         <span className="role-badge">{t(`company.tier.${data.company_tier || "basic"}`)}</span>
         {/* Роль в компании (27.08.2026, ТЗ "Роли и управление командой") —
             Владелец/Админ, НЕ должность по жизни (та отдельным текстом). */}
-        <span className="role-badge" style={{ marginLeft: 6 }}>{t(`team.role.${data.my_role}`)}</span>
+        <span className="role-badge" style={{ marginLeft: 8 }}>{t(`team.role.${data.my_role}`)}</span>
         {data.my_position && <div className="partner-meta" style={{ marginTop: 4 }}>{data.my_position}</div>}
         {data.vertical && <div className="company-vertical-big">{data.vertical}</div>}
         {(types.length > 0 || data.company_type_other) && (

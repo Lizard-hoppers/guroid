@@ -1218,6 +1218,62 @@ label {
 
 /* --- Карточка "активации" кабинета (11.09.2026) --- */
 
+.activation-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.activation-title-row h3 {
+  margin: 0;
+}
+
+/* Зона нажатия 44x44 без увеличения самой иконки (раздел 4, "жёсткие
+   правила") — отрицательный margin компенсирует padding, кнопка не
+   раздвигает соседние элементы. */
+.activation-info-btn {
+  background: none;
+  border: none;
+  padding: 12px;
+  margin: -12px;
+  color: var(--gold);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Бабл-выноска пояснения (11.09.2026, макет "design (3)", пункт 9) —
+   раскрывается по тапу на .activation-info-btn, в потоке документа под
+   заголовком (на узком экране сбоку места нет, в отличие от макета). */
+.activation-bubble {
+  position: relative;
+  margin-top: 12px;
+  padding: 16px;
+  background: var(--tile);
+  border: 1px solid var(--gold);
+  border-radius: var(--r-tile);
+  color: var(--text-dim);
+  font-size: var(--fs-body);
+  line-height: 21px;
+}
+
+/* Хвостик-указатель на "i" — тот же приём, что у #border-frame: квадрат,
+   повёрнутый на 45°, с той же заливкой и рамкой, что у самого бабла. */
+.activation-bubble::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  left: 20px;
+  width: 12px;
+  height: 12px;
+  background: var(--tile);
+  border-left: 1px solid var(--gold);
+  border-top: 1px solid var(--gold);
+  transform: rotate(45deg);
+}
+
 .activation-now-avatar {
   background: var(--tile);
   color: var(--text-dim);

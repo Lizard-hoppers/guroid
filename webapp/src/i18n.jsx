@@ -163,6 +163,7 @@ const STRINGS = {
   // Счётчики оборота (ТЗ «Верификация транзакций», разделы 7-8, 12).
   "activation.nowLabel": { ru: "СЕЙЧАС", en: "NOW" },
   "activation.exampleLabel": { ru: "ПОСЛЕ АКТИВАЦИИ · ПРИМЕР", en: "AFTER ACTIVATION · EXAMPLE" },
+  "activation.infoAria": { ru: "Пояснение", en: "Explanation" },
 
   "activationPersonal.title": { ru: "Ваш личный рейтинг", en: "Your personal rating" },
   "activationPersonal.nowName": { ru: "Имя не указано", en: "Name not set" },

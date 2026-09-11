@@ -205,3 +205,16 @@ export function IconBuilding(props) {
     </Svg>
   );
 }
+
+// "i" в кружке — раскрывает пояснение по тапу (11.09.2026, карточка
+// "активации" кабинета). Точка через нулевой отрезок с round linecap —
+// тот же приём, что у точки восклицательного знака в IconWarning.
+export function IconInfo(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5" />
+      <path d="M12 7.5h.01" />
+    </Svg>
+  );
+}

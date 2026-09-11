@@ -4,7 +4,7 @@ import { formatDate } from "../utils.js";
 import { ApiError, deleteRating, ratePartnership, setProfileField, setWorkStatus } from "../api.js";
 import { haptic } from "../telegram.js";
 import { useLang } from "../i18n.jsx";
-import { IconCheck, IconCross, IconLock, IconWarning } from "./Icons.jsx";
+import { IconCheck, IconCross, IconInfo, IconLock, IconWarning } from "./Icons.jsx";
 
 // Статус трудоустройства (10.08.2026) — публичный маркер вроде "Open to
 // Work" в LinkedIn, виден ВСЕМ бесплатно (даже без подписки), не тумблер
@@ -711,9 +711,26 @@ export function ActivationPreview({
   ctaLabel, onActivate,
 }) {
   const { t } = useLang();
+  // 11.09.2026, макет "GURO ID mobile app design (3)", пункт 9: короткий
+  // заголовок + бабл-пояснение по тапу на "i" вместо постоянного абзаца в
+  // карточке. На узком экране бабл раскрывается ПОД заголовком (в потоке),
+  // а не сбоку, как на широком холсте презентации — там сбоку просто было
+  // место, а не отдельное требование к геометрии.
+  const [aboutOpen, setAboutOpen] = useState(false);
   return (
     <div className="card activation-preview">
-      <h3>{title}</h3>
+      <div className="activation-title-row">
+        <h3>{title}</h3>
+        <button
+          type="button"
+          className="activation-info-btn"
+          aria-label={t("activation.infoAria")}
+          onClick={() => setAboutOpen((v) => !v)}
+        >
+          <IconInfo size={20} />
+        </button>
+      </div>
+      {aboutOpen && <div className="activation-bubble">{aboutText}</div>}
 
       <div className="section-eyebrow" style={{ marginTop: 12 }}>{t("activation.nowLabel")}</div>
       <div className="profile-header-card activation-now">
@@ -724,8 +741,6 @@ export function ActivationPreview({
         </div>
         {nowBadge != null && <div className="rating-preview-circle activation-badge-dim">{nowBadge}</div>}
       </div>
-
-      <p className="partner-meta" style={{ marginTop: 12 }}>{aboutText}</p>
 
       <div className="section-eyebrow" style={{ marginTop: 16 }}>{t("activation.exampleLabel")}</div>
       <div className="profile-header-card">

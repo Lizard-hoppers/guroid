@@ -543,7 +543,15 @@ export function PartnerRow({ partner, allowRating = false }) {
   const [myRating, setMyRating] = useState(partner.my_rating);
   const [editingRating, setEditingRating] = useState(false);
   const [deletingRating, setDeletingRating] = useState(false);
-  const displayName = partner.name || (partner.username ? `@${partner.username}` : t("common.noName"));
+  // "Анонимная сделка" (11.09.2026): identity_visible===false значит ЭТОТ
+  // смотрящий — третье лицо, бэкенд уже обнулил user_id/username/name
+  // (guro_id_api._scrub_anonymous_partners). Отдельная метка "Аноним", а
+  // не общий t("common.noName") — тот про "имя не заполнено", это про
+  // "имя нарочно скрыто", разные ситуации для читающего.
+  const isAnonymous = partner.identity_visible === false;
+  const displayName = isAnonymous
+    ? t("partner.anonymous")
+    : partner.name || (partner.username ? `@${partner.username}` : t("common.noName"));
 
   // Удаление своей оценки (25.08.2026, фидбек владельца "Правки.pdf":
   // "удалить может тот, кто отзыв оставил") — сразу пересчитывает рейтинг
@@ -572,7 +580,10 @@ export function PartnerRow({ partner, allowRating = false }) {
   // списка), поэтому "инициатор == partner.user_id" однозначно говорит,
   // что слова принадлежат ИМЕННО ЕМУ, а не владельцу списка, независимо от
   // того, чей это список (свой — allowRating=true, или чужой через поиск).
-  const partnerInitiated = partner.initiator_id === partner.user_id;
+  // user_id обнулён у анонимных записей — сравнение с initiator_id
+  // всегда даст false, что здесь и нужно: атрибуцию "чьи это слова" по
+  // анонимной личности не построить, откатываемся на общую формулировку.
+  const partnerInitiated = !isAnonymous && partner.initiator_id === partner.user_id;
   const wordsLabel = partnerInitiated
     ? t("partner.wordsOf", { name: displayName })
     : (allowRating ? t("partner.wordsYours") : t("partner.wordsInitiator"));
@@ -833,7 +844,7 @@ export function PartnersList({ partners, emptyHint, allowRating = false }) {
     <div>
       {partners.map((p, i) => (
         <motion.div
-          key={`${p.user_id}-${p.confirmed_at}`}
+          key={p.id}
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: Math.min(i, 8) * 0.04, duration: 0.25 }}

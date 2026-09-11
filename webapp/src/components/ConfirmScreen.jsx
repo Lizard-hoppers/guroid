@@ -127,6 +127,10 @@ const EMPTY_FORM = {
   amountReceived: "",
   amountPaid: "",
   amountVisible: false,
+  // "Анонимная сделка/найм" (11.09.2026) — по умолчанию ВЫКЛЮЧЕНА
+  // (подтверждено владельцем): история партнёрств остаётся содержательной
+  // для тех, кому анонимность не нужна, включают её сами.
+  anonymous: false,
   // Безоплатное партнёрство (ТЗ раздел 9.1): факт сотрудничества был,
   // прямого платежа между сторонами — нет. Доступно для ОБОИХ типов.
   noPayment: false,
@@ -266,6 +270,19 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
         <div className="confirm-step-label">{t("confirm.stepLabel")}</div>
         {asCompany && <div className="company-verify-status is-verified">{t("confirm.asCompanyHint")}</div>}
         <div className="privacy-hint">{t("confirm.hint")}</div>
+        {/* В самом верху экрана (11.09.2026, просьба владельца) — решение
+            "видно/анонимно" человек принимает ДО того, как начнёт вводить
+            детали, а не в середине формы: включение сразу скрывает
+            вертикаль/гео/видимость суммы ниже. */}
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={form.anonymous}
+            onChange={(e) => set("anonymous", e.target.checked)}
+          />
+          {t("confirm.anonymousLabel")}
+        </label>
+        <div className="privacy-hint">{t("confirm.anonymousHint")}</div>
         <form onSubmit={onSubmit}>
         <label>{t("confirm.usernameLabel")} *</label>
         <input
@@ -296,24 +313,30 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
             <p className="partner-meta">{t("confirm.ptypeHint")}</p>
           </>
         )}
-        <label>{t("confirm.verticalLabel")} *</label>
+        {/* Вертикаль/гео описывают сделку для ПОСТОРОННИХ, листающих
+            профиль, — анонимной сделке их заполнять незачем. */}
+        {!form.anonymous && (
+          <>
+            <label>{t("confirm.verticalLabel")} *</label>
+            <input
+              type="text"
+              placeholder={t("confirm.verticalLabel")}
+              value={form.vertical}
+              onChange={(e) => set("vertical", e.target.value)}
+            />
+            <label>{t("confirm.geoLabel")}</label>
+            <input
+              type="text"
+              placeholder={t("confirm.geoPlaceholder")}
+              value={form.geo}
+              onChange={(e) => set("geo", e.target.value)}
+            />
+          </>
+        )}
+        <label>{t(form.anonymous ? "confirm.commentLabel" : "confirm.offerLabel")}{form.anonymous ? "" : " *"}</label>
         <input
           type="text"
-          placeholder={t("confirm.verticalLabel")}
-          value={form.vertical}
-          onChange={(e) => set("vertical", e.target.value)}
-        />
-        <label>{t("confirm.geoLabel")}</label>
-        <input
-          type="text"
-          placeholder={t("confirm.geoPlaceholder")}
-          value={form.geo}
-          onChange={(e) => set("geo", e.target.value)}
-        />
-        <label>{t("confirm.offerLabel")} *</label>
-        <input
-          type="text"
-          placeholder={t("confirm.offerPlaceholder")}
+          placeholder={t(form.anonymous ? "confirm.commentPlaceholder" : "confirm.offerPlaceholder")}
           value={form.offer}
           onChange={(e) => set("offer", e.target.value)}
         />
@@ -351,14 +374,18 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
         <div className="privacy-hint" style={{ marginTop: 8 }}>
           {t("confirm.amountRequiredHint")}
         </div>
-        <label className="checkbox-row">
-          <input
-            type="checkbox"
-            checked={form.amountVisible}
-            onChange={(e) => set("amountVisible", e.target.checked)}
-          />
-          {t("confirm.amountVisible")}
-        </label>
+        {/* Бессмысленна в анонимном режиме — сделку целиком не видят
+            третьи лица, отдельно скрывать сумму не от кого. */}
+        {!form.anonymous && (
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={form.amountVisible}
+              onChange={(e) => set("amountVisible", e.target.checked)}
+            />
+            {t("confirm.amountVisible")}
+          </label>
+        )}
         <label>{t("confirm.txHashLabel")} *</label>
         <input
           type="text"
@@ -407,8 +434,11 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
             // Тип партнёрства не проверяем — у него есть значение по
             // умолчанию и пустым он не бывает.
             !form.confirmerUsername.trim() ||
-            !form.vertical.trim() ||
-            !form.offer.trim() ||
+            // Вертикаль/офер обязательны, только пока сделка НЕ анонимна —
+            // в анонимном режиме это поле необязательный комментарий, а
+            // вертикаль вообще не показывается.
+            (!form.anonymous && !form.vertical.trim()) ||
+            (!form.anonymous && !form.offer.trim()) ||
             // Сумма односторонняя: хватает любого одного из двух полей.
             // У безоплатного партнёрства денег нет вовсе — проверку суммы
             // и хеша выключаем целиком (ТЗ раздел 9.1).

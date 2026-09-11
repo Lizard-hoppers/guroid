@@ -3540,6 +3540,59 @@ async def _run_guro_id_api_sim():
                 check(partner2["tx_hash"] is None,
                       "хэш транзакции тоже скрыт без amount_visible, несмотря на то что был указан")
 
+                # --- «Анонимная сделка/найм» (11.09.2026) ----------------------
+                st.save_profile({"user_id": 550, "username": "anonmaker", "name": "Anon Maker"})
+                st.save_profile({"user_id": 560, "username": "anonpartner", "name": "Anon Partner"})
+                app["storage"].activate_subscription(550, 30)
+                app["storage"].activate_subscription(560, 30)
+                auth_550 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 550, "username": "anonmaker"})}
+
+                resp = await client.post("/api/partnerships", headers=auth_550, json={
+                    "confirmer_username": "anonpartner", "offer": "Заметка для себя",
+                    "amount_received": "300", "tx_hash": "0xanon111", "ptype": "deal",
+                    "tx_network": "ethereum", "anonymous": True,
+                })
+                check(resp.status == 200, "анонимная сделка создаётся так же, как обычная -> 200")
+                anon_id = (await resp.json())["id"]
+                app["storage"].respond_partnership(anon_id, responder_id=560, accept=True)
+
+                # третье лицо (auth_200, обычный подписанный смотрящий) —
+                # видит СТРОКУ (счётчик не расходится со списком), но не
+                # личность контрагента ни с одной из двух сторон.
+                resp = await client.get("/api/search?username=anonmaker", headers=auth_200)
+                body = await resp.json()
+                anon_seen_from_maker = next(p for p in body["partners"] if p["id"] == anon_id)
+                check(anon_seen_from_maker["name"] is None and anon_seen_from_maker["username"] is None,
+                      "третьему лицу имя/юзернейм анонимного партнёра не видны")
+                check(anon_seen_from_maker["user_id"] is None,
+                      "user_id тоже обнулён — иначе обход через /api/search?user_id=<leaked>")
+                check(anon_seen_from_maker["offer"] == "Заметка для себя",
+                      "остальные детали (офер/сумма) анонимность не трогает — это отдельная ось (amount_visible)")
+
+                resp = await client.get("/api/search?username=anonpartner", headers=auth_200)
+                body = await resp.json()
+                anon_seen_from_partner = next(p for p in body["partners"] if p["id"] == anon_id)
+                check(anon_seen_from_partner["user_id"] is None,
+                      "анонимность симметрична — со стороны confirmer'а личность initiator'а тоже скрыта")
+
+                # сами участники видят друг друга полностью на СВОЁМ /api/me
+                resp = await client.get("/api/me", headers=auth_550)
+                body = await resp.json()
+                own_view = next(p for p in body["partners"] if p["id"] == anon_id)
+                check(own_view["username"] == "anonpartner" and own_view["user_id"] == 560,
+                      "участник видит СВОЮ анонимную сделку полностью на собственном /api/me")
+
+                # привилегированный смотрящий (админ) — тоже видит личность,
+                # тот же обход, что у _apply_privacy/_apply_subscription_gate
+                auth_admin = {"Authorization": "tma " + _guro_make_init_data(
+                    token, {"id": GC.PRIVILEGED_VIEWER_IDS[0], "username": "owneracct"},
+                )}
+                resp = await client.get("/api/search?username=anonmaker", headers=auth_admin)
+                body = await resp.json()
+                admin_view = next(p for p in body["partners"] if p["id"] == anon_id)
+                check(admin_view["user_id"] == 560 and admin_view["username"] == "anonpartner",
+                      "привилегированный смотрящий видит настоящих участников даже анонимной сделки")
+
                 # --- Фаза 2: browse по вертикали (альтернатива тексту поиска) ---
                 st.save_profile({"user_id": 480, "username": "gambler1", "name": "Gambler One", "vertical": "Gambling"})
                 st.save_profile({"user_id": 481, "username": "other1", "name": "Other One", "vertical": "Other: Web3 gaming"})

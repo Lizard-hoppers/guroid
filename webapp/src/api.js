@@ -70,7 +70,7 @@ export function searchByUserId(userId, { workspace } = {}) {
 
 export function createPartnership({
   confirmerUsername, vertical, geo, offer, amountReceived, amountPaid, review, amountVisible, txHash,
-  ptype, txNetwork, asCompany, isFlaggedFraud, noPayment,
+  ptype, txNetwork, asCompany, isFlaggedFraud, noPayment, anonymous,
 }) {
   return request("/api/partnerships", {
     method: "POST",
@@ -94,6 +94,7 @@ export function createPartnership({
       // в partnerships), лимит новых заявок считается на компанию.
       as_company: !!asCompany,
       is_flagged_fraud: !!isFlaggedFraud,
+      anonymous: !!anonymous,
     }),
   });
 }

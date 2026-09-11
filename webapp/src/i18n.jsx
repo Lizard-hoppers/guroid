@@ -579,6 +579,14 @@ const STRINGS = {
   "confirm.amountReceivedPlaceholder": { ru: "Я получил, $", en: "I received, $" },
   "confirm.amountPaidPlaceholder": { ru: "Я заплатил, $", en: "I paid, $" },
   "confirm.amountVisible": { ru: "Показывать сумму чужим (по умолчанию скрыта)", en: "Show amount to others (hidden by default)" },
+  "confirm.anonymousLabel": { ru: "Анонимная сделка/найм", en: "Anonymous deal/hire" },
+  "confirm.anonymousHint": {
+    ru: "Никто, кроме вас двоих, не увидит, с кем была сделка — в чужих профилях она отображается как «Аноним». Учитывается в рейтинге и обороте как обычно.",
+    en: "No one but the two of you will see who this was with — it shows up as \u201cAnonymous\u201d on either profile. Still counts toward rating and turnover as usual.",
+  },
+  "confirm.commentLabel": { ru: "Комментарий (необязательно)", en: "Comment (optional)" },
+  "confirm.commentPlaceholder": { ru: "Заметка для себя, третьим лицам не показывается", en: "A note for yourself, not shown to others" },
+  "partner.anonymous": { ru: "Аноним", en: "Anonymous" },
   // 28.08.2026 (макет "06 · Сделки — шаг 1"): макет рисует ссылку и хэш как
   // два отдельных поля — сознательно оставлено ОДНО (см. guro_id_api.py::
   // extract_tx_hash, решение 25.08.2026 — юзер вставляет ЛЮБОЙ формат, поле

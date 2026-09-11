@@ -342,6 +342,11 @@ class GuroStorage:
         self._ensure_column("partnerships", "amount_paid", "REAL")
         self._ensure_column("partnerships", "review", "TEXT")
         self._ensure_column("partnerships", "amount_visible", "INTEGER DEFAULT 0")
+        # 11.09.2026 — «Анонимная сделка/найм»: в отличие от amount_visible,
+        # умолчание ПРОТИВОПОЛОЖНОЕ (видно по умолчанию) — владелец прямо
+        # попросил галочку выключенной, чтобы существующие сделки и те, кому
+        # анонимность не нужна, не потеряли в наглядности истории.
+        self._ensure_column("partnerships", "identity_visible", "INTEGER DEFAULT 1")
         # Хэш крипто-транзакции (16.08.2026, владелец: "подкрепить реальный
         # перевод в крипте") — та же видимость, что у суммы (amount_visible),
         # отдельного тумблера не заводили, это доказательство именно суммы.
@@ -1436,7 +1441,7 @@ class GuroStorage:
         tx_network: str | None = None, tx_verified: bool = False, tx_company_match: bool = False,
         tx_state: str = GC.TX_STATE_NONE, tx_amount: float | None = None,
         tx_verify_error: str | None = None, company_id: int | None = None,
-        is_flagged_fraud: bool = False,
+        is_flagged_fraud: bool = False, identity_visible: bool = True,
     ) -> sqlite3.Row:
         """Поднимает ValueError с понятным кодом-строкой при нарушении правил
         (see ТЗ п.4/п.8): NO_CONFIRMER_PROFILE / SELF_PARTNERSHIP / RATE_LIMITED /
@@ -1472,13 +1477,13 @@ class GuroStorage:
             "INSERT INTO partnerships (initiator_id, confirmer_id, status, vertical, geo, "
             "counts_toward_rating, created_at, offer, amount_received, amount_paid, review, "
             "amount_visible, tx_hash, ptype, tx_network, tx_verified, tx_company_match, "
-            "tx_verify_error, company_id, is_flagged_fraud, tx_state, tx_amount) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "tx_verify_error, company_id, is_flagged_fraud, tx_state, tx_amount, identity_visible) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (initiator_id, confirmer_id, GC.PARTNERSHIP_STATUS_PENDING, vertical, geo,
              0, GL.format_db_datetime(now), offer, amount_received, amount_paid,
              review, 1 if amount_visible else 0, tx_hash, ptype, tx_network,
              1 if tx_verified else 0, 1 if tx_company_match else 0, tx_verify_error, company_id,
-             1 if is_flagged_fraud else 0, tx_state, tx_amount),
+             1 if is_flagged_fraud else 0, tx_state, tx_amount, 1 if identity_visible else 0),
         )
         self._conn.commit()
         return self._conn.execute("SELECT * FROM partnerships WHERE id=?", (cur.lastrowid,)).fetchone()

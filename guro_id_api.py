@@ -160,6 +160,11 @@ def _profile_summary(storage: GuroStorage, user_id: int) -> dict | None:
             "counts_toward_rating": bool(p["counts_toward_rating"]),
             # Тип сделки (6, п.1, 25.08.2026) — Сделка/Найм, влияет на вес.
             "ptype": p["ptype"],
+            # "Анонимная сделка" (11.09.2026) — сюда попадает всегда (в т.ч.
+            # для СВОЕГО /api/me, участнику скрывать нечего), а вот у
+            # ТРЕТЬИХ лиц имя/юзернейм/user_id по этому флагу обнулит
+            # _scrub_anonymous_partners ниже (гейт применяется снаружи).
+            "identity_visible": bool(p["identity_visible"]),
             # Офер/отзыв — публичны всегда (в этом и смысл "проверить
             # репутацию контакта", решение владельца 11.08.2026); суммы —
             # только если инициатор явно включил показ при создании заявки.
@@ -489,6 +494,30 @@ async def handle_me(request: web.Request) -> web.Response:
     return web.json_response(summary)
 
 
+def _scrub_anonymous_partners(summary: dict, *, bypass: bool = False) -> dict:
+    """"Анонимная сделка/найм" (11.09.2026) — третьим лицам (не самому
+    участнику) не раскрываем, с кем была сделка: имя/юзернейм/user_id
+    обнуляются для записей с identity_visible=False. user_id обнуляется
+    ТОЖЕ, не только имя — иначе анонимность обходится подстановкой числа
+    в /api/search?user_id=<leaked> (тот же вектор, которым мы уже закрывали
+    утечку через username/name). bypass=True (GC.PRIVILEGED_VIEWER_IDS) —
+    тот же админ-обход, что у _apply_privacy/_apply_subscription_gate: для
+    разбора споров/фрода админу нужно видеть настоящих участников.
+    Вызывается ТОЛЬКО когда смотрящий — не сам участник (см. _profile_
+    response) — на собственный /api/me не влияет никогда."""
+    if bypass:
+        return summary
+    partners = summary.get("partners")
+    if not partners:
+        return summary
+    result = dict(summary)
+    result["partners"] = [
+        {**p, "user_id": None, "username": None, "name": None} if not p.get("identity_visible", True) else p
+        for p in partners
+    ]
+    return result
+
+
 def _profile_response(
     storage: GuroStorage, requester_id: int, target_profile, *, bypass_paywall: bool = False,
 ) -> dict:
@@ -509,6 +538,7 @@ def _profile_response(
     # target'а (не смотрящего!) подписка гейтит рейтинг/сделки — «рейтинг
     # сгорает без подписки», см. _apply_subscription_gate.
     summary = _apply_subscription_gate(summary, summary["is_subscribed"], bypass=privileged)
+    summary = _scrub_anonymous_partners(summary, bypass=privileged)
 
     if storage.is_subscribed(requester_id) or bypass_paywall:
         summary["locked"] = False
@@ -1204,6 +1234,10 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
     if tx_hash and not tx_network:
         tx_network = GCV.detect_network(raw_tx_input)
     is_flagged_fraud = bool(body.get("is_flagged_fraud"))
+    # "Анонимная сделка/найм" (11.09.2026) — инициатор решает в момент
+    # создания заявки, как и amount_visible; распространяется на ОБЕИХ
+    # участников симметрично (см. _scrub_anonymous_partners).
+    identity_visible = not bool(body.get("anonymous"))
     # Код отказа пишем в лог: в access-логе виден только статус, и по нему
     # причину не восстановить (05.09.2026 — пришлось вычислять её по длине
     # ответа, что ненадёжно).
@@ -1345,6 +1379,7 @@ async def handle_create_partnership(request: web.Request) -> web.Response:
             tx_state=tx_state, tx_amount=tx_amount,
             tx_company_match=tx_company_match, tx_verify_error=tx_verify_error,
             company_id=company_id, is_flagged_fraud=is_flagged_fraud,
+            identity_visible=identity_visible,
         )
     except ValueError as e:
         return _reject(str(e), 409)

@@ -5202,6 +5202,45 @@ async def _run_admin_guro_sim():
         check("Партнёрств всего" in (ctx.bot.last_text or ""), "дашборд содержит блок партнёрств")
         check("1" in (ctx.bot.last_text or ""), "дашборд отражает 1 партнёрство (свежие аккаунты — не в рейтинге, но в счётчике)")
         check("/guro_limit" in (ctx.bot.last_text or ""), "дашборд подсказывает команду /guro_limit")
+        check("USDT" not in (ctx.bot.last_text or ""),
+              "без настроенного crypto-токена строки про крипту в дашборде нет")
+
+        # --- «Получено в USDT» (11.09.2026) --------------------------------
+        import guro_crypto as GCR
+        from unittest import mock
+
+        bot_data["settings"].cryptobot_api_token = "old-token"
+        captured_token = {}
+
+        async def _fake_get_paid_total(api_token, asset):
+            captured_token["token"] = api_token
+            return 123.45
+
+        with mock.patch.object(GCR, "get_paid_total", _fake_get_paid_total):
+            state = await admin_guro.nav_guro(update, ctx)
+        check(captured_token.get("token") == "old-token",
+              "единственный настроенный токен -> он же 'бизнес' (личной доли ещё нет)")
+        check("💰 Получено в USDT (крипта): 123.45" in (ctx.bot.last_text or ""),
+              f"строка с суммой в USDT появилась в дашборде: {ctx.bot.last_text!r}")
+
+        # оба токена настроены -> считаем НОВЫЙ ("бизнес"), не старый
+        # (личная доля владельца) — тот же принцип, что у active_subscriptions
+        bot_data["settings"].cryptobot_api_token_new = "new-token"
+        with mock.patch.object(GCR, "get_paid_total", _fake_get_paid_total):
+            await admin_guro.nav_guro(update, ctx)
+        check(captured_token.get("token") == "new-token",
+              "при двух токенах в статистику идёт НОВЫЙ (бизнес), не личная доля владельца")
+
+        async def _boom_get_paid_total(api_token, asset):
+            raise GCR.CryptoBotError("boom")
+
+        with mock.patch.object(GCR, "get_paid_total", _boom_get_paid_total):
+            state = await admin_guro.nav_guro(update, ctx)
+        check(state == 0 and "USDT" not in (ctx.bot.last_text or ""),
+              "сбой CryptoBot API -> дашборд не падает, просто без строки крипты")
+
+        bot_data["settings"].cryptobot_api_token = ""
+        bot_data["settings"].cryptobot_api_token_new = ""
 
         # --- /guro_limit — оверрайд лимитов на аккаунт (ТЗ "Тарифы и
         # лимиты", раздел 3, 27.08.2026) --------------------------------

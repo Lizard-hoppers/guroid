@@ -10,6 +10,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CommandHandler, ContextTypes, filters
 
 import guro_constants as GC
+import guro_crypto as GCR
 from handlers import admin_ui
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,24 @@ async def _stars_line(context: ContextTypes.DEFAULT_TYPE) -> str:
         return f"\n⭐ Звёзд получено (последние операции): {earned}"
     except Exception:  # noqa: BLE001
         logger.debug("admin_guro: get_star_transactions failed", exc_info=True)
+        return ""
+
+
+async def _crypto_line(context: ContextTypes.DEFAULT_TYPE) -> str:
+    """Получено в крипте (11.09.2026, просьба владельца) — рядом со
+    звёздами. Считаем только "бизнес"-токен (GCR.business_token) — личная
+    доля владельца сюда не попадает, тот же принцип, что у
+    active_subscriptions в dashboard_stats(). Молча пропускаем строку,
+    если крипта не настроена вовсе — как и звёзды при сбое API."""
+    settings = context.bot_data["settings"]
+    token = GCR.business_token(settings)
+    if not token:
+        return ""
+    try:
+        earned = await GCR.get_paid_total(token, GC.CRYPTO_ASSET)
+        return f"\n💰 Получено в {GC.CRYPTO_ASSET} (крипта): {earned:.2f}"
+    except Exception:  # noqa: BLE001
+        logger.debug("admin_guro: get_paid_total failed", exc_info=True)
         return ""
 
 
@@ -64,6 +83,7 @@ async def nav_guro(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         f"Средняя репутация: {s['avg_reputation']:.1f}\n"
         f"Активных подписок: {s['active_subscriptions']}"
         f"{await _stars_line(context)}"
+        f"{await _crypto_line(context)}"
         "\n\n🔢 Тарифы и лимиты — команда /guro_limit (без аргументов — список текущих значений)."
     )
     await admin_ui.edit_screen(context, text, _dashboard_kb())

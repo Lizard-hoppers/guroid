@@ -90,6 +90,33 @@ async def create_invoice(
     return data["result"]
 
 
+def business_token(settings) -> str | None:
+    """Токен, чьи оплаты считаются "общими" — не личной долей владельца
+    (29.08.2026, кольцо 5:1 между двумя токенами CryptoBot). Пока настроен
+    только один токен, общий — он же; как только появляется второй
+    (новый/бизнес), личная доля переезжает на старый — то же правило, что
+    у is_personal_cut в guro_id_api.handle_crypto_webhook."""
+    return settings.cryptobot_api_token_new or settings.cryptobot_api_token or None
+
+
+async def get_paid_total(api_token: str, asset: str) -> float:
+    """Сумма уже оплаченных инвойсов (getInvoices, status=paid) — для
+    admin-статистики "получено в крипте", тот же принцип, что у Stars
+    через get_star_transactions: последние до 1000 операций, без
+    полноценной пагинации — на старте продукта этого достаточно."""
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            f"{API_BASE}/getInvoices",
+            headers={"Crypto-Pay-API-Token": api_token},
+            params={"status": "paid", "asset": asset, "count": 1000},
+            timeout=_TIMEOUT,
+        ) as resp:
+            data = await resp.json()
+    if not data.get("ok"):
+        raise CryptoBotError(f"getInvoices failed: {data}")
+    return sum(float(item["amount"]) for item in data["result"]["items"])
+
+
 async def get_invoice(api_token: str, invoice_id: int) -> dict | None:
     """Резервный способ проверить статус (поллингом), если вебхук почему-то
     не долетел — сейчас нигде не вызывается, оставлено на будущее/для

@@ -2219,6 +2219,53 @@ label {
   cursor: pointer;
 }
 
+/* --- First-time flow (11.09.2026): регистрация прямо в приложении --- */
+
+.anketa-progress-wrap {
+  margin-bottom: 12px;
+}
+
+.anketa-progress-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.anketa-back {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.anketa-progress-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.anketa-progress-track {
+  display: flex;
+  gap: 6px;
+}
+
+.anketa-progress-seg {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: #ffffff14;
+}
+
+.anketa-progress-seg.is-done {
+  background: linear-gradient(90deg, var(--gold), #0fd5f0);
+}
+
+
 /* Подчёркивание навешивается ИМЕННО на текстовый span, а не на всю кнопку
    (14.08.2026, второй заход по фидбеку владельца) — первая попытка была
    text-decoration:underline на .onboarding-more-link целиком + отдельный

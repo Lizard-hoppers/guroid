@@ -43,6 +43,16 @@ export function getMe({ workspace } = {}) {
   return request(`/api/me${workspace ? `?workspace=${workspace}` : ""}`);
 }
 
+// Регистрация прямо в приложении (11.09.2026, «First-time flow») —
+// альтернатива боту для тех, кто открыл Mini App без анкеты. Пишет в ту же
+// таблицу profiles, что и бот, см. guro_id_api.handle_register.
+export function registerProfile({ name, vertical, grade, profession, lang }) {
+  return request("/api/register", {
+    method: "POST",
+    body: JSON.stringify({ name, vertical, grade, profession, lang }),
+  });
+}
+
 // Универсальный поиск (10.08.2026): одно поле q= — бэкенд сам решает,
 // точный это юзернейм (mode=profile) или описание (mode=list,
 // платный directory-поиск), см. handle_search в guro_id_api.py. top=true

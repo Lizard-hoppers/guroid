@@ -2902,7 +2902,10 @@ async def _run_guro_id_api_sim():
         async def send_message(self, *a, **kw):
             return None
 
+        invoice_calls: list = []
+
         async def create_invoice_link(self, **kw):
+            _FakeTGBot.invoice_calls.append(kw)
             return "https://t.me/fake_invoice_link"
 
         async def get_chat_member(self, chat_id, user_id):
@@ -4817,6 +4820,83 @@ async def _run_guro_id_api_sim():
 
                 resp = await client.get("/api/messages/with/999999", headers=auth_100)
                 check(resp.status == 404, "GET /api/messages/with/<id> для юзера без анкеты -> 404")
+
+                # --- регистрация прямо в приложении (11.09.2026) --------------
+                auth_700 = {"Authorization": "tma " + _guro_make_init_data(token, {"id": 700, "username": "newbie"})}
+
+                resp = await client.post("/api/register", headers=auth_700, json={
+                    "name": "Юлия Черных", "vertical": "Gambling", "grade": "Senior",
+                    "profession": "не та должность",
+                })
+                check(resp.status == 400, "/api/register: профессия не из справочника этого грейда -> 400")
+                body = await resp.json()
+                check(body["error"] == "INVALID_PROFESSION", f"код ошибки: {body}")
+
+                real_profession = C.professions_for("Gambling", "Senior")[0][1]
+                resp = await client.post("/api/register", headers=auth_700, json={
+                    "name": "Юлия Черных", "vertical": "Gambling", "grade": "Senior",
+                    "profession": real_profession,
+                })
+                check(resp.status == 200, f"/api/register с валидными полями -> 200, получено {resp.status}")
+
+                resp = await client.get("/api/me", headers=auth_700)
+                check(resp.status == 200, "после регистрации /api/me -> 200 (профиль появился)")
+                body = await resp.json()
+                check(body["name"] == "Юлия Черных" and body["vertical"] == "Gambling",
+                      "/api/me отражает только что созданную анкету")
+
+                resp = await client.post("/api/register", headers=auth_700, json={
+                    "name": "Ещё раз", "vertical": "Betting", "grade": "Junior / Entry",
+                    "profession": C.professions_for("Betting", "Junior / Entry")[0][1],
+                })
+                check(resp.status == 409, "повторная регистрация того же user_id -> 409")
+                body = await resp.json()
+                check(body["error"] == "ALREADY_REGISTERED", f"код ошибки: {body}")
+
+                # профессия хранится МЕТКОЙ (как у бота), не кодом справочника
+                row = st.get_profile_by_telegram_id(700)
+                check(row["profession"] == real_profession,
+                      f"анкета из приложения хранит profession меткой, как бот: {row['profession']!r}")
+
+                # --- скидка первого дня (11.09.2026) ---------------------------
+                resp = await client.get("/api/plans?product=guro_id", headers=auth_700)
+                check(resp.status == 200, "/api/plans с авторизацией -> 200")
+                body = await resp.json()
+                monthly = body["plans"]["monthly"]
+                check(monthly.get("discount_pct") == 20, f"анкета создана сегодня -> скидка 20%: {monthly}")
+                check(monthly["discount_stars_price"] == 320, f"400 - 20% = 320 звёзд: {monthly}")
+                check(monthly["discount_crypto_price_usd"] == 4.8, f"$6 - 20% = $4.8: {monthly}")
+                check("discount_pct" not in body["plans"]["yearly"],
+                      "у годового тарифа своя скидка (-30%), первого дня для него нет")
+
+                # без Authorization эндпойнт остаётся публичным (регрессия)
+                resp = await client.get("/api/plans")
+                check(resp.status == 200, "/api/plans без Authorization по-прежнему 200 (скидка её не закрыла)")
+                body = await resp.json()
+                check("discount_pct" not in body["plans"]["monthly"],
+                      "без авторизации скидку показать некому -> полей скидки нет")
+
+                # цена в реальном инвойсе Stars — УЖЕ со скидкой
+                _FakeTGBot.invoice_calls.clear()
+                resp = await client.post("/api/subscribe", headers=auth_700, json={"plan": "monthly"})
+                check(resp.status == 200, "/api/subscribe (monthly, скидочный день) -> 200")
+                charged = _FakeTGBot.invoice_calls[-1]["prices"][0].amount
+                check(charged == 320, f"инвойс выставлен на дисконтированную сумму, не на 400: {charged}")
+
+                # у анкеты со вчерашним created_at скидки уже нет
+                st._conn.execute(
+                    "UPDATE profiles SET created_at = datetime('now', '-1 day') WHERE user_id = 700"
+                )
+                st._conn.commit()
+                resp = await client.get("/api/plans?product=guro_id", headers=auth_700)
+                body = await resp.json()
+                check("discount_pct" not in body["plans"]["monthly"],
+                      "анкета создана вчера -> скидки первого дня уже нет")
+
+                _FakeTGBot.invoice_calls.clear()
+                resp = await client.post("/api/subscribe", headers=auth_700, json={"plan": "monthly"})
+                charged = _FakeTGBot.invoice_calls[-1]["prices"][0].amount
+                check(charged == 400, f"вчерашняя анкета -> инвойс на полную цену: {charged}")
             finally:
                 await client.close()
 

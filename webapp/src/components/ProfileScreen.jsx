@@ -10,7 +10,7 @@ import { OffersSubscreen } from "./profile/OffersSubscreen.jsx";
 import { PrivacySubscreen } from "./profile/PrivacySubscreen.jsx";
 import { QrSubscreen } from "./profile/QrSubscreen.jsx";
 import { MessagesScreen } from "./profile/MessagesScreen.jsx";
-import { OnboardingScreen } from "./profile/OnboardingScreen.jsx";
+import { CreateProfileFlow } from "./profile/CreateProfileFlow.jsx";
 import { RecruiterHub } from "./profile/RecruiterHub.jsx";
 import { RecruiterHistorySubscreen } from "./profile/RecruiterHistorySubscreen.jsx";
 import { RecruiterCandidatesScreen } from "./profile/RecruiterCandidatesScreen.jsx";
@@ -61,6 +61,10 @@ export function ProfileScreen({
 }) {
   const { t } = useLang();
   const [state, setState] = useState({ loading: true, data: null, error: null });
+  // Перечитать getMe() после регистрации в приложении (11.09.2026,
+  // CreateProfileFlow.onDone) — эффект ниже с [] зависимостями исполняется
+  // один раз на монтировании, тик заставляет его сработать снова.
+  const [reloadTick, setReloadTick] = useState(0);
   const [recruiterState, setRecruiterState] = useState({ loading: true, data: null, error: null });
   const [companyState, setCompanyState] = useState({ loading: true, data: null, error: null });
   // null | "rating" | "cv" | "contacts" | "offers" | "messages" | "qr" |
@@ -135,13 +139,14 @@ export function ProfileScreen({
 
   useEffect(() => {
     let cancelled = false;
+    setState({ loading: true, data: null, error: null });
     getMe()
       .then((data) => !cancelled && setState({ loading: false, data, error: null }))
       .catch((error) => !cancelled && setState({ loading: false, data: null, error }));
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadTick]);
 
   // Кабинет рекрутера грузится ЛЕНИВО — только когда юзер реально
   // переключился на вкладку "Рекрутер" (не на каждом заходе в Профиль).
@@ -174,7 +179,7 @@ export function ProfileScreen({
 
   if (state.error) {
     if (state.error instanceof ApiError && state.error.code === "NO_PROFILE") {
-      return <OnboardingScreen />;
+      return <CreateProfileFlow onDone={() => setReloadTick((n) => n + 1)} />;
     }
     return <Msg type="error">{t("profileScreen.loadError")}</Msg>;
   }

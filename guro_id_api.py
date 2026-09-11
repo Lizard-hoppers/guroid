@@ -22,6 +22,7 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPri
 
 import constants as C
 import guro_chain_verify as GCV
+import logic as MAIN_LOGIC
 import guro_constants as GC
 import community_access as CA
 import guro_crypto as GCR
@@ -91,6 +92,25 @@ def _schedule_tag_sync(settings: Settings, storage: GuroStorage, user_id: int, *
     task = asyncio.create_task(_run())
     _BACKGROUND_TASKS.add(task)
     task.add_done_callback(_BACKGROUND_TASKS.discard)
+
+
+FIRST_DAY_DISCOUNT_PCT = 20
+
+
+def _first_day_discount_active(main_storage: Storage, user_id: int) -> bool:
+    """Скидка -20% на МЕСЯЧНУЮ подписку GURO ID в день регистрации
+    (11.09.2026, «Шаг 4. Подписка» дизайн-предложения, размер подтверждён
+    владельцем). Завязана на profiles.created_at, а не отдельный флаг —
+    сама перестаёт действовать назавтра, ничего не нужно сбрасывать.
+    Работает одинаково для анкеты из бота и анкеты из приложения: обе
+    пишут в одну таблицу profiles, различается только источник строки.
+    Год скидку не получает — у него уже есть своя (-30%, stars_price_full).
+    """
+    profile = main_storage.get_profile_by_telegram_id(user_id)
+    if profile is None:
+        return False
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return (profile["created_at"] or "")[:10] == today
 
 
 def _auth(request: web.Request, settings: Settings) -> dict:
@@ -2870,6 +2890,75 @@ def _plan_or_none(body: dict) -> tuple[str, str, dict] | None:
     return (product, plan, cfg) if cfg else None
 
 
+async def handle_register(request: web.Request) -> web.Response:
+    """Регистрация ПРЯМО в приложении (11.09.2026, «First-time flow»).
+
+    Пишет в ТУ ЖЕ таблицу profiles, что и бот (main_storage.save_profile) —
+    анкета из приложения неотличима от анкеты из бота ни для поиска, ни
+    для платного входа, ни для админки. Набор полей — минимальное
+    подмножество анкеты бота (вертикаль/грейд/профессия/имя); остальное
+    донесётся позже через «Редактировать профиль». Грейд «Инвестор»
+    (отдельные поля суммы/интересов) сюда не пускаем — только в боте.
+    """
+    settings = request.app["settings"]
+    main_storage: Storage = request.app["main_storage"]
+    user = _auth(request, settings)
+    user_id = user["id"]
+
+    if main_storage.has_profile(user_id):
+        return web.json_response({"error": "ALREADY_REGISTERED"}, status=409)
+
+    body = await request.json()
+    name = _body_text(body, "name").strip()[:100]
+    vertical = _body_text(body, "vertical").strip()
+    grade = _body_text(body, "grade").strip()
+    profession = _body_text(body, "profession").strip()
+
+    if not name:
+        return web.json_response({"error": "NAME_REQUIRED"}, status=400)
+    if vertical not in C.VERTICALS:
+        return web.json_response({"error": "INVALID_VERTICAL"}, status=400)
+    if grade not in C.GRADES:
+        return web.json_response({"error": "INVALID_GRADE"}, status=400)
+    # Бот хранит МЕТКУ (label), не код (см. handlers/flow.py.pick_profession:
+    # p["profession"] = label) — анкета из приложения должна писать то же
+    # самое, иначе один и тот же человек хранился бы по-разному в зависимости
+    # от того, откуда пришла анкета.
+    valid_professions = {label for _, label in C.professions_for(vertical, grade)}
+    if profession not in valid_professions:
+        return web.json_response({"error": "INVALID_PROFESSION"}, status=400)
+
+    lang = "en" if str(body.get("lang", "")) == "en" else "ru"
+    profile = {
+        "user_id": user_id, "username": user.get("username"),
+        "vertical": vertical, "grade": grade, "profession": profession,
+        "name": name, "lang": lang,
+    }
+    main_storage.save_profile(profile)
+
+    # Баним ли — та же проверка, что у бота: анкета создаётся в любом
+    # случае (человек остаётся в системе, видим его в админке), но
+    # платный доступ такому не откроется НИКОГДА (см. handlers/flow.py и
+    # _needs_payment, тот же принцип, что и в боте — просто пока без
+    # отдельного экрана "banned_notice" в приложении, MVP).
+    banned = main_storage.is_banned(user_id)
+
+    card = MAIN_LOGIC.profile_to_admin_card(profile, banned=banned)
+    try:
+        async with Bot(token=settings.bot_token) as bot:
+            for admin_id in settings.admin_ids:
+                try:
+                    await bot.send_message(
+                        admin_id, card, parse_mode="HTML", disable_web_page_preview=True,
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.debug("guro_id: notify admin %s failed", admin_id, exc_info=True)
+    except Exception:  # noqa: BLE001
+        logger.exception("guro_id: admin notify failed for in-app registration user_id=%s", user_id)
+
+    return web.json_response({"ok": True, "banned": banned})
+
+
 async def handle_get_plans(request: web.Request) -> web.Response:
     """Единый источник цен для фронта (Stars + крипто-эквивалент) — чтобы
     числа в UI никогда не разъезжались с тем, что реально спишут.
@@ -2890,6 +2979,29 @@ async def handle_get_plans(request: web.Request) -> web.Response:
         # цена и «экономия» на карточке плана тоже в долларах.
         if cfg.get("stars_price_full"):
             plans[key]["crypto_price_usd_full"] = round(cfg["stars_price_full"] * GC.STARS_TO_USD_RATE, 2)
+    # Скидка первого дня (11.09.2026) — только личная подписка, только
+    # месяц. _auth() дёргаем ТОЛЬКО для guro_id, чтобы не менять поведение
+    # тарифов рекрутера/компании (они как были без обязательной проверки
+    # initData, так и остались) — фронт и так шлёт заголовок на каждый
+    # запрос, лишней задержки это не добавляет.
+    if product == "guro_id" and "monthly" in plans:
+        # /api/plans остаётся публичным (без Authorization) — тест suite
+        # это явно проверяет, и TariffsScreen может звать его до готовности
+        # initData. Без валидной подписи просто не знаем, чей это день
+        # регистрации, и скидку не показываем — не 401.
+        try:
+            user = _auth(request, settings)
+        except web.HTTPUnauthorized:
+            user = None
+        if user and _first_day_discount_active(request.app["main_storage"], user["id"]):
+            monthly = plans["monthly"]
+            monthly["discount_pct"] = FIRST_DAY_DISCOUNT_PCT
+            monthly["discount_stars_price"] = round(
+                monthly["stars_price"] * (100 - FIRST_DAY_DISCOUNT_PCT) / 100
+            )
+            monthly["discount_crypto_price_usd"] = round(
+                monthly["crypto_price_usd"] * (100 - FIRST_DAY_DISCOUNT_PCT) / 100, 2
+            )
     return web.json_response({
         "plans": plans,
         "crypto_enabled": bool(settings.cryptobot_api_token or settings.cryptobot_api_token_new),
@@ -2906,6 +3018,12 @@ async def handle_subscribe(request: web.Request) -> web.Response:
     product, plan, cfg = plan_triplet
     title = _PRODUCT_TITLE[product]
 
+    # Скидка первого дня (11.09.2026) — см. _first_day_discount_active.
+    stars_price = cfg["stars_price"]
+    if product == "guro_id" and plan == "monthly" and \
+            _first_day_discount_active(request.app["main_storage"], user["id"]):
+        stars_price = round(stars_price * (100 - FIRST_DAY_DISCOUNT_PCT) / 100)
+
     bot = Bot(token=settings.bot_token)
     async with bot:
         link = await bot.create_invoice_link(
@@ -2914,7 +3032,7 @@ async def handle_subscribe(request: web.Request) -> web.Response:
             payload=f"{_PRODUCT_PAYLOAD_PREFIX[product]}:{plan}:{user['id']}",
             provider_token=None,  # не нужен для Telegram Stars (Bot API 7.4+)
             currency="XTR",
-            prices=[LabeledPrice(f"{title} — {cfg['label']}", cfg["stars_price"])],
+            prices=[LabeledPrice(f"{title} — {cfg['label']}", stars_price)],
         )
     return web.json_response({"invoice_link": link})
 
@@ -2935,7 +3053,15 @@ async def handle_subscribe_crypto(request: web.Request) -> web.Response:
         return web.json_response({"error": "UNKNOWN_PLAN"}, status=400)
     product, plan, cfg = plan_triplet
     title = _PRODUCT_TITLE[product]
-    amount = round(cfg["stars_price"] * GC.STARS_TO_USD_RATE, 2)
+
+    # Скидка первого дня (11.09.2026) — см. _first_day_discount_active.
+    # Считаем от УЖЕ дисконтированной звёздной цены, чтобы доллар и звёзды
+    # на одном плане не расходились по разным формулам округления.
+    stars_price = cfg["stars_price"]
+    if product == "guro_id" and plan == "monthly" and \
+            _first_day_discount_active(request.app["main_storage"], user["id"]):
+        stars_price = round(stars_price * (100 - FIRST_DAY_DISCOUNT_PCT) / 100)
+    amount = round(stars_price * GC.STARS_TO_USD_RATE, 2)
 
     try:
         invoice = await GCR.create_invoice(
@@ -3096,6 +3222,7 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_get("/api/messages/with/{user_id}", handle_get_thread)
     app.router.add_post("/api/messages", handle_send_message)
     app.router.add_get("/api/plans", handle_get_plans)
+    app.router.add_post("/api/register", handle_register)
     app.router.add_post("/api/subscribe", handle_subscribe)
     app.router.add_post("/api/subscribe/crypto", handle_subscribe_crypto)
     app.router.add_post("/api/crypto/webhook", handle_crypto_webhook)

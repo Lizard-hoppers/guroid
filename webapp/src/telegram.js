@@ -138,6 +138,16 @@ export function getAvatarUrl() {
   return tg?.initDataUnsafe?.user?.photo_url || null;
 }
 
+// Имя из initData — предзаполняет поле "Имя" в регистрации прямо в
+// приложении (11.09.2026), чтобы не заставлять печатать то, что Telegram
+// и так знает. Просто подсказка: поле остаётся редактируемым, у части
+// людей это не то имя, каким они хотят называться в GURO ID.
+export function getSuggestedName() {
+  const u = tg?.initDataUnsafe?.user;
+  if (!u) return "";
+  return [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
+}
+
 // "Добавить на рабочий стол" (Bot API 8.0+, 11.08.2026 — владелец пробовал
 // и не нашёл такой опции). Метод есть не у всех клиентов/версий — прячем
 // кнопку, если SDK его не отдаёт, вместо вызова и тихого no-op/ошибки.

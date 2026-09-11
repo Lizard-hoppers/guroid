@@ -286,7 +286,17 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed, me: meProp,
                     haptic("select");
                   }}
                 >
-                  {p.stars_price_full && <span className="plan-card-value-badge">{t("subscribe.bestValueBadge")}</span>}
+                  {/* Скидка первого дня (11.09.2026) перекрывает обычный бейдж
+                      "Выгодно" — обе метки в одном углу карточки не
+                      уместятся, а скидка сейчас важнее (её действие
+                      кончается сегодня же). */}
+                  {p.discount_pct ? (
+                    <span className="plan-card-value-badge">
+                      {t("subscribe.firstDayBadge", { pct: p.discount_pct })}
+                    </span>
+                  ) : (
+                    p.stars_price_full && <span className="plan-card-value-badge">{t("subscribe.bestValueBadge")}</span>
+                  )}
                   <div className="plan-card-label">{p.label}</div>
                   {/* 10.09.2026, владелец: крипта — основной способ оплаты,
                       звёзды — дополнительный. Главная цена в долларах,
@@ -294,14 +304,18 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed, me: meProp,
                       (crypto_enabled=false) показываем как раньше — звёзды. */}
                   {cryptoFirst ? (
                     <>
-                      {p.crypto_price_usd_full && (
-                        <span className="plan-card-price-full">${p.crypto_price_usd_full}</span>
+                      {(p.discount_pct || p.crypto_price_usd_full) && (
+                        <span className="plan-card-price-full">
+                          ${p.discount_pct ? p.crypto_price_usd : p.crypto_price_usd_full}
+                        </span>
                       )}
-                      <div className="plan-card-price-main">${p.crypto_price_usd}</div>
-                      <div className="plan-card-alt-price">
-                        {t("subscribe.orStars", { price: p.stars_price })} <IconStar />
+                      <div className="plan-card-price-main">
+                        ${p.discount_pct ? p.discount_crypto_price_usd : p.crypto_price_usd}
                       </div>
-                      {p.crypto_price_usd_full && (
+                      <div className="plan-card-alt-price">
+                        {t("subscribe.orStars", { price: p.discount_pct ? p.discount_stars_price : p.stars_price })} <IconStar />
+                      </div>
+                      {!p.discount_pct && p.crypto_price_usd_full && (
                         <div className="plan-card-badge">
                           {t("subscribe.economyUsd", {
                             amount: Math.round((p.crypto_price_usd_full - p.crypto_price_usd) * 100) / 100,
@@ -311,15 +325,15 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed, me: meProp,
                     </>
                   ) : (
                     <>
-                      {p.stars_price_full && (
+                      {(p.discount_pct || p.stars_price_full) && (
                         <span className="plan-card-price-full">
-                          {p.stars_price_full} <IconStar />
+                          {p.discount_pct ? p.stars_price : p.stars_price_full} <IconStar />
                         </span>
                       )}
                       <div className="plan-card-price-main">
-                        {p.stars_price} <IconStar />
+                        {p.discount_pct ? p.discount_stars_price : p.stars_price} <IconStar />
                       </div>
-                      {p.stars_price_full && (
+                      {!p.discount_pct && p.stars_price_full && (
                         <div className="plan-card-badge">
                           {t("subscribe.economy", { amount: p.stars_price_full - p.stars_price })}
                         </div>
@@ -337,8 +351,10 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed, me: meProp,
             <button className="btn" onClick={onSubscribeCrypto} disabled={busy}>
               {busy
                 ? t("subscribe.preparingInvoice")
-                : t(isSubscribed ? "subscribe.renewCrypto" : "subscribe.payCrypto",
-                    { amount: plan.crypto_price_usd, asset: plan.crypto_asset })}
+                : t(isSubscribed ? "subscribe.renewCrypto" : "subscribe.payCrypto", {
+                    amount: plan.discount_pct ? plan.discount_crypto_price_usd : plan.crypto_price_usd,
+                    asset: plan.crypto_asset,
+                  })}
             </button>
           )}
 
@@ -346,7 +362,7 @@ export function SubscribeScreen({ product = "guro_id", onSubscribed, me: meProp,
             {busy
               ? t("subscribe.preparingInvoice")
               : t(cryptoFirst ? "subscribe.orPayStars" : isSubscribed ? "subscribe.renewStars" : "subscribe.payStars",
-                  { price: plan ? plan.stars_price : "…" })}
+                  { price: plan ? (plan.discount_pct ? plan.discount_stars_price : plan.stars_price) : "…" })}
           </button>
 
           <Msg type="error">{error}</Msg>

@@ -390,19 +390,41 @@ const STRINGS = {
     en: "You'll get a personal ID card. Every time you have a successful deal or hire, your partner confirms it — and that builds your rating. Just send your username to anyone in the industry: opening your profile, they'll see that different people worked with you, with real deals and hires behind it.",
   },
   "onboarding.detail3": { ru: "Также вы сможете загрузить своё резюме и найти работу. Функционал будет увеличиваться.", en: "You'll also be able to upload your resume and find a job. More features are coming." },
-  "onboarding.detail4": {
-    ru: "При отсутствии активной подписки ваш рейтинг в индустрии скрывается — сотни сделок и успешных наймов пропадают из виду (сами данные не удаляются: как только подписка возобновится, всё вернётся как было).",
-    en: "Without an active subscription your industry rating is hidden — hundreds of deals and successful hires disappear from view (the data itself isn't deleted: as soon as the subscription is renewed, everything comes back).",
+
+  // First-time flow (11.09.2026) — регистрация прямо в приложении.
+  "createProfile.emptyName": { ru: "Ваше имя", en: "Your name" },
+  "createProfile.emptyPosition": { ru: "Должность не указана", en: "Position not set" },
+  "createProfile.exampleName": { ru: "Артём Л.", en: "Artem L." },
+  "createProfile.examplePosition": { ru: "Head of Affiliates · Gambling", en: "Head of Affiliates · Gambling" },
+  "createProfile.ctaHint": {
+    ru: "Займёт около трёх минут. Публикация профиля — по подписке, от 400 ⭐ в месяц.",
+    en: "Takes about three minutes. Publishing your profile requires a subscription, from 400 ⭐ / month.",
   },
-  "onboarding.priceLine": {
-    ru: "Подписка: {monthly}/месяц или {yearly}/год (в звёздах — 650 / 6600).",
-    en: "Subscription: {monthly}/month or {yearly}/year (in Stars — 650 / 6600).",
+  "createProfile.ctaBtn": { ru: "Создать свой GURO ID", en: "Create your GURO ID" },
+  "createProfile.stepLabel": { ru: "Шаг {step} из {total}", en: "Step {step} of {total}" },
+  "createProfile.namePlaceholderCard": { ru: "Имя?", en: "Name?" },
+  "createProfile.positionPlaceholderCard": { ru: "Должность?", en: "Position?" },
+  "createProfile.positionTitle": { ru: "Кем вы работаете", en: "What do you do" },
+  "createProfile.nameTitle": { ru: "Как вас представить", en: "What should we call you" },
+  "createProfile.nameLabel": { ru: "Имя и фамилия", en: "Full name" },
+  "createProfile.namePlaceholder": { ru: "Например, Юлия Черных", en: "e.g. Yulia Chernykh" },
+  "createProfile.nextBtn": { ru: "Дальше · осталось {left} шага", en: "Next · {left} steps left" },
+  "createProfile.reviewTitle": { ru: "Проверьте перед публикацией", en: "Review before publishing" },
+  "createProfile.reviewIntro": {
+    ru: "Дальше — подписка: без неё профиль не виден в поиске.",
+    en: "Next is the subscription: without it your profile isn't visible in search.",
   },
-  "onboarding.ctaHint": {
-    ru: "Чтобы начать строить репутацию и карьеру — заполните анкету. В конце у вас будет выбор, какая информация будет общедоступна, а какая нет.",
-    en: "To start building your reputation and career — fill in the questionnaire. At the end you'll choose what information is public and what isn't.",
+  "createProfile.publishBtn": { ru: "Опубликовать профиль", en: "Publish profile" },
+  "createProfile.publishing": { ru: "Публикуем…", en: "Publishing…" },
+  "createProfile.reviewNextHint": { ru: "Следующий шаг — подписка.", en: "Next step — subscription." },
+  "createProfile.saveError": { ru: "Не получилось сохранить. Попробуйте ещё раз.", en: "Couldn't save. Please try again." },
+  "createProfile.readyEyebrow": { ru: "ПОСЛЕДНИЙ ШАГ", en: "LAST STEP" },
+  "createProfile.readyTitle": { ru: "Ваш профиль готов к публикации", en: "Your profile is ready to publish" },
+  "createProfile.readyIntro": {
+    ru: "Оформите подписку, чтобы открыть полный GURO ID, вакансии, поиск партнёров и подтверждение сотрудничеств.",
+    en: "Subscribe to unlock full GURO ID, job listings, partner search and deal confirmation.",
   },
-  "onboarding.ctaBtn": { ru: "Заполнить анкету в боте", en: "Fill in the questionnaire in the bot" },
+  "createProfile.skipForNow": { ru: "Пока без подписки", en: "Skip for now" },
 
   // --- Поиск ---
   "search.title": { ru: "Поиск", en: "Search" },
@@ -738,6 +760,7 @@ const STRINGS = {
   "subscribe.orPayStars": { ru: "или {price} Telegram Stars", en: "or {price} Telegram Stars" },
   "subscribe.orStars": { ru: "или {price}", en: "or {price}" },
   "subscribe.economyUsd": { ru: "экономия ${amount}", en: "save ${amount}" },
+  "subscribe.firstDayBadge": { ru: "-{pct}% сегодня", en: "-{pct}% today" },
   "subscribe.starsError": { ru: "Не получилось создать счёт. Попробуйте ещё раз.", en: "Couldn't create an invoice. Please try again." },
   "subscribe.cryptoError": { ru: "Не получилось создать крипто-счёт. Попробуйте ещё раз.", en: "Couldn't create a crypto invoice. Please try again." },
 

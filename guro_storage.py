@@ -381,6 +381,10 @@ class GuroStorage:
         self._ensure_column("guro_recruiter_profiles", "first_activated_at", "TEXT")
         self._ensure_column("guro_recruiter_profiles", "percentile_tier", "TEXT")
         self._ensure_column("guro_recruiter_profiles", "percentile_computed_at", "TEXT")
+        # 11.09.2026 — тот же флаг, что уже был у guro_users (29.08.2026,
+        # кольцо 5:1 между двумя токенами CryptoBot): эта оплата ушла на
+        # личный кошелёк владельца, не в бизнес-статистику.
+        self._ensure_column("guro_recruiter_profiles", "subscription_personal_cut", "INTEGER DEFAULT 0")
         # Метка кабинета-источника сообщения (2.7, "единый инбокс") — через
         # какой кабинет автор писал: 'personal'/'recruiter'/'company'.
         self._ensure_column("guro_messages", "via_workspace", "TEXT DEFAULT 'personal'")
@@ -402,6 +406,8 @@ class GuroStorage:
         # подписчики компании (до этого раунда — единственный тир) считаются
         # Basic по умолчанию, пока не оплатят Pro явно.
         self._ensure_column("guro_company_profiles", "company_tier", f"TEXT DEFAULT '{GC.COMPANY_TIER_BASIC}'")
+        # 11.09.2026 — тот же флаг, что у guro_users/guro_recruiter_profiles.
+        self._ensure_column("guro_company_profiles", "subscription_personal_cut", "INTEGER DEFAULT 0")
         # Роли и команда (27.08.2026, ТЗ "Роли и управление командой") —
         # кто реально нажал "Опубликовать" (для внутренней аналитики
         # компании, раздел 6 ТЗ) + чья это сделка/найм от лица компании
@@ -777,7 +783,10 @@ class GuroStorage:
             row["subscription_status"], GL.parse_db_datetime(row["subscription_expires_at"]), self._now(),
         )
 
-    def activate_recruiter_subscription(self, user_id: int, duration_days: int) -> str:
+    def activate_recruiter_subscription(self, user_id: int, duration_days: int, *, personal_cut: bool = False) -> str:
+        """personal_cut (11.09.2026) — тот же смысл, что у activate_subscription
+        (личная доля владельца в кольце 5:1 CryptoBot). Переустанавливается
+        на КАЖДОЙ активации — статистика отражает, чем оплачен ТЕКУЩИЙ цикл."""
         row = self.get_or_create_recruiter_profile(user_id)
         now = self._now()
         current_expires = GL.parse_db_datetime(row["subscription_expires_at"])
@@ -794,9 +803,9 @@ class GuroStorage:
         first_activated_at = row["first_activated_at"] or self._now_str()
         self._conn.execute(
             "UPDATE guro_recruiter_profiles SET subscription_status=?, subscription_expires_at=?, "
-            "first_activated_at=?, updated_at=? WHERE user_id=?",
+            "first_activated_at=?, subscription_personal_cut=?, updated_at=? WHERE user_id=?",
             (GC.SUBSCRIPTION_ACTIVE, GL.format_db_datetime(expires_at), first_activated_at,
-             self._now_str(), user_id),
+             int(personal_cut), self._now_str(), user_id),
         )
         self._conn.commit()
         return GL.format_db_datetime(expires_at)
@@ -1174,11 +1183,14 @@ class GuroStorage:
             row["subscription_status"], GL.parse_db_datetime(row["subscription_expires_at"]), self._now(),
         )
 
-    def activate_company_subscription(self, user_id: int, duration_days: int, *, tier: str = GC.COMPANY_TIER_BASIC) -> str:
+    def activate_company_subscription(self, user_id: int, duration_days: int, *,
+                                       tier: str = GC.COMPANY_TIER_BASIC, personal_cut: bool = False) -> str:
         """tier (27.08.2026, ТЗ "Тарифы и лимиты") — Basic/Pro, записывается
         КАЖДЫЙ раз при активации (продление тем же тиром не меняет его,
         оплата ДРУГОГО тира — меняет; апгрейд/даунгрейд-флоу как таковой
-        фронтом не предоставляется, апсейл только через новую оплату)."""
+        фронтом не предоставляется, апсейл только через новую оплату).
+        personal_cut (11.09.2026) — та же личная доля владельца, что у
+        остальных двух продуктов."""
         row = self.get_or_create_company_profile(user_id)
         now = self._now()
         current_expires = GL.parse_db_datetime(row["subscription_expires_at"])
@@ -1194,8 +1206,9 @@ class GuroStorage:
         )
         self._conn.execute(
             "UPDATE guro_company_profiles SET subscription_status=?, subscription_expires_at=?, "
-            "company_tier=?, updated_at=? WHERE user_id=?",
-            (GC.SUBSCRIPTION_ACTIVE, GL.format_db_datetime(expires_at), tier, self._now_str(), user_id),
+            "company_tier=?, subscription_personal_cut=?, updated_at=? WHERE user_id=?",
+            (GC.SUBSCRIPTION_ACTIVE, GL.format_db_datetime(expires_at), tier,
+             int(personal_cut), self._now_str(), user_id),
         )
         self._conn.commit()
         return GL.format_db_datetime(expires_at)
@@ -2115,13 +2128,27 @@ class GuroStorage:
         rep_row = self._conn.execute(
             "SELECT AVG(reputation_score) AS avg_rep, COUNT(*) AS n FROM guro_users"
         ).fetchone()
-        # subscription_personal_cut=1 (29.08.2026, см. activate_subscription)
-        # — оплачено на личный кошелёк владельца, не в бизнес-статистику.
-        active_subs = self._conn.execute(
-            "SELECT COUNT(*) FROM guro_users WHERE subscription_status=? AND subscription_expires_at > ? "
-            "AND subscription_personal_cut != 1",
-            (GC.SUBSCRIPTION_ACTIVE, self._now_str()),
-        ).fetchone()[0]
+        # Реально оплаченные подписки (11.09.2026) — НЕ ручные выдачи
+        # (владелец правит subscription_expires_at напрямую в БД на ~100 лет
+        # вперёд, ни один тариф столько не даёт) и НЕ личная доля владельца
+        # (subscription_personal_cut=1, кольцо 5:1 CryptoBot). Три продукта
+        # считаются раздельно — у одного человека могут быть все три сразу.
+        now_str = self._now_str()
+        far_future = GL.format_db_datetime(
+            self._now() + timedelta(days=365 * GC.SUBSCRIPTION_REALISTIC_MAX_YEARS)
+        )
+
+        def _real_active(table: str) -> int:
+            return self._conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE subscription_status=? "
+                f"AND subscription_expires_at > ? AND subscription_expires_at < ? "
+                f"AND subscription_personal_cut != 1",
+                (GC.SUBSCRIPTION_ACTIVE, now_str, far_future),
+            ).fetchone()[0]
+
+        active_guro_id = _real_active("guro_users")
+        active_recruiter = _real_active("guro_recruiter_profiles")
+        active_company = _real_active("guro_company_profiles")
         return {
             "total": row["total"] or 0,
             "confirmed": row["confirmed"] or 0,
@@ -2130,7 +2157,9 @@ class GuroStorage:
             "created_today": row["created_today"] or 0,
             "tracked_users": rep_row["n"] or 0,
             "avg_reputation": rep_row["avg_rep"] or 0.0,
-            "active_subscriptions": active_subs,
+            "active_subscriptions_guro_id": active_guro_id,
+            "active_subscriptions_recruiter": active_recruiter,
+            "active_subscriptions_company": active_company,
         }
 
     # --- вакансии (Фаза 4, 12.08.2026; переработано 26.08.2026 по ТЗ

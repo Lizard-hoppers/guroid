@@ -2725,7 +2725,34 @@ def test_guro_id_storage():
         check(stats["confirmed"] == 3, f"dashboard_stats: confirmed=3, а не {stats['confirmed']}")
         check(stats["pending"] == 0, "dashboard_stats: pending=0")
         check(stats["declined"] == 0, "dashboard_stats: declined=0")
-        check(stats["active_subscriptions"] == 3, "dashboard_stats: active_subscriptions=3 (users 1,3,4)")
+        check(stats["active_subscriptions_guro_id"] == 3, "dashboard_stats: active_subscriptions_guro_id=3 (users 1,3,4)")
+
+        # --- разбивка по продуктам + отсев ручных выдач (11.09.2026) --------
+        gst3.activate_recruiter_subscription(1, 30)
+        gst3.activate_company_subscription(1, 30)
+        stats_split = gst3.dashboard_stats()
+        check(stats_split["active_subscriptions_recruiter"] == 1, "рекрутерская подписка считается отдельно от GURO ID")
+        check(stats_split["active_subscriptions_company"] == 1, "подписка компании считается отдельно от GURO ID")
+
+        # личная доля владельца (каждый 5-й крипто-платёж) — не в статистику,
+        # ни у одного из трёх продуктов
+        gst3.activate_recruiter_subscription(1, 30, personal_cut=True)
+        gst3.activate_company_subscription(1, 30, personal_cut=True)
+        stats_cut = gst3.dashboard_stats()
+        check(stats_cut["active_subscriptions_recruiter"] == 0, "личная доля владельца (рекрутер) не попадает в статистику")
+        check(stats_cut["active_subscriptions_company"] == 0, "личная доля владельца (компания) не попадает в статистику")
+
+        # ручная выдача (владелец правит expires_at в БД на годы вперёд) —
+        # тоже не в статистику, даже без personal_cut
+        far = GL.format_db_datetime(gst3._now() + timedelta(days=365 * 5))
+        gst3._conn.execute(
+            "UPDATE guro_users SET subscription_status=?, subscription_expires_at=?, subscription_personal_cut=0 "
+            "WHERE user_id=?", (GC.SUBSCRIPTION_ACTIVE, far, 1),
+        )
+        gst3._conn.commit()
+        stats_granted = gst3.dashboard_stats()
+        check(stats_granted["active_subscriptions_guro_id"] == 2,
+              f"ручная выдача на 5 лет вперёд исключена из счётчика (было 3, юзер 1 выпал): {stats_granted['active_subscriptions_guro_id']}")
         check(stats["tracked_users"] >= 4, "dashboard_stats: tracked_users учитывает всех с guro_users row")
 
         # расширение "Моё CV" (12.08.2026) — потолок записей опыта работы
@@ -3712,7 +3739,7 @@ async def _run_guro_id_api_sim():
                 # унаследованное значение).
                 app["storage"].activate_subscription(301, 30)
                 _stats_after = app["storage"].dashboard_stats()
-                check(_stats_after["active_subscriptions"] == _stats_before["active_subscriptions"] + 1,
+                check(_stats_after["active_subscriptions_guro_id"] == _stats_before["active_subscriptions_guro_id"] + 1,
                       "обычная реактивация (Stars, без personal_cut) СНИМАЕТ флаг — 301 снова в статистике")
                 _row301b = _sq.connect(db_path).execute(
                     "SELECT subscription_personal_cut FROM guro_users WHERE user_id=301").fetchone()

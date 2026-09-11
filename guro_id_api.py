@@ -3144,7 +3144,10 @@ async def handle_crypto_webhook(request: web.Request) -> web.Response:
         return web.Response(status=200)
 
     if product == "recruiter":
-        expires_at = storage.activate_recruiter_subscription(user_id, cfg["duration_days"])
+        # personal_cut (11.09.2026) — та же личная доля владельца, что и у
+        # базовой подписки (см. is_personal_cut выше), теперь учитывается
+        # и здесь, а не только для guro_users.
+        expires_at = storage.activate_recruiter_subscription(user_id, cfg["duration_days"], personal_cut=is_personal_cut)
         logger.info(
             "guro_id: подписка рекрутера активирована через крипту user_id=%s plan=%s до %s",
             user_id, plan, expires_at,
@@ -3161,7 +3164,10 @@ async def handle_crypto_webhook(request: web.Request) -> web.Response:
 
     if product in _PRODUCT_COMPANY_TIER:
         tier = _PRODUCT_COMPANY_TIER[product]
-        expires_at = storage.activate_company_subscription(user_id, cfg["duration_days"], tier=tier)
+        # personal_cut (11.09.2026) — см. комментарий у recruiter выше.
+        expires_at = storage.activate_company_subscription(
+            user_id, cfg["duration_days"], tier=tier, personal_cut=is_personal_cut,
+        )
         logger.info(
             "guro_id: подписка компании (%s) активирована через крипту user_id=%s plan=%s до %s",
             tier, user_id, plan, expires_at,

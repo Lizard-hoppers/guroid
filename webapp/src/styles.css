@@ -79,8 +79,12 @@
      #ffffff0d, который поверх карточки давал более тёмный и плоский
      #172b2f. В макете поле — самостоятельная поверхность на тон светлее
      карточки, а рамка заметно голубее, чем --glass-border. */
-  --input-bg: #16353b;
-  --input-border: #2e5a63;
+  /* 11.09.2026, «GURO ID design system» (7 сентября 2026): инпут — фон
+     #0A181A, обводка #0F3840. Раньше был #16353B/#2E5A63 (сверка с Figma
+     04.09.2026, до этого документа) — новый документ явно новее и прямо
+     требует брать значения как есть. */
+  --input-bg: var(--bg-deep);
+  --input-border: var(--divider);
   /* Третий уровень текста (сверка с Figma 04.09.2026): надзаголовки,
      подписи метрик, шевроны, служебные пояснения. Отдельно от --text-dim,
      который в макете отвечает за вторичный текст покрупнее. */
@@ -211,7 +215,33 @@ h2,
 h3 {
   font-family: Manrope, sans-serif;
   margin: 0 0 0.4em;
-  letter-spacing: 0.01em;
+}
+
+/* 11.09.2026, «GURO ID design system»: роли H1/H2 (раздел 2) — токены
+   --fs-h1/--fs-h2 существовали в :root с первого дня системы, но не были
+   подключены НИ К ОДНОМУ селектору. Заголовки держались на голом
+   UA-дефолте браузера (h2 ~24px, h3 ~18.7px от корневого font-size,
+   который сам нигде не закреплён) — «похоже на нужное», но не точно и
+   плавает с настройками движка/доступности. h1 в разметке пока не
+   встречается ни разу — правило на будущее, менять сейчас нечего. */
+h1 {
+  font-size: var(--fs-h1);
+  font-weight: 700;
+  line-height: 28px;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+
+/* h2 (имя в шапке карточки) и h3 (заголовок секции внутри карточки) в
+   разметке используются как ОДНА и та же роль — H2, «заголовок внутри
+   карточки» — двух подряд у этой роли не бывает по тем же причинам. */
+h2,
+h3 {
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  line-height: 22px;
+  letter-spacing: 0;
+  color: var(--text);
 }
 
 .app {
@@ -1167,7 +1197,8 @@ label {
 .plan-card-price-main {
   font-family: Manrope, sans-serif;
   font-weight: 700;
-  font-size: 20px;
+  /* 11.09.2026, роль Display: 28-32 · 700 · tabular. Было 20. */
+  font-size: var(--fs-display);
   /* Лаймовой цена становится только у выбранной плитки — в макете так
      подсвечен выгодный тариф, а не оба сразу. */
   color: var(--text);
@@ -1180,7 +1211,7 @@ label {
 /* Звёзды второй строкой под долларовой ценой (10.09.2026, крипта —
    основной способ оплаты). Тот же кегль, что у метки экономии. */
 .plan-card-alt-price {
-  margin-top: 2px;
+  margin-top: 4px;
   font-size: 12px;
   color: var(--text-dim);
 }
@@ -1543,7 +1574,8 @@ label {
 .eyebrow,
 .metric .label,
 .recruiter-metric-label,
-.confirm-step-label {
+.confirm-step-label,
+.section-eyebrow {
   font-size: var(--fs-eyebrow);
   line-height: 13px;
   font-weight: 700;
@@ -1786,7 +1818,11 @@ label {
 }
 
 .profile-header-sub {
-  font-size: 13px;
+  /* 11.09.2026, роль Meta (раздел 2): 12/16 · 500 · #C7D1CC — «роль/
+     компания» прямо названа в столбце "где". Было 13px без веса. */
+  font-size: var(--fs-meta);
+  line-height: 16px;
+  font-weight: 500;
   color: var(--text-dim);
 }
 
@@ -1830,10 +1866,6 @@ label {
    переиспользуемый класс (28.08.2026, карточка рейтинга/"Первый шаг"). */
 .section-eyebrow {
   display: block;
-  font-size: 11px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
 }
 
 /* Карточка рейтинга на главном экране Профиля (28.08.2026, макет "01 ·
@@ -2244,6 +2276,14 @@ label {
 /* --- Онбординг первого запуска + гейт подписки на рейтинг (10.08.2026) --- */
 
 .onboarding-mock-placeholder {
+  /* 11.09.2026, раздел 7: курсив пустых состояний — Manrope 500-600,
+     15/1, #C7D1CC, настоящий italic. Было только цвет+italic — размер
+     плавал вместе с тем, куда класс попадал (то имя ~24px, то подпись
+     ~13px). */
+  font-family: Manrope, sans-serif;
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 500;
   color: var(--text-dim);
   font-style: italic;
 }
@@ -2290,7 +2330,7 @@ label {
 
 .anketa-progress-track {
   display: flex;
-  gap: 6px;
+  gap: 4px;
 }
 
 .anketa-progress-seg {
@@ -2815,7 +2855,9 @@ select {
 .turnover-value {
   font-family: Manrope, sans-serif;
   font-weight: 700;
-  font-size: 22px;
+  /* 11.09.2026, роль Display (раздел 2): 28-32 · 700 · tabular. Было 22 —
+     токен --fs-display существовал, но не был нигде подключён. */
+  font-size: var(--fs-display);
   color: var(--text);
   margin: 4px 0;
 }
@@ -3210,7 +3252,8 @@ select {
 .recruiter-metric-value {
   font-family: Manrope, sans-serif;
   font-weight: 700;
-  font-size: 22px;
+  /* 11.09.2026, роль Display: 28-32 · 700 · tabular. Было 22. */
+  font-size: var(--fs-display);
   color: var(--gold);
 }
 

@@ -4897,6 +4897,30 @@ async def _run_guro_id_api_sim():
                 resp = await client.post("/api/subscribe", headers=auth_700, json={"plan": "monthly"})
                 charged = _FakeTGBot.invoice_calls[-1]["prices"][0].amount
                 check(charged == 400, f"вчерашняя анкета -> инвойс на полную цену: {charged}")
+
+                # --- баг-фикс 11.09.2026: форма ответа POST /api/anketa --------
+                # EditableField (Shared.jsx, общий для CV/сайта/рекрутера/компании/
+                # анкеты) после сохранения делает onSaved(updated[field]) — ждёт
+                # значение ПОД КЛЮЧОМ ИМЕНИ ПОЛЯ. Раньше /api/anketa отдавал
+                # {"field": ..., "value": ...}, updated["name"] был undefined,
+                # и поле мгновенно "пустело" на экране сразу после сохранения
+                # (при том что в БД значение уже лежало верно — баг-репорт
+                # "после заполнения и попытки сохранить данные отображаются как
+                # незаполненные, но при переходе туда и обратно всё на месте").
+                resp = await client.post("/api/anketa", headers=auth_700,
+                                          json={"field": "name", "value": "Новое Имя"})
+                check(resp.status == 200, "POST /api/anketa (текстовое поле) -> 200")
+                body = await resp.json()
+                check(body.get("name") == "Новое Имя",
+                      f"ответ отдаёт значение ПОД КЛЮЧОМ ИМЕНИ ПОЛЯ (контракт EditableField.onSaved(updated[field])), получено: {body}")
+                check("field" not in body and "value" not in body,
+                      f"старая форма {{'field':..,'value':..}} действительно убрана: {body}")
+
+                resp = await client.post("/api/anketa", headers=auth_700,
+                                          json={"field": "vertical", "value": "Betting"})
+                check(resp.status == 200, "POST /api/anketa (справочное поле vertical) -> 200")
+                body = await resp.json()
+                check(body.get("vertical") == "Betting", f"то же самое для справочных полей: {body}")
             finally:
                 await client.close()
 

@@ -1683,7 +1683,15 @@ async def handle_set_anketa_field(request: web.Request) -> web.Response:
         storage.update_profile_field(user["id"], field, value)
     except ValueError:
         return web.json_response({"error": "NO_PROFILE"}, status=404)
-    return web.json_response({"field": field, "value": value})
+    # Контракт shared-компонента EditableField (Shared.jsx): onSaved(updated[field])
+    # ждёт значение ПОД КЛЮЧОМ ИМЕНИ ПОЛЯ — как у трёх сестринских эндпоинтов
+    # (set_extra/set_recruiter_extra/set_company_extra_field). Раньше тут было
+    # {"field": field, "value": value} — для поля "name" фронт делал updated["name"],
+    # получал undefined и стирал только что сохранённый текст с экрана сразу
+    # после сохранения (11.09.2026, баг-репорт: "после заполнения и попытки
+    # сохранить данные отображаются как незаполненные, но при переходе туда и
+    # обратно всё на месте" — то есть в БД всё верно, ломался только отклик).
+    return web.json_response({field: value})
 
 
 async def handle_set_profile_field(request: web.Request) -> web.Response:

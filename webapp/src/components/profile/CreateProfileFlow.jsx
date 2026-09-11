@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { registerProfile } from "../../api.js";
-import { useLang, ONBOARDING_VERTICALS } from "../../i18n.jsx";
+import { useLang } from "../../i18n.jsx";
 import { haptic, getSuggestedName } from "../../telegram.js";
 import { usePositions } from "../VacanciesScreen.jsx";
 import { SubscribeScreen } from "../SubscribeScreen.jsx";
-import { Msg, Spinner } from "../Shared.jsx";
+import { ActivationPreview, Msg, Spinner } from "../Shared.jsx";
 
 // Регистрация ПРЯМО в приложении (11.09.2026, дизайн-предложение
 // «First-time flow: от первого экрана до оплаты»). Раньше единственный
@@ -82,62 +82,36 @@ function LiveCard({ draft }) {
   );
 }
 
+// Карточка "активации" личного кабинета (11.09.2026, макет "GURO ID ·
+// Типографика экранов" — тот же паттерн, что у Рекрутера/Компании, см.
+// ActivationPreview в Shared.jsx). Кнопка тут ведёт не в SubscribeScreen
+// (профиля ещё нет, платить не за что), а в первый шаг анкеты — оплата
+// произойдёт позже, на экране STEP_SUBSCRIBE, уже с реальным профилем.
 function ValueStep({ onStart }) {
-  const { t, lang } = useLang();
-  const [expanded, setExpanded] = useState(false);
-  const verticals = ONBOARDING_VERTICALS[lang] || ONBOARDING_VERTICALS.ru;
+  const { t } = useLang();
   return (
-    <div>
-      <div className="card">
-        <div className="profile-header-card onboarding-mock-card">
-          <div className="profile-avatar-fallback onboarding-mock-avatar">?</div>
-          <div className="profile-header-info">
-            <h2 className="onboarding-mock-placeholder">{t("createProfile.emptyName")}</h2>
-            <div className="profile-header-sub onboarding-mock-placeholder">{t("createProfile.emptyPosition")}</div>
-          </div>
-        </div>
-
-        {/* Пример "прокачанного" профиля — реальный масштаб рейтинга
-            (медиана среди подписанных ~4-5, сильный профиль — около 8), а
-            не выдуманное число: проверено на боевой базе 11.09.2026, чтобы
-            новый человек не сравнивал свой первый день с фантазией. */}
-        <div className="profile-header-card" style={{ marginTop: 16 }}>
-          <div className="profile-avatar-fallback">А</div>
-          <div className="profile-header-info">
-            <h2>{t("createProfile.exampleName")}</h2>
-            <div className="profile-header-sub">{t("createProfile.examplePosition")}</div>
-          </div>
-        </div>
-
-        <h3 style={{ marginTop: 16 }}>{t("onboarding.title")}</h3>
-        <p className="partner-meta">
-          {t("onboarding.intro")}{" "}
-          <button type="button" className="onboarding-more-link" onClick={() => setExpanded((v) => !v)}>
-            <span className="link-underline">{t("onboarding.more")}</span>
-          </button>
-        </p>
-
-        {expanded && (
-          <div className="onboarding-detail">
-            <p>{t("onboarding.detail1")}</p>
-            <ul className="onboarding-verticals">
-              {verticals.map((v) => (
-                <li key={v}>{v}</li>
-              ))}
-            </ul>
-            <p>{t("onboarding.detail2")}</p>
-            <p>{t("onboarding.detail3")}</p>
-          </div>
-        )}
-      </div>
-
-      <div className="card">
-        <p className="partner-meta">{t("createProfile.ctaHint")}</p>
-        <button className="btn" onClick={onStart}>
-          {t("createProfile.ctaBtn")}
-        </button>
-      </div>
-    </div>
+    <ActivationPreview
+      title={t("activationPersonal.title")}
+      nowAvatar="?"
+      nowName={t("activationPersonal.nowName")}
+      nowSub={t("activationPersonal.nowSub")}
+      nowBadge="0"
+      aboutText={t("activationPersonal.about")}
+      exampleAvatar="А"
+      exampleName={t("activationPersonal.exampleName")}
+      exampleSub={t("activationPersonal.exampleSub")}
+      exampleBadge={175}
+      stat1Label={t("activationPersonal.stat1Label")}
+      stat1Value="$2 790"
+      stat2Label={t("activationPersonal.stat2Label")}
+      stat2Value="$5 000"
+      metaLine={t("activationPersonal.metaLine")}
+      lockText={t("activationPersonal.lockText")}
+      priceLabel={t("activationPersonal.priceLabel")}
+      priceValue={t("activationPersonal.priceValue")}
+      ctaLabel={t("activationPersonal.cta")}
+      onActivate={onStart}
+    />
   );
 }
 

@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { EditableField, ImageUploadArea, Msg, RatingPreview, TurnoverCard } from "../Shared.jsx";
+import { ActivationPreview, EditableField, ImageUploadArea, Msg, RatingPreview, TurnoverCard } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import {
   setRecruiterProfileField, setRecruiterPrivacyField, setRecruiterActivityStatus, uploadRecruiterImage,
 } from "../../api.js";
 import { SubscribeScreen } from "../SubscribeScreen.jsx";
 import { useLang } from "../../i18n.jsx";
-import { IconGear, IconTrophy } from "../Icons.jsx";
+import { IconBriefcase, IconGear, IconTrophy } from "../Icons.jsx";
 import { haptic } from "../../telegram.js";
 import { ensureHttpUrl, initialOf } from "../../utils.js";
 
@@ -221,15 +221,37 @@ export function RecruiterHub({
 }) {
   const { t } = useLang();
   const [logoUploadError, setLogoUploadError] = useState(null);
+  // Кнопка карточки-тизера ActivationPreview раскрывает тариф, а не платит
+  // сама (11.09.2026) — платёжный выбор (месяц/год, крипта/звёзды) ниже
+  // остаётся тем же SubscribeScreen, просто не показан сразу.
+  const [showPlans, setShowPlans] = useState(false);
 
   if (!data.is_recruiter_subscribed) {
     return (
       <div>
-        <div className="card">
-          <h3>{t("recruiter.title")}</h3>
-          <p className="partner-meta">{t("recruiter.upsellText")}</p>
-        </div>
-        <SubscribeScreen product="recruiter" onSubscribed={onSubscribed} />
+        <ActivationPreview
+          title={t("activationRecruiter.title")}
+          nowAvatar={<IconBriefcase size={22} />}
+          nowName={t("activationRecruiter.nowName")}
+          nowSub={t("activationRecruiter.nowSub")}
+          nowBadge={null}
+          aboutText={t("activationRecruiter.about")}
+          exampleAvatar={initialOf(t("activationRecruiter.exampleName"))}
+          exampleName={t("activationRecruiter.exampleName")}
+          exampleSub={t("activationRecruiter.exampleSub")}
+          exampleBadge={235}
+          stat1Label={t("activationRecruiter.stat1Label")}
+          stat1Value="12"
+          stat2Label={t("activationRecruiter.stat2Label")}
+          stat2Value="27"
+          metaLine={t("activationRecruiter.metaLine")}
+          lockText={t("activationRecruiter.lockText")}
+          priceLabel={t("activationRecruiter.priceLabel")}
+          priceValue={t("activationRecruiter.priceValue")}
+          ctaLabel={t("activationRecruiter.cta")}
+          onActivate={() => setShowPlans(true)}
+        />
+        {showPlans && <SubscribeScreen product="recruiter" onSubscribed={onSubscribed} />}
       </div>
     );
   }

@@ -689,6 +689,79 @@ function formatMoney(value) {
   return `$${Math.round(value || 0).toLocaleString("ru-RU").replace(/\u00a0/g, " ")}`;
 }
 
+// Карточка "активации" кабинета (11.09.2026, макет "GURO ID · Типографика
+// экранов" — единый паттерн для трёх вкладок Личный/Рекрутер/Компания,
+// когда кабинет ещё не создан/не оплачен): текущее пустое состояние,
+// объяснение пользы, живой пример "после активации" с реальными цифрами
+// масштаба, приватность-подсказка, цена и большая кнопка.
+//
+// Кнопка НЕ покупает подписку сама — она открывает уже существующий
+// SubscribeScreen (месяц/год, крипта/звёзды, скидка первого дня) ниже.
+// Так весь платёжный функционал остаётся в одном месте, а эта карточка —
+// просто витрина-тизер перед ним (подтверждено владельцем 11.09.2026).
+export function ActivationPreview({
+  title,
+  nowAvatar, nowName, nowSub, nowBadge,
+  aboutText,
+  exampleAvatar, exampleName, exampleSub, exampleBadge,
+  stat1Label, stat1Value, stat2Label, stat2Value,
+  metaLine,
+  lockText,
+  priceLabel, priceValue,
+  ctaLabel, onActivate,
+}) {
+  const { t } = useLang();
+  return (
+    <div className="card activation-preview">
+      <h3>{title}</h3>
+
+      <div className="section-eyebrow" style={{ marginTop: 12 }}>{t("activation.nowLabel")}</div>
+      <div className="profile-header-card activation-now">
+        <div className="profile-avatar-fallback activation-now-avatar">{nowAvatar}</div>
+        <div className="profile-header-info">
+          <h2 className="onboarding-mock-placeholder">{nowName}</h2>
+          <div className="profile-header-sub onboarding-mock-placeholder">{nowSub}</div>
+        </div>
+        {nowBadge != null && <div className="rating-preview-circle activation-badge-dim">{nowBadge}</div>}
+      </div>
+
+      <p className="partner-meta" style={{ marginTop: 12 }}>{aboutText}</p>
+
+      <div className="section-eyebrow" style={{ marginTop: 16 }}>{t("activation.exampleLabel")}</div>
+      <div className="profile-header-card">
+        <div className="profile-avatar-fallback">{exampleAvatar}</div>
+        <div className="profile-header-info">
+          <h2>{exampleName}</h2>
+          <div className="profile-header-sub">{exampleSub}</div>
+        </div>
+        <div className="rating-preview-circle">{exampleBadge}</div>
+      </div>
+      <div className="turnover-row" style={{ marginTop: 12 }}>
+        <div className="turnover-cell">
+          <div className="turnover-label">{stat1Label}</div>
+          <div className="turnover-value">{stat1Value}</div>
+        </div>
+        <div className="turnover-cell">
+          <div className="turnover-label">{stat2Label}</div>
+          <div className="turnover-value">{stat2Value}</div>
+        </div>
+      </div>
+      <div className="activation-meta">{metaLine}</div>
+
+      <div className="activation-lock">
+        <IconLock />
+        <span>{lockText}</span>
+      </div>
+
+      <div className="activation-price-row">
+        <span className="section-eyebrow">{priceLabel}</span>
+        <span className="activation-price-value">{priceValue}</span>
+      </div>
+      <button className="btn" onClick={onActivate}>{ctaLabel}</button>
+    </div>
+  );
+}
+
 export function TurnoverCard({ turnover }) {
   const { t } = useLang();
   if (!turnover) return null;

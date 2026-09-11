@@ -161,6 +161,66 @@ const STRINGS = {
   "metric.partnerships": { ru: "Партнёрств", en: "Partnerships" },
   "metric.daysInCommunity": { ru: "Дней в комьюнити", en: "Days in community" },
   // Счётчики оборота (ТЗ «Верификация транзакций», разделы 7-8, 12).
+  "activation.nowLabel": { ru: "СЕЙЧАС", en: "NOW" },
+  "activation.exampleLabel": { ru: "ПОСЛЕ АКТИВАЦИИ · ПРИМЕР", en: "AFTER ACTIVATION · EXAMPLE" },
+
+  "activationPersonal.title": { ru: "Ваш личный рейтинг", en: "Your personal rating" },
+  "activationPersonal.nowName": { ru: "Имя не указано", en: "Name not set" },
+  "activationPersonal.nowSub": { ru: "Должность · Компания", en: "Position · Company" },
+  "activationPersonal.about": {
+    ru: "Развивайте профессиональную репутацию: подтверждайте сотрудничества и становитесь заметнее в индустрии.",
+    en: "Build your professional reputation: confirm partnerships and become more visible in the industry.",
+  },
+  "activationPersonal.exampleName": { ru: "Артём Л.", en: "Artem L." },
+  "activationPersonal.exampleSub": { ru: "Head of Affiliates · Gambling", en: "Head of Affiliates · Gambling" },
+  "activationPersonal.stat1Label": { ru: "ПОЛУЧЕНО", en: "RECEIVED" },
+  "activationPersonal.stat2Label": { ru: "ВЫПЛАЧЕНО ПАРТНЁРАМ", en: "PAID TO PARTNERS" },
+  "activationPersonal.metaLine": { ru: "14 сделок · 14 партнёрств", en: "14 deals · 14 partnerships" },
+  "activationPersonal.lockText": {
+    ru: "Никто не узнает, с кем была сделка: имя контрагента и детали скрыты",
+    en: "No one will know who the deal was with: counterparty name and details stay hidden",
+  },
+  "activationPersonal.priceLabel": { ru: "ПОДПИСКА «ЛИЧНЫЙ»", en: "\u00abPERSONAL\u00bb SUBSCRIPTION" },
+  "activationPersonal.priceValue": { ru: "$6 / мес", en: "$6 / mo" },
+  "activationPersonal.cta": { ru: "Создать личный GURO ID", en: "Create your personal GURO ID" },
+
+  "activationRecruiter.title": { ru: "Ваш рейтинг найма", en: "Your hiring rating" },
+  "activationRecruiter.nowName": { ru: "Кабинет не активирован", en: "Cabinet not activated" },
+  "activationRecruiter.nowSub": { ru: "Вакансии публиковать нельзя", en: "You can't publish vacancies yet" },
+  "activationRecruiter.about": {
+    ru: "Публикуйте вакансии, находите кандидатов, подтверждайте наймы и развивайте рейтинг рекрутера.",
+    en: "Publish vacancies, find candidates, confirm hires and build your recruiter rating.",
+  },
+  "activationRecruiter.exampleName": { ru: "Юлия Черных", en: "Yulia Chernykh" },
+  "activationRecruiter.exampleSub": { ru: "Head of HR · 2xBet", en: "Head of HR · 2xBet" },
+  "activationRecruiter.stat1Label": { ru: "УСПЕШНЫХ НАЙМОВ", en: "SUCCESSFUL HIRES" },
+  "activationRecruiter.stat2Label": { ru: "ОТКЛИКОВ ЗА 7 ДНЕЙ", en: "RESPONSES IN 7 DAYS" },
+  "activationRecruiter.metaLine": { ru: "39 сделок · 4 активные вакансии", en: "39 deals · 4 active vacancies" },
+  "activationRecruiter.lockText": { ru: "Личный кабинет остаётся вашим", en: "Your personal cabinet stays yours" },
+  "activationRecruiter.priceLabel": { ru: "ПОДПИСКА «РЕКРУТЕР»", en: "\u00abRECRUITER\u00bb SUBSCRIPTION" },
+  "activationRecruiter.priceValue": { ru: "$19 / мес", en: "$19 / mo" },
+  "activationRecruiter.cta": { ru: "Активировать кабинет рекрутера", en: "Activate recruiter cabinet" },
+
+  "activationCompany.title": { ru: "Рейтинг вашего бренда", en: "Your brand rating" },
+  "activationCompany.nowName": { ru: "Бренд не подключён", en: "Brand not connected" },
+  "activationCompany.nowSub": { ru: "Страницы компании пока нет", en: "No company page yet" },
+  "activationCompany.about": {
+    ru: "Развивайте репутацию бренда: публикуйте вакансии, подтверждайте сделки и управляйте командой компании.",
+    en: "Build your brand reputation: publish vacancies, confirm deals and manage your company team.",
+  },
+  "activationCompany.exampleName": { ru: "2xBet", en: "2xBet" },
+  "activationCompany.exampleSub": { ru: "Gambling · Betting", en: "Gambling · Betting" },
+  "activationCompany.stat1Label": { ru: "УСПЕШНЫХ НАЙМОВ", en: "SUCCESSFUL HIRES" },
+  "activationCompany.stat2Label": { ru: "РЕКРУТЕРОВ В КОМАНДЕ", en: "RECRUITERS ON TEAM" },
+  "activationCompany.metaLine": { ru: "142 сделки · 17 активных вакансий", en: "142 deals · 17 active vacancies" },
+  "activationCompany.lockText": {
+    ru: "Кабинеты можно активировать по отдельности",
+    en: "Cabinets can be activated separately",
+  },
+  "activationCompany.priceLabel": { ru: "ПОДПИСКА «КОМПАНИЯ»", en: "\u00abCOMPANY\u00bb SUBSCRIPTION" },
+  "activationCompany.priceValue": { ru: "$49 / мес", en: "$49 / mo" },
+  "activationCompany.cta": { ru: "Активировать кабинет компании", en: "Activate company cabinet" },
+
   "turnover.title": { ru: "Оборот", en: "Turnover" },
   "turnover.received": { ru: "Получено", en: "Received" },
   "turnover.paid": { ru: "Оплачено", en: "Paid" },
@@ -381,26 +441,8 @@ const STRINGS = {
   "companyViewBtn": { ru: "Посмотреть как компанию", en: "View as company" },
 
   // --- Онбординг ---
-  "onboarding.title": { ru: "Это ваша ID-карта", en: "This is your ID card" },
-  "onboarding.intro": { ru: "Для загрузки CV, поиска работы, кандидатов и партнёров. А также есть рейтинг подтверждённых сделок и найма.", en: "For uploading a CV, finding jobs, candidates and partners. Plus a rating of confirmed deals and hires." },
-  "onboarding.more": { ru: "Подробнее", en: "Learn more" },
-  "onboarding.detail1": { ru: "Вы платите за то, чтобы быть всегда сразу в 7 вертикалях:", en: "You pay to always be present across 7 verticals at once:" },
-  "onboarding.detail2": {
-    ru: "У вас появится специальная ID-карта. Каждый раз, когда у вас будет успешная сделка или найм, ваш партнёр подтверждает это — и на основании этого у вас будет рейтинг. Вам достаточно отправить свой юзернейм любому участнику индустрии: он, перейдя в ваш профиль, увидит, что с вами сотрудничали разные люди, были успешные сделки, найм.",
-    en: "You'll get a personal ID card. Every time you have a successful deal or hire, your partner confirms it — and that builds your rating. Just send your username to anyone in the industry: opening your profile, they'll see that different people worked with you, with real deals and hires behind it.",
-  },
-  "onboarding.detail3": { ru: "Также вы сможете загрузить своё резюме и найти работу. Функционал будет увеличиваться.", en: "You'll also be able to upload your resume and find a job. More features are coming." },
 
   // First-time flow (11.09.2026) — регистрация прямо в приложении.
-  "createProfile.emptyName": { ru: "Ваше имя", en: "Your name" },
-  "createProfile.emptyPosition": { ru: "Должность не указана", en: "Position not set" },
-  "createProfile.exampleName": { ru: "Артём Л.", en: "Artem L." },
-  "createProfile.examplePosition": { ru: "Head of Affiliates · Gambling", en: "Head of Affiliates · Gambling" },
-  "createProfile.ctaHint": {
-    ru: "Займёт около трёх минут. Публикация профиля — по подписке, от 400 ⭐ в месяц.",
-    en: "Takes about three minutes. Publishing your profile requires a subscription, from 400 ⭐ / month.",
-  },
-  "createProfile.ctaBtn": { ru: "Создать свой GURO ID", en: "Create your GURO ID" },
   "createProfile.stepLabel": { ru: "Шаг {step} из {total}", en: "Step {step} of {total}" },
   "createProfile.namePlaceholderCard": { ru: "Имя?", en: "Name?" },
   "createProfile.positionPlaceholderCard": { ru: "Должность?", en: "Position?" },
@@ -768,10 +810,6 @@ const STRINGS = {
   "recruiter.title": { ru: "Кабинет рекрутера", en: "Recruiter cabinet" },
   // Бейдж-подсказка "Кабинет: Рекрутер" (28.08.2026) — см. WorkspaceCabinetBadge, Shared.jsx.
   "workspace.badge.recruiter": { ru: "Кабинет: Рекрутер", en: "Cabinet: Recruiter" },
-  "recruiter.upsellText": {
-    ru: "Отдельная витрина поверх личного профиля — своё имя, компания и CV для рабочего режима, независимо от того, что видно в личном профиле. Рейтинг и история сделок остаются общими для обоих режимов.",
-    en: "A separate showcase on top of your personal profile — your own name, company and CV for work mode, independent of what's visible in your personal profile. Rating and deal history stay shared between both modes.",
-  },
   "recruiter.field.name": { ru: "Имя / подпись", en: "Name / title" },
   "recruiter.field.namePlaceholder": { ru: "Например: Иван Петров, HR отдел", en: "E.g.: John Smith, HR department" },
   "recruiter.field.company": { ru: "Компания", en: "Company" },
@@ -1391,11 +1429,6 @@ const STRINGS = {
 
 // Список вертикалей в питче онбординга (не строка, отдельно от STRINGS) —
 // та же семёрка, что была в исходном питче владельца, RU/EN пара.
-export const ONBOARDING_VERTICALS = {
-  ru: ["Гемблинг", "Бейтинг", "Крипто", "Нутра", "Дейтинг", "Е-коммерс", "Другое"],
-  en: ["Gambling", "Betting", "Crypto", "Nutra", "Dating", "E-Commerce", "Other"],
-};
-
 export function translate(lang, key, vars) {
   const entry = STRINGS[key];
   let str = entry ? (entry[lang] || entry.ru) : key;

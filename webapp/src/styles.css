@@ -1185,6 +1185,53 @@ label {
   color: var(--text-dim);
 }
 
+/* --- Карточка "активации" кабинета (11.09.2026) --- */
+
+.activation-now-avatar {
+  background: var(--tile);
+  color: var(--text-dim);
+}
+
+.activation-badge-dim {
+  opacity: 0.5;
+  border-color: var(--glass-border);
+  color: var(--text-dim);
+  background: transparent;
+}
+
+.activation-meta {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.activation-lock {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--divider);
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.activation-price-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.activation-price-value {
+  font-family: Manrope, sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text);
+}
+
+
 /* "экономия N ⭐" — строкой ПОД ценой, как в макете. Абсолютной пилюлей в
    углу она быть не может: там уже лежит .plan-card-value-badge
    ("Выгодно") с теми же координатами, метки накладывались друг на друга,
@@ -2196,14 +2243,6 @@ label {
 
 /* --- Онбординг первого запуска + гейт подписки на рейтинг (10.08.2026) --- */
 
-.onboarding-mock-card {
-  opacity: 0.75;
-}
-
-.onboarding-mock-avatar {
-  font-size: 22px;
-}
-
 .onboarding-mock-placeholder {
   color: var(--text-dim);
   font-style: italic;
@@ -2289,15 +2328,6 @@ label {
 
 .onboarding-detail p {
   margin: 0 0 12px;
-}
-
-.onboarding-verticals {
-  margin: 0 0 12px;
-  padding-left: 20px;
-}
-
-.onboarding-verticals li {
-  margin-bottom: 4px;
 }
 
 .subscription-gate-note {

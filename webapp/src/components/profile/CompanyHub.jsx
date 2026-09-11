@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { EditableField, ImageUploadArea, Msg, TurnoverCard } from "../Shared.jsx";
+import { ActivationPreview, EditableField, ImageUploadArea, Msg, TurnoverCard } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import {
   getCompanyAddresses, setCompanyProfileField, setCompanyPrivacyField, submitCompanyAddress,
@@ -8,7 +8,7 @@ import {
 } from "../../api.js";
 import { SubscribeScreen } from "../SubscribeScreen.jsx";
 import { useLang } from "../../i18n.jsx";
-import { IconCheck, IconGear, IconLock } from "../Icons.jsx";
+import { IconBuilding, IconCheck, IconGear, IconLock } from "../Icons.jsx";
 import { ensureHttpUrl, initialOf } from "../../utils.js";
 import { haptic } from "../../telegram.js";
 
@@ -492,6 +492,9 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
   // переключатель, какой из двух показать. После подписки тир уже
   // зафиксирован на бэкенде (data.company_tier) — переключатель прячется.
   const [tierChoice, setTierChoice] = useState("basic");
+  // Кнопка карточки-тизера ActivationPreview раскрывает выбор тарифа,
+  // а не платит сама (11.09.2026).
+  const [showPlans, setShowPlans] = useState(false);
   // Ошибки/подсказки загрузки лого и обложки выведены из ImageUploadArea
   // (обложка выше .company-header с его margin-top:-30px — если оставить
   // подсказку МЕЖДУ ними, шапка наедет и перекроет текст; лого вообще
@@ -510,30 +513,54 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
   if (!data.is_company_subscribed) {
     return (
       <div>
-        <div className="card">
-          <h3>{t("company.title")}</h3>
-          <p className="partner-meta">{t("company.upsellText")}</p>
-          <div className="vertical-chips" style={{ marginTop: 12 }}>
-            <button
-              type="button"
-              className={`vertical-chip${tierChoice === "basic" ? " is-selected" : ""}`}
-              onClick={() => setTierChoice("basic")}
-            >
-              {t("company.tier.basic")}
-            </button>
-            <button
-              type="button"
-              className={`vertical-chip${tierChoice === "pro" ? " is-selected" : ""}`}
-              onClick={() => setTierChoice("pro")}
-            >
-              {t("company.tier.pro")}
-            </button>
+        <ActivationPreview
+          title={t("activationCompany.title")}
+          nowAvatar={<IconBuilding size={22} />}
+          nowName={t("activationCompany.nowName")}
+          nowSub={t("activationCompany.nowSub")}
+          nowBadge={null}
+          aboutText={t("activationCompany.about")}
+          exampleAvatar={initialOf(t("activationCompany.exampleName"))}
+          exampleName={t("activationCompany.exampleName")}
+          exampleSub={t("activationCompany.exampleSub")}
+          exampleBadge={960}
+          stat1Label={t("activationCompany.stat1Label")}
+          stat1Value="48"
+          stat2Label={t("activationCompany.stat2Label")}
+          stat2Value="5"
+          metaLine={t("activationCompany.metaLine")}
+          lockText={t("activationCompany.lockText")}
+          priceLabel={t("activationCompany.priceLabel")}
+          priceValue={t("activationCompany.priceValue")}
+          ctaLabel={t("activationCompany.cta")}
+          onActivate={() => setShowPlans(true)}
+        />
+        {showPlans && (
+          <div>
+            <div className="card">
+              <div className="vertical-chips">
+                <button
+                  type="button"
+                  className={`vertical-chip${tierChoice === "basic" ? " is-selected" : ""}`}
+                  onClick={() => setTierChoice("basic")}
+                >
+                  {t("company.tier.basic")}
+                </button>
+                <button
+                  type="button"
+                  className={`vertical-chip${tierChoice === "pro" ? " is-selected" : ""}`}
+                  onClick={() => setTierChoice("pro")}
+                >
+                  {t("company.tier.pro")}
+                </button>
+              </div>
+              <p className="partner-meta" style={{ marginTop: 8 }}>
+                {tierChoice === "pro" ? t("company.tier.proHint") : t("company.tier.basicHint")}
+              </p>
+            </div>
+            <SubscribeScreen product={tierChoice === "pro" ? "company_pro" : "company_basic"} onSubscribed={onSubscribed} />
           </div>
-          <p className="partner-meta" style={{ marginTop: 8 }}>
-            {tierChoice === "pro" ? t("company.tier.proHint") : t("company.tier.basicHint")}
-          </p>
-        </div>
-        <SubscribeScreen product={tierChoice === "pro" ? "company_pro" : "company_basic"} onSubscribed={onSubscribed} />
+        )}
       </div>
     );
   }

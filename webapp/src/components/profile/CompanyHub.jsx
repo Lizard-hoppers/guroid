@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivationPreview, EditableField, ImageUploadArea, Msg, TurnoverCard, usePersistentReveal } from "../Shared.jsx";
+import { ActivationPreview, EditableField, ImageUploadArea, Msg, RatingPreview, TurnoverCard, usePersistentReveal } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import {
   getCompanyAddresses, setCompanyProfileField, setCompanyPrivacyField, submitCompanyAddress,
@@ -8,7 +8,7 @@ import {
 } from "../../api.js";
 import { SubscribeScreen } from "../SubscribeScreen.jsx";
 import { useLang } from "../../i18n.jsx";
-import { IconBuilding, IconCheck, IconGear, IconLock } from "../Icons.jsx";
+import { IconBuilding, IconCheck, IconGear } from "../Icons.jsx";
 import { ensureHttpUrl, initialOf } from "../../utils.js";
 import { haptic } from "../../telegram.js";
 
@@ -651,9 +651,7 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
               )}
             </h2>
           </div>
-          <div className="company-rating-badge">
-            {hasReputation ? Math.round(data.reputation_score) : <IconLock />}
-          </div>
+          <RatingPreview reputation={hasReputation ? data.reputation_score : null} onOpen={() => {}} />
         </div>
         {/* 29.08.2026, регресс: были оба на классе с position:absolute
             (.recruiter-role-badge) — второй бейдж рисовался прямо поверх

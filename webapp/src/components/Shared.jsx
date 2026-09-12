@@ -790,14 +790,18 @@ export function ActivationPreview({
         </div>
         <div className="rating-preview-circle">{exampleBadge}</div>
       </div>
-      <div className="turnover-row" style={{ marginTop: 12 }}>
-        <div className="turnover-cell">
-          <div className="turnover-label">{stat1Label}</div>
-          <div className="turnover-value">{stat1Value}</div>
+      {/* recruiter-metric* — тот же класс, что уже верно показывает
+          реальные метрики в Характеристике Рекрутера/Компании (число
+          лаймовым НАД подписью). turnover-* тут не подходил — это класс
+          другого компонента (TurnoverCard), где порядок обратный. */}
+      <div className="recruiter-metrics-grid" style={{ marginTop: 12 }}>
+        <div className="recruiter-metric">
+          <div className="recruiter-metric-value">{stat1Value}</div>
+          <div className="recruiter-metric-label">{stat1Label}</div>
         </div>
-        <div className="turnover-cell">
-          <div className="turnover-label">{stat2Label}</div>
-          <div className="turnover-value">{stat2Value}</div>
+        <div className="recruiter-metric">
+          <div className="recruiter-metric-value">{stat2Value}</div>
+          <div className="recruiter-metric-label">{stat2Label}</div>
         </div>
       </div>
       <div className="activation-meta">{metaLine}</div>

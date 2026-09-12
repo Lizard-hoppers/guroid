@@ -1472,12 +1472,19 @@ label {
   transform: rotate(45deg);
 }
 
-.activation-now-avatar {
+/* Составной селектор (а не одиночный .activation-now-avatar) — иначе
+   проигрывает .profile-avatar-fallback по порядку объявления в файле:
+   у обоих одинаковая специфичность одного класса, а выигрывает тот,
+   кто ниже, — из-за этого "СЕЙЧАС"-аватар показывал яркий градиент
+   вместо приглушённого (баг, репорт владельца 12.09.2026). */
+.profile-avatar-fallback.activation-now-avatar {
   background: var(--tile);
   color: var(--text-dim);
 }
 
-.activation-badge-dim {
+/* Та же причина, что у activation-now-avatar выше — .rating-preview-
+   circle объявлен ниже в файле и выигрывал background/border/color. */
+.rating-preview-circle.activation-badge-dim {
   opacity: 0.5;
   border-color: var(--glass-border);
   color: var(--text-dim);

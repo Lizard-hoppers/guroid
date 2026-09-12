@@ -502,6 +502,40 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
   // целиком, одним блоком на оба поля.
   const [logoUploadError, setLogoUploadError] = useState(null);
   const [coverUploadError, setCoverUploadError] = useState(null);
+  const [removingLogo, setRemovingLogo] = useState(false);
+  const [removingCover, setRemovingCover] = useState(false);
+
+  // "Удалить логотип/обложку" (12.09.2026, просьба владельца) — тот же
+  // field-setter, что у текстовых полей витрины, со значением null.
+  async function removeLogo() {
+    setRemovingLogo(true);
+    setLogoUploadError(null);
+    try {
+      const extra = await setCompanyProfileField("logo_url", null);
+      onFieldSaved("logo_url", extra.logo_url ?? null);
+      haptic("success");
+    } catch {
+      setLogoUploadError(t("common.saveError"));
+      haptic("error");
+    } finally {
+      setRemovingLogo(false);
+    }
+  }
+
+  async function removeCover() {
+    setRemovingCover(true);
+    setCoverUploadError(null);
+    try {
+      const extra = await setCompanyProfileField("cover_url", null);
+      onFieldSaved("cover_url", extra.cover_url ?? null);
+      haptic("success");
+    } catch {
+      setCoverUploadError(t("common.saveError"));
+      haptic("error");
+    } finally {
+      setRemovingCover(false);
+    }
+  }
 
   // no_company (27.08.2026, ТЗ "Роли и управление командой") — юзер не
   // Владелец и не Админ ни в одной компании: либо создаёт свою, либо
@@ -643,8 +677,28 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
       {!data.cover_url && (
         <p className="partner-meta company-upload-hint">{t("company.upload.coverHint")}</p>
       )}
+      {data.cover_url && (
+        <button
+          type="button"
+          className="rate-inline-link rate-inline-link--danger"
+          disabled={removingCover}
+          onClick={removeCover}
+        >
+          {t("photo.removeCover")}
+        </button>
+      )}
       {!data.logo_url && (
         <p className="partner-meta company-upload-hint">{t("company.upload.logoHint")}</p>
+      )}
+      {data.logo_url && (
+        <button
+          type="button"
+          className="rate-inline-link rate-inline-link--danger"
+          disabled={removingLogo}
+          onClick={removeLogo}
+        >
+          {t("photo.removeLogo")}
+        </button>
       )}
       {coverUploadError && <Msg type="error">{coverUploadError}</Msg>}
       {logoUploadError && <Msg type="error">{logoUploadError}</Msg>}

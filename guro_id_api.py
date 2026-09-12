@@ -1738,7 +1738,10 @@ async def handle_set_profile_field(request: web.Request) -> web.Response:
     user = _auth(request, settings)
     body = await request.json()
     field = str(body.get("field", ""))
-    value = str(body.get("value", "")).strip()[:2000] or None
+    # value:null (12.09.2026, "удалить фото") — _body_text отличает
+    # "ключа нет" от "ключ есть, значение null"; str(body.get(...)) этого
+    # не умеет и превращает null в буквальную строку "None".
+    value = _body_text(body, "value").strip()[:2000] or None
     try:
         extra = storage.set_extra_profile_field(user["id"], field, value)
     except ValueError:
@@ -1754,7 +1757,9 @@ async def handle_set_recruiter_profile_field(request: web.Request) -> web.Respon
     user = _auth(request, settings)
     body = await request.json()
     field = str(body.get("field", ""))
-    value = str(body.get("value", "")).strip()[:2000] or None
+    # value:null (12.09.2026, "удалить логотип") — см. комментарий у
+    # handle_set_profile_field выше.
+    value = _body_text(body, "value").strip()[:2000] or None
     try:
         extra = storage.set_recruiter_extra_field(user["id"], field, value)
     except ValueError:
@@ -1788,7 +1793,9 @@ async def handle_set_company_profile_field(request: web.Request) -> web.Response
     company_id = membership["company_id"]
     body = await request.json()
     field = str(body.get("field", ""))
-    value = str(body.get("value", "")).strip()[:2000] or None
+    # value:null (12.09.2026, "удалить логотип/обложку") — см. комментарий
+    # у handle_set_profile_field выше.
+    value = _body_text(body, "value").strip()[:2000] or None
     try:
         extra = storage.set_company_extra_field(company_id, field, value)
     except ValueError:

@@ -3073,6 +3073,21 @@ async def _run_guro_id_api_sim():
                 body = await resp.json()
                 check(body["cv_text"] == "5 лет в iGaming", "/api/profile возвращает обновлённое значение")
 
+                # Регрессия 12.09.2026 ("удалить фото" шлёт value:null):
+                # str(body.get("value","")) превращал JSON null в строку
+                # "None" вместо реальной очистки.
+                resp = await client.post("/api/profile", headers=auth_100,
+                                          json={"field": "cv_text", "value": None})
+                check(resp.status == 200, "POST /api/profile field=None -> 200")
+                body = await resp.json()
+                check(body["cv_text"] is None,
+                      f"value:null реально очищает поле, а не пишет строку 'None': {body['cv_text']!r}")
+                # Восстанавливаем — более поздняя проверка "show_cv включён"
+                # ожидает это же значение, тест иначе загрязняет своё же
+                # состояние.
+                await client.post("/api/profile", headers=auth_100,
+                                   json={"field": "cv_text", "value": "5 лет в iGaming"})
+
                 await client.post("/api/profile", headers=auth_100, json={"field": "website", "value": "init.dev"})
                 await client.post("/api/profile", headers=auth_100,
                                    json={"field": "offering", "value": "консультации по трафику"})
@@ -3835,6 +3850,16 @@ async def _run_guro_id_api_sim():
                 check(resp.status == 200, "POST /api/recruiter/profile name -> 200")
                 body = await resp.json()
                 check(body["name"] == "Init HR", "/api/recruiter/profile возвращает обновлённое значение")
+
+                # Регрессия 12.09.2026 ("удалить фото" шлёт value:null) —
+                # см. комментарий у аналогичной проверки /api/profile выше.
+                resp = await client.post("/api/recruiter/profile", headers=auth_100,
+                                          json={"field": "logo_url", "value": None})
+                check(resp.status == 200, "POST /api/recruiter/profile logo_url=None -> 200")
+                body = await resp.json()
+                check(body["logo_url"] is None,
+                      f"value:null реально очищает логотип, а не пишет строку 'None': {body['logo_url']!r}")
+
                 await client.post("/api/recruiter/profile", headers=auth_100,
                                    json={"field": "company", "value": "GURO Recruiting"})
 
@@ -3955,6 +3980,15 @@ async def _run_guro_id_api_sim():
                 resp = await client.post("/api/company/profile", headers=auth_100,
                                           json={"field": "vertical", "value": "iGaming"})
                 check(resp.status == 200, "POST /api/company/profile vertical (теперь есть членство) -> 200")
+
+                # Регрессия 12.09.2026 ("удалить обложку/логотип" шлёт
+                # value:null) — см. комментарий у /api/profile выше.
+                resp = await client.post("/api/company/profile", headers=auth_100,
+                                          json={"field": "cover_url", "value": None})
+                check(resp.status == 200, "POST /api/company/profile cover_url=None -> 200")
+                body = await resp.json()
+                check(body["cover_url"] is None,
+                      f"value:null реально очищает обложку, а не пишет строку 'None': {body['cover_url']!r}")
 
                 resp = await client.post("/api/company/privacy", headers=auth_100,
                                           json={"field": "unknown_field", "value": True})

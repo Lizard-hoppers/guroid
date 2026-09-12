@@ -221,6 +221,26 @@ export function RecruiterHub({
 }) {
   const { t } = useLang();
   const [logoUploadError, setLogoUploadError] = useState(null);
+  const [removingLogo, setRemovingLogo] = useState(false);
+
+  // "Удалить фото" (12.09.2026, просьба владельца) — тот же field-setter,
+  // что и текстовые поля витрины, просто со значением null. Кнопка живёт
+  // рядом с подсказкой про загрузку (та же условная зона: одно вместо
+  // другого — до и после того, как фото появилось).
+  async function removeLogo() {
+    setRemovingLogo(true);
+    setLogoUploadError(null);
+    try {
+      const extra = await setRecruiterProfileField("logo_url", null);
+      onFieldSaved("logo_url", extra.logo_url ?? null);
+      haptic("success");
+    } catch {
+      setLogoUploadError(t("common.saveError"));
+      haptic("error");
+    } finally {
+      setRemovingLogo(false);
+    }
+  }
   // Кнопка карточки-тизера ActivationPreview раскрывает тариф, а не платит
   // сама (11.09.2026) — платёжный выбор (месяц/год, крипта/звёзды) ниже
   // остаётся тем же SubscribeScreen, просто не показан сразу.
@@ -306,6 +326,16 @@ export function RecruiterHub({
           логотип уже загружен. */}
       {!data.logo_url && (
         <p className="partner-meta company-upload-hint">{t("recruiter.upload.logoHint")}</p>
+      )}
+      {data.logo_url && (
+        <button
+          type="button"
+          className="rate-inline-link rate-inline-link--danger"
+          disabled={removingLogo}
+          onClick={removeLogo}
+        >
+          {t("photo.removeLogo")}
+        </button>
       )}
       {logoUploadError && <Msg type="error">{logoUploadError}</Msg>}
 

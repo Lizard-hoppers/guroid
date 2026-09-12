@@ -966,6 +966,8 @@ const STRINGS = {
     ru: "Логотип: квадрат, от 256×256, PNG/JPG/WEBP, до 3 МБ.",
     en: "Logo: square, at least 256×256, PNG/JPG/WEBP, up to 3 MB.",
   },
+  "photo.removeLogo": { ru: "Удалить фото", en: "Remove photo" },
+  "photo.removeCover": { ru: "Удалить обложку", en: "Remove cover" },
   "recruiter.upload.logoHint": {
     ru: "Логотип: квадрат, от 256×256, PNG/JPG/WEBP, до 3 МБ.",
     en: "Logo: square, at least 256×256, PNG/JPG/WEBP, up to 3 MB.",

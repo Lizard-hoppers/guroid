@@ -14,7 +14,7 @@ import { useWorkspaceCaps } from "./VacanciesScreen.jsx";
 import { RecruiterCandidatesScreen } from "./profile/RecruiterCandidatesScreen.jsx";
 import { haptic } from "../telegram.js";
 import { useLang } from "../i18n.jsx";
-import { IconCheck, IconLock } from "./Icons.jsx";
+import { IconCheck, IconLock, IconTrophy } from "./Icons.jsx";
 import { ensureHttpUrl, initialOf, formatDate } from "../utils.js";
 
 // Канонический список вертикалей — ровно constants.VERTICALS в боте (то,
@@ -524,7 +524,7 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, deepLinkWorkspace, 
         )}
         <label className="checkbox-row" style={{ marginTop: 12 }}>
           <input type="checkbox" checked={sortTop} onChange={toggleTop} />
-          {t("search.topToggle")}
+          <span><IconTrophy /> {t("search.topToggle")}</span>
         </label>
       </div>
 
@@ -555,7 +555,7 @@ export function SearchScreen({ onNavigate, deepLinkTargetId, deepLinkWorkspace, 
       )}
 
       {state.data && state.data.mode === "list" && state.data.results.length > 0 && (
-        <div className="directory-results">
+        <div className="directory-results card">
           {state.data.results.map((r) => (
             <DirectoryRow key={r.user_id} r={r} onOpen={openFromList} showRating />
           ))}

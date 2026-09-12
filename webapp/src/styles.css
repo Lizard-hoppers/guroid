@@ -671,6 +671,21 @@ h3 {
   flex-shrink: 0;
 }
 
+/* Обводка по роли в "Команде" (макет "18 · Команда"): заявки в очереди и
+   Админ/Рекрутер — бирюзовая, Владелец — лаймовая. Модификатор, а не
+   правка базового .avatar-dot — тот же класс используется в SearchScreen
+   с обычным градиентом, это не трогаем. */
+.avatar-dot--ring {
+  background: #0a1912;
+  border: 1px solid var(--recruiter-cyan);
+  color: var(--recruiter-cyan);
+}
+
+.avatar-dot--ring.avatar-dot--owner {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
 .partner-info {
   flex: 1;
   min-width: 0;

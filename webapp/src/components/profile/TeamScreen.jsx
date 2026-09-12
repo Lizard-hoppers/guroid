@@ -155,7 +155,7 @@ export function TeamScreen({ onBack }) {
           {data.requests?.map((r) => (
             <div key={r.id} className="card">
               <div className="team-member-row">
-                <div className="avatar-dot">{initialOf(r.name, r.username)}</div>
+                <div className="avatar-dot avatar-dot--ring">{initialOf(r.name, r.username)}</div>
                 <div className="team-member-main">
                   <div className="partner-name">
                     {r.name || (r.username ? `@${r.username}` : t("common.noName"))}
@@ -200,7 +200,9 @@ export function TeamScreen({ onBack }) {
         {data.members.map((m) => (
           <div key={m.user_id} className="card">
             <div className="team-member-row">
-              <div className="avatar-dot">{initialOf(m.name, m.username)}</div>
+              <div className={`avatar-dot avatar-dot--ring${m.role === "owner" ? " avatar-dot--owner" : ""}`}>
+                {initialOf(m.name, m.username)}
+              </div>
               <div className="team-member-main">
                 <div className="partner-name">
                   {m.name || (m.username ? `@${m.username}` : t("common.noName"))}

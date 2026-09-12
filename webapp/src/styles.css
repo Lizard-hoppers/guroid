@@ -612,19 +612,10 @@ h3 {
   margin-top: 0;
 }
 
-.partner-row--success {
-  border-color: #2f7049;
-}
-
-.partner-row--nuance {
-  border-color: #7c652a;
-}
-
-/* Для "проблемной" сделки примера в макете нет — берём тот же приём от
-   уже существующего --danger. */
-.partner-row--problematic {
-  border-color: #7a3a30;
-}
+/* 12.09.2026, сверка с макетом (08-istoriya.png): карточка одного цвета
+   независимо от вердикта — красится только плашка вердикта (см.
+   .partner-verdict-- * ниже), а не рамка всей строки. Модификаторы
+   .partner-row--* больше не меняют border-color. */
 
 .partner-row-head {
   display: flex;
@@ -643,17 +634,19 @@ h3 {
 }
 
 .partner-verdict--success {
-  background: #143222;
-  color: #4db875;
+  background: var(--gold);
+  color: #171708;
 }
 
 .partner-verdict--nuance {
   background: #2b2f19;
+  border: 1px solid var(--amber);
   color: var(--amber);
 }
 
 .partner-verdict--problematic {
   background: #2e1a17;
+  border: 1px solid var(--danger);
   color: var(--danger);
 }
 

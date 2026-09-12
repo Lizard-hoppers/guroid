@@ -184,6 +184,24 @@ PAYWALL_EXPIRED_TEXT = (
     "Ваш профиль, рейтинг и история сделок сохранены."
 )
 
+SUBSCRIPTION_GATE_TEXT = (
+    "Чтобы писать в темах группы, нужна активная подписка GURO ID.\n\n"
+    "<b>Что она даёт</b>\n"
+    "\u2022 Свободное размещение сообщений в темах группы\n"
+    "\u2022 Отслеживание вашего рейтинга в GURO ID\n"
+    "\u2022 Поиск сотрудников и подтверждение сделок \u2014 в том числе анонимно \u2014 внутри приложения\n"
+    "\u2022 Именной статус-тег рядом с ником в чате\n\n"
+    "<b>Стоимость</b>\n"
+    "Месяц \u2014 $6 в крипте (или 400 \u2b50)\n"
+    "Год \u2014 $50 в крипте (или 3350 \u2b50)\n\n"
+    "Оплатите \u2014 и ваше отложенное сообщение появится в теме."
+)
+
+SUBSCRIPTION_GATE_GROUP_PROMPT_TEXT = (
+    "Писать в темах группы можно только с активной подпиской GURO ID.\n"
+    "Ваше сообщение сохранено \u2014 оно вернётся сюда сразу после оплаты."
+)
+
 FINAL_TEXT = (
     "<tg-emoji emoji-id=\"5436011369197484799\">🏆</tg-emoji> <b>Спасибо за заполнение анкеты!</b>\n\n"
     "<tg-emoji emoji-id=\"5319306413296599737\">✅</tg-emoji> Ваша регистрация успешно завершена.\n\n"
@@ -503,6 +521,7 @@ BUTTON_DEFAULTS.update({
     "join_en": "Join the community",
     "g_inv_en": "Investor",
     "gate": GATE_BUTTON_LABEL,
+    "pay_subscription": "\U0001f4b3 Оплатить подписку",
     "guro_id_en": "🪪 Open GURO ID",
 })
 for _i, _v in enumerate(INVESTOR_TYPES_EN):
@@ -515,7 +534,7 @@ for _i, _n in enumerate(INVESTOR_NEEDS_EN):
 # Группы для админ-каталога кнопок: (заголовок, [ключи])
 BUTTON_CATALOG: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Основные", ("start", "join", "guro_id", "skip", "other", "back", "done", "prev", "next",
-                  "lang_en", "lang_ru", "gate")),
+                  "lang_en", "lang_ru", "gate", "pay_subscription")),
     ("Основные (EN)", ("start_en", "join_en", "guro_id_en", "skip_en", "other_en", "back_en", "done_en")),
     ("Вертикали", tuple(f"v_{i}" for i in range(len(VERTICALS)))),
     ("Грейды", tuple(f"g_{i}" for i in range(len(GRADES))) + ("g_inv", "g_inv_en")),
@@ -578,6 +597,8 @@ TEXT_DEFAULTS: dict[str, str] = {
     "gate_prompt": GATE_PROMPT_TEXT,
     "group_greeting": GROUP_GREETING_TEXT_RU,
     "group_greeting_en": GROUP_GREETING_TEXT_EN,
+    "subscription_gate": SUBSCRIPTION_GATE_TEXT,
+    "subscription_gate_group_prompt": SUBSCRIPTION_GATE_GROUP_PROMPT_TEXT,
 }
 
 # Список текстов для админ-каталога: (ключ, человекочитаемая подпись)
@@ -602,6 +623,8 @@ TEXT_CATALOG: tuple[tuple[str, str], ...] = (
     ("banned_notice", "Финал: юзер забанен админом (доступ не открыт)"),
     ("captcha_welcome", "Приветствие в группе (текст + видео + кнопки)"),
     ("gate_prompt", "Гейт: мут до анкеты (просьба пройти)"),
+    ("subscription_gate", "Гейт подписки: экран оплаты (после нажатия кнопки в группе)"),
+    ("subscription_gate_group_prompt", "Гейт подписки: сообщение в теме группы под удалённым постом"),
     ("group_greeting", "Приветствие в группе ПОСЛЕ анкеты — RU (по анкете на русском)"),
     ("group_greeting_en", "EN: Приветствие в группе ПОСЛЕ анкеты (анкета на английском)"),
     ("welcome_en", "EN: Приветствие (блок 1)"),

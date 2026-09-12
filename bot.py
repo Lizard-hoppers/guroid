@@ -27,6 +27,7 @@ from handlers import (
     build_paywall_handlers,
     build_referral_group_handlers,
     build_referral_handlers,
+    build_subscription_gate_handlers,
 )
 from storage import Storage
 
@@ -119,6 +120,14 @@ def main() -> None:
     if settings.captcha_enabled:
         for h in build_group_captcha():
             app.add_handler(h, group=1)
+    # Гейт подписки GURO ID для старых участников (12.09.2026): своя PTB-
+    # группа (2, НЕ 1) — гейт анкеты выше уже стоит на group=1 с тем же
+    # широким фильтром «любое сообщение в группе», и в пределах ОДНОЙ PTB-
+    # группы срабатывает только первый совпавший по фильтру хендлер
+    # (внутренние return'ы функции на это не влияют) — на group=1 наш
+    # хендлер просто никогда бы не вызвался.
+    for h in build_subscription_gate_handlers():
+        app.add_handler(h, group=2)
     # Быстрая карточка участника: админ форвардит в личку любое сообщение из
     # группы -> сразу открывается карточка (мут/бан), без захода в /admin.
     # group=1 — не конкурирует с ConversationHandler-ами (те же соображения).

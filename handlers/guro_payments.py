@@ -11,6 +11,7 @@ from telegram.ext import ContextTypes, MessageHandler, PreCheckoutQueryHandler, 
 import community_access as CA
 import guro_constants as GC
 import guro_tags as GT
+from handlers.subscription_gate import release_gated_message
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +63,16 @@ async def on_guro_successful_payment(update: Update, context: ContextTypes.DEFAU
     product, cfg = matched
     storage = context.bot_data["guro_storage"]
 
+    settings = context.bot_data["settings"]
+
     if product == "recruiter":
         expires_at = storage.activate_recruiter_subscription(update.effective_user.id, cfg["duration_days"])
         await update.message.reply_text(
             f"✅ Кабинет рекрутера GURO ID активирован до {expires_at[:10]} — "
             "публикация вакансий и просмотр резюме открыты."
         )
+        await release_gated_message(context.bot, context.bot_data["storage"], storage,
+                                     settings.community_chat_id, update.effective_user.id)
         return
 
     if product in _PRODUCT_COMPANY_TIER:
@@ -77,14 +82,17 @@ async def on_guro_successful_payment(update: Update, context: ContextTypes.DEFAU
             f"✅ Кабинет компании GURO ID ({tier}) активирован до {expires_at[:10]} — "
             "бренд-страница работодателя открыта."
         )
+        await release_gated_message(context.bot, context.bot_data["storage"], storage,
+                                     settings.community_chat_id, update.effective_user.id)
         return
 
     expires_at = storage.activate_subscription(update.effective_user.id, cfg["duration_days"])
     await update.message.reply_text(
         f"✅ Подписка GURO ID активирована до {expires_at[:10]} — полный поиск и просмотр профилей открыты."
     )
-    settings = context.bot_data["settings"]
     await _grant_community_if_paywalled(context, settings, update.effective_user.id)
+    await release_gated_message(context.bot, context.bot_data["storage"], storage,
+                                 settings.community_chat_id, update.effective_user.id)
     try:
         await GT.sync_member_tag(
             context.bot, settings.community_chat_id, storage, update.effective_user.id,

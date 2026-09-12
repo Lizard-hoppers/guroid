@@ -29,6 +29,7 @@ import guro_crypto as GCR
 import guro_logic as GL
 import guro_tags as GT
 from config import Settings
+from handlers.subscription_gate import release_gated_message
 from guro_storage import GuroStorage
 from professions_data import PROFESSIONS
 from content import Content
@@ -3200,6 +3201,8 @@ async def handle_crypto_webhook(request: web.Request) -> web.Response:
                     user_id,
                     f"✅ Кабинет рекрутера GURO ID активирован до {expires_at[:10]} (оплата в крипте).",
                 )
+                await release_gated_message(bot, request.app["main_storage"], storage,
+                                             settings.community_chat_id, user_id)
         except Exception:  # noqa: BLE001
             logger.exception("guro_id: не удалось уведомить о recruiter crypto-оплате user_id=%s", user_id)
         return web.Response(status=200)
@@ -3220,6 +3223,8 @@ async def handle_crypto_webhook(request: web.Request) -> web.Response:
                     user_id,
                     f"✅ Кабинет компании GURO ID ({tier}) активирован до {expires_at[:10]} (оплата в крипте).",
                 )
+                await release_gated_message(bot, request.app["main_storage"], storage,
+                                             settings.community_chat_id, user_id)
         except Exception:  # noqa: BLE001
             logger.exception("guro_id: не удалось уведомить о company crypto-оплате user_id=%s", user_id)
         return web.Response(status=200)
@@ -3240,6 +3245,8 @@ async def handle_crypto_webhook(request: web.Request) -> web.Response:
                 bot, settings.community_chat_id, storage, user_id,
                 reason="subscription_activated_crypto",
             )
+            await release_gated_message(bot, request.app["main_storage"], storage,
+                                         settings.community_chat_id, user_id)
             # Платный вход в сообщество (09.09.2026): ссылка в группу —
             # только тем, кто пришёл через оплату. У старых участников
             # стоит признак «доступ без оплаты», они уже внутри.

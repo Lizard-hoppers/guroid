@@ -282,6 +282,22 @@ CREATE TABLE IF NOT EXISTS guro_company_join_requests (
     decided_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_guro_join_requests_company ON guro_company_join_requests(company_id, status);
+
+-- Гейт подписки для старых участников группы (12.09.2026, ТЗ "написавший
+-- без подписки моментально мутится до оплаты"). Одна запись на (chat_id,
+-- user_id) - только последнее отложенное сообщение, повторно замьютить
+-- физически нельзя (Telegram сам блокирует отправку замьюченному).
+CREATE TABLE IF NOT EXISTS guro_gated_messages (
+    chat_id INTEGER,
+    user_id INTEGER,
+    message_thread_id INTEGER,
+    display_name TEXT,
+    kind TEXT,
+    text TEXT,
+    file_id TEXT,
+    created_at TEXT,
+    PRIMARY KEY (chat_id, user_id)
+);
 """
 
 
@@ -506,6 +522,33 @@ class GuroStorage:
         self._ensure_column("guro_vacancies", "closed_reason", "TEXT")
         self._ensure_column("guro_vacancies", "author_workspace", "TEXT DEFAULT 'recruiter'")
         self._conn.commit()
+
+    def save_gated_message(self, chat_id: int, user_id: int, message_thread_id: int | None,
+                            display_name: str, kind: str, text: str | None,
+                            file_id: str | None) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO guro_gated_messages "
+            "(chat_id, user_id, message_thread_id, display_name, kind, text, file_id, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (chat_id, user_id, message_thread_id, display_name, kind, text, file_id,
+             datetime.now(timezone.utc).isoformat()),
+        )
+        self._conn.commit()
+
+    def pop_gated_message(self, chat_id: int, user_id: int) -> sqlite3.Row | None:
+        """Отдаёт отложенное сообщение и сразу удаляет запись (публикуется
+        ровно один раз, при оплате)."""
+        row = self._conn.execute(
+            "SELECT * FROM guro_gated_messages WHERE chat_id=? AND user_id=?",
+            (chat_id, user_id),
+        ).fetchone()
+        if row is not None:
+            self._conn.execute(
+                "DELETE FROM guro_gated_messages WHERE chat_id=? AND user_id=?",
+                (chat_id, user_id),
+            )
+            self._conn.commit()
+        return row
 
     def _ensure_column(self, table: str, column: str, ddl: str) -> None:
         cols = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})")}

@@ -1313,6 +1313,14 @@ async def _run_captcha_sim():
     class CapTextMsg:
         _seq = 9000
         sender_chat = None
+        photo = None
+        video = None
+        document = None
+        animation = None
+        voice = None
+        sticker = None
+        text = None
+        caption = None
 
         def __init__(self, message_thread_id=None):
             CapTextMsg._seq += 1
@@ -1656,6 +1664,79 @@ async def _run_captcha_sim():
         await G.on_chat_member(_join(CapChat(), CapUser(777)), ctx)
         check(any(s[0] == "video" for s in bot.sent), "приветствие с CMS-видео отправлено как видео")
         check(bot.markups and bot.markups[0] is not None, "у видео-приветствия есть кнопки")
+
+    # --- гейт подписки GURO ID для старых участников (12.09.2026): написал
+    #     без активной подписки -> удаление + мут + отложенная публикация ---
+    with tempfile.TemporaryDirectory() as d:
+        import handlers.subscription_gate as SG
+        bd = _bot_data(d)
+        gchat = CapChat(cid=bd["settings"].community_chat_id)
+        bd["storage"].save_profile({"user_id": 801, "username": "olduser"})
+        bot = CapBot()
+        ctx = CapContext(bd, bot)
+        upd = CapMsgUpdate(gchat, CapUser(801))
+        upd.effective_message.text = "продам аккаунт"
+        await SG.on_group_message_subscription_gate(upd, ctx)
+        check((gchat.id, 801, False) in bot.restricts, "sub_gate: нет подписки -> мут")
+        check((gchat.id, upd.effective_message.message_id) in bot.deleted_msgs,
+              "sub_gate: сообщение без подписки удалено")
+        check(len(bot.sent) == 1 and "подписк" in bot.sent[0][1].lower(),
+              "sub_gate: просьба оплатить подписку отправлена в группу")
+        check(bot.markups[0].inline_keyboard[0][0].to_dict().get("url")
+              == "https://t.me/GamblingCommunitybot?start=pay_gate",
+              "sub_gate: кнопка ведёт на deep-link pay_gate")
+
+        # активная подписка -> не трогаем
+        bd["guro_storage"].activate_subscription(802, 30)
+        bd["storage"].save_profile({"user_id": 802})
+        bot2 = CapBot()
+        await SG.on_group_message_subscription_gate(CapMsgUpdate(gchat, CapUser(802)), CapContext(bd, bot2))
+        check(not bot2.restricts and not bot2.deleted_msgs, "sub_gate: с активной подпиской -> не трогаем")
+
+        # админ бота (settings.admin_ids) -> не трогаем
+        bd["storage"].save_profile({"user_id": 42})
+        bot3 = CapBot()
+        await SG.on_group_message_subscription_gate(CapMsgUpdate(gchat, CapUser(42)), CapContext(bd, bot3))
+        check(not bot3.restricts, "sub_gate: админ бота (admin_ids) -> не трогаем")
+
+        # реальный админ ГРУППЫ (Telegram-статус), не входящий в admin_ids -> не трогаем
+        bd["storage"].save_profile({"user_id": 803})
+        bot4 = CapBot()
+        bot4.member_status_map[803] = ChatMemberStatus.ADMINISTRATOR
+        await SG.on_group_message_subscription_gate(CapMsgUpdate(gchat, CapUser(803)), CapContext(bd, bot4))
+        check(not bot4.restricts, "sub_gate: реальный админ группы (не из admin_ids) -> не трогаем")
+
+        # без анкеты вообще -> зона гейта анкеты (group_captcha), не этого гейта
+        bot5 = CapBot()
+        await SG.on_group_message_subscription_gate(CapMsgUpdate(gchat, CapUser(804)), CapContext(bd, bot5))
+        check(not bot5.restricts, "sub_gate: без анкеты вообще -> не наш гейт")
+
+        # чужая группа (не community_chat_id) -> игнор
+        bd["storage"].save_profile({"user_id": 805})
+        other_chat = CapChat(cid=-100777)
+        bot6 = CapBot()
+        await SG.on_group_message_subscription_gate(CapMsgUpdate(other_chat, CapUser(805)), CapContext(bd, bot6))
+        check(not bot6.restricts, "sub_gate: чужая группа -> игнор")
+
+        # нажатие постоянной reply-кнопки "Пригласить/Invite" -> не контент темы, не гейтим
+        bd["storage"].save_profile({"user_id": 806})
+        bot_invite = CapBot()
+        upd_invite = CapMsgUpdate(gchat, CapUser(806))
+        upd_invite.effective_message.text = C.GROUP_KB_INVITE_TEXT
+        await SG.on_group_message_subscription_gate(upd_invite, CapContext(bd, bot_invite))
+        check(not bot_invite.restricts and not bot_invite.deleted_msgs,
+              "sub_gate: кнопка «Пригласить/Invite» не мутит и не удаляет")
+
+        # --- оплата: размут + публикация отложенного сообщения с именем автора ---
+        release_bot = CapBot()
+        await SG.release_gated_message(release_bot, bd["storage"], bd["guro_storage"], gchat.id, 801)
+        check((gchat.id, 801, True) in release_bot.restricts, "sub_gate: оплата -> размут")
+        check(len(release_bot.sent) == 1 and "продам аккаунт" in release_bot.sent[0][1],
+              "sub_gate: оплата -> отложенное сообщение опубликовано с исходным текстом")
+        check("tg://user?id=801" in release_bot.sent[0][1],
+              "sub_gate: публикация с упоминанием (ником) автора")
+        check(bd["guro_storage"].pop_gated_message(gchat.id, 801) is None,
+              "sub_gate: запись отложенного сообщения удалена после публикации")
 
 
 async def _run_gossip_sim():
@@ -2256,6 +2337,40 @@ async def _run_admin_panel_sim():
         check(st != ConversationHandler.END,
               "QR deep-link: НЕзарегистрированный сканирующий -> обычный флоу анкеты продолжается")
         storage6.close()
+
+    # --- гейт подписки: /start pay_gate -> сразу экран оплаты, БЕЗ анкеты
+    #     (12.09.2026, владелец: "их обратно не кинуло на анкету, иначе
+    #     сработает старый сценарий") ---
+    with tempfile.TemporaryDirectory() as d:
+        bd8 = _bot_data(d)
+        storage8 = bd8["storage"]
+        storage8.save_profile({
+            "user_id": 600, "username": "oldmember", "name": "Old Member", "vertical": "Gambling",
+            "grade": "C-Level", "profession": "CEO", "request": "r", "company": "Acme", "linkedin": "-",
+        })
+        ctx8 = FakeContext(bd8)
+        ctx8.args = ["pay_gate"]
+        st = await F.start(
+            FakeUpdate(message=FakeMessage("/start pay_gate", chat_id=600), user=FakeUser(600)), ctx8,
+        )
+        check(st == ConversationHandler.END,
+              "pay_gate: /start pay_gate (уже зарегистрирован) -> END, БЕЗ анкеты")
+        sent = [t for cid, t in ctx8.bot.sent if cid == 600]
+        check(len(sent) == 1 and "подписк" in sent[0].lower(), "pay_gate: пришёл экран оплаты подписки")
+        markup = ctx8.bot.last_send_kwargs.get("reply_markup")
+        check(markup is not None and len(markup.inline_keyboard) == 5,
+              "pay_gate: клавиатура оплаты (4 способа + «оплачу позже»)")
+
+        # НЕзарегистрированный (в норме сюда не попадает — кнопка видна только
+        # написавшим в группе, а туда пускает гейт анкеты) -> обычный флоу, edge-case
+        ctx9 = FakeContext(bd8)
+        ctx9.args = ["pay_gate"]
+        st = await F.start(
+            FakeUpdate(message=FakeMessage("/start pay_gate", chat_id=601), user=FakeUser(601)), ctx9,
+        )
+        check(st != ConversationHandler.END,
+              "pay_gate: НЕзарегистрированный -> обычный флоу анкеты (edge-case)")
+        storage8.close()
 
     # --- раздел «Рассылка»: сегментация по странам (кнопки, флаги, overflow) ---
     with tempfile.TemporaryDirectory() as d:

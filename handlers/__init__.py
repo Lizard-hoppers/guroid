@@ -11,6 +11,7 @@ from handlers.guro_payments import build_guro_payments_handlers
 from handlers.news import build_news_handlers
 from handlers.paywall import build_paywall_handlers
 from handlers.referral import build_referral_group_handlers, build_referral_handlers
+from handlers.subscription_gate import build_subscription_gate_handlers, release_gated_message
 
 __all__ = [
     "build_conversation",
@@ -27,4 +28,6 @@ __all__ = [
     "build_guro_partnerships_handlers",
     "build_guro_payments_handlers",
     "build_guro_limits_handlers",
+    "build_subscription_gate_handlers",
+    "release_gated_message",
 ]

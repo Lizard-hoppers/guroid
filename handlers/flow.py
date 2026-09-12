@@ -248,6 +248,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             )
             return ConversationHandler.END
 
+    # Гейт подписки (12.09.2026): кнопка «Оплатить» под сообщением в группе
+    # ведёт на ?start=pay_gate — сразу отдаём экран оплаты, В ОБХОД анкеты,
+    # так же как ветка guro_ (QR) чуть выше. Это принципиально: без явного
+    # раннего return тут возвращающийся уже зарегистрированный юзер попал
+    # бы на голый /start -> lang_select -> заново по всей анкете (владелец
+    # отдельно предупредил об этом риске).
+    if qr_payload == "pay_gate":
+        storage = context.bot_data["storage"]
+        if storage.has_profile(user.id):
+            content = _content(context)
+            await context.bot.send_message(
+                update.effective_chat.id, content.txt("subscription_gate"),
+                reply_markup=ui.paywall_kb(content), parse_mode=ParseMode.HTML,
+            )
+            return ConversationHandler.END
+        # Профиля нет (не должно происходить в норме — кнопка видна только
+        # уже написавшим в группе, а туда пускает только гейт анкеты) —
+        # приемлемый edge-case, падаем в обычную регистрацию ниже.
+
     # Всё для админов проверяем ДО user_data.clear() ниже — иначе
     # delete_previous_screen не найдёт adm_chat/adm_mid (текущий экран
     # /admin), и старое меню-список останется висеть в чате рядом с новым.

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getMyResponses, updateResponseStatus } from "../../api.js";
 import { Msg, Spinner } from "../Shared.jsx";
+import { ResponseStatusDot, ResponseMark } from "../VacanciesScreen.jsx";
 import { useLang } from "../../i18n.jsx";
 import { haptic } from "../../telegram.js";
 
@@ -76,43 +77,66 @@ export function RecruiterResponsesSubscreen({ onBack, onWrite, onConfirmHire }) 
       {state.responses && state.responses.length === 0 && (
         <div className="partner-meta">{t("recruiter.responses.empty")}</div>
       )}
-      {state.responses?.map((r) => (
-        <div key={r.id} className="card">
-          <div className="partner-name">{r.vacancy_title}</div>
-          <div className="partner-meta">
-            {r.candidate_name || (r.candidate_username ? `@${r.candidate_username}` : t("common.noName"))}
-            {r.candidate_vertical ? ` · ${r.candidate_vertical}` : ""}
-            {/* Звезда снята: она выдавала рабочий рейтинг (шкала 0-100) за оценку
-                  из пяти — та же путаница, о которой владелец писал про «★ 1.7». */}
-              {typeof r.reputation_score === "number"
-                ? ` · ${t("vacancies.posterRating", { n: Math.round(r.reputation_score) })}`
-                : ""}
+      {state.responses?.map((r) => {
+        const days = daysAgo(r.created_at);
+        return (
+          <div key={r.id} className="card">
+            <div className="vacancy-response-head">
+              <div className="partner-name">{r.vacancy_title}</div>
+              {typeof r.reputation_score === "number" && (
+                <div className="rating-preview-circle vacancy-response-rating">{Math.round(r.reputation_score)}</div>
+              )}
+            </div>
+            <div className="partner-meta">
+              {r.candidate_name || (r.candidate_username ? `@${r.candidate_username}` : t("common.noName"))}
+              {r.candidate_vertical ? ` · ${r.candidate_vertical}` : ""}
+            </div>
+            <div className="vacancy-mine-status-row vacancy-mine-status-row--response" style={{ marginTop: 8 }}>
+              <ResponseStatusDot status={r.status} />
+              {days !== null && (
+                <span className="vacancy-mine-counts">
+                  <ResponseMark status={r.status} />{" "}
+                  {days === 0 ? t("vacancies.responses.today") : t("vacancies.responses.daysAgo", { days })}
+                </span>
+              )}
+            </div>
+            {r.message && <div className="partner-meta" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{r.message}</div>}
+            <select value={r.status} onChange={(e) => setStatus(r.id, e.target.value)} style={{ marginTop: 12 }}>
+              {RESPONSE_STATUSES.map((s) => (
+                <option key={s} value={s}>{t(`vacancies.responses.status.${s}`)}</option>
+              ))}
+            </select>
+            <div className="recruiter-quick-actions" style={{ marginTop: 12 }}>
+              {r.candidate_username && (
+                <button type="button" className="btn secondary" onClick={() => onWrite(r.candidate_id)}>
+                  {t("vacancies.writeBtn")}
+                </button>
+              )}
+              {r.status === "hired" && (
+                <button type="button" className="btn" onClick={() => confirmHire(r)}>
+                  {t("vacancies.responses.confirmHireBtn")}
+                </button>
+              )}
+            </div>
           </div>
-          {r.message && <div className="partner-meta" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{r.message}</div>}
-          <select value={r.status} onChange={(e) => setStatus(r.id, e.target.value)} style={{ marginTop: 12 }}>
-            {RESPONSE_STATUSES.map((s) => (
-              <option key={s} value={s}>{t(`vacancies.responses.status.${s}`)}</option>
-            ))}
-          </select>
-          <div className="recruiter-quick-actions" style={{ marginTop: 12 }}>
-            {r.candidate_username && (
-              <button type="button" className="btn secondary" onClick={() => onWrite(r.candidate_id)}>
-                {t("vacancies.writeBtn")}
-              </button>
-            )}
-            {/* 29.08.2026, регресс — тот же баг чинили в VacancyResponses/
-                AllResponses (VacanciesScreen.jsx, макет "16 · Рекрутер —
-                Отклики"): кнопка была видна для ЛЮБОГО статуса отклика, не
-                только "hired". Это третья, отдельная копия того же экрана
-                (доступна из меню кабинета Рекрутера) — фикс сюда не долетел. */}
-            {r.status === "hired" && (
-              <button type="button" className="btn" onClick={() => confirmHire(r)}>
-                {t("vacancies.responses.confirmHireBtn")}
-              </button>
-            )}
+        );
+      })}
+
+      {state.responses && state.responses.length > 0 && (
+        <div className="profile-privacy-locked-note vacancy-hire-explainer">
+          <div className="profile-privacy-locked-title vacancy-hire-explainer-title">
+            {t("vacancies.responses.hireExplainerTitle")}
           </div>
+          <div className="privacy-row-note">{t("vacancies.responses.hireExplainerText")}</div>
         </div>
-      ))}
+      )}
     </div>
   );
+}
+
+function daysAgo(dateStr) {
+  if (!dateStr) return null;
+  const then = new Date(dateStr.replace(" ", "T") + "Z").getTime();
+  if (Number.isNaN(then)) return null;
+  return Math.max(0, Math.floor((Date.now() - then) / 86400000));
 }

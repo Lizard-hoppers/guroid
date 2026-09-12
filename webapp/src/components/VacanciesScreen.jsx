@@ -104,7 +104,7 @@ function StatusBadge({ status, closedReason }) {
 // «статус десятков откликов сканируется глазами быстрее, чем читается
 // словами». Шесть статусов мини-ATS сведены к трём тонам макета:
 // серый — ещё не двинулось, лайм — движение вперёд, красный — отказ.
-const RESPONSE_STATUS_TONE = {
+export const RESPONSE_STATUS_TONE = {
   new: "neutral",
   reviewing: "neutral",
   interview: "forward",
@@ -114,7 +114,7 @@ const RESPONSE_STATUS_TONE = {
 };
 const RESPONSE_TONE_MARK = { neutral: null, forward: IconCheck, rejected: IconCross };
 
-function ResponseStatusDot({ status }) {
+export function ResponseStatusDot({ status }) {
   const { t } = useLang();
   const tone = RESPONSE_STATUS_TONE[status] || "neutral";
   return (
@@ -128,7 +128,7 @@ function ResponseStatusDot({ status }) {
 }
 
 // Маркер перед датой — та же тройка тонов, что у точки.
-function ResponseMark({ status }) {
+export function ResponseMark({ status }) {
   const tone = RESPONSE_STATUS_TONE[status] || "neutral";
   return (
     <span className={`vacancy-response-mark vacancy-response-mark--${tone}`}>

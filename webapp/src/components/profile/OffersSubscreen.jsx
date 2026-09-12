@@ -9,8 +9,8 @@ export function OffersSubscreen({ profile, privacy, onPrivacyChange, onFieldSave
       <button type="button" className="subscreen-back" onClick={onBack}>
         {t("common.back")}
       </button>
+      <h3>{t("offers.title")}</h3>
       <div className="card">
-        <h3>{t("offers.title")}</h3>
         <EditableField
           field="looking_for"
           label={t("offers.lookingForLabel")}
@@ -19,6 +19,8 @@ export function OffersSubscreen({ profile, privacy, onPrivacyChange, onFieldSave
           multiline
           onSaved={(v) => onFieldSaved("looking_for", v)}
         />
+      </div>
+      <div className="card">
         <EditableField
           field="offering"
           label={t("offers.offeringLabel")}

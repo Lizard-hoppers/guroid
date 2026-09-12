@@ -997,7 +997,7 @@ export function EditableField({ field, label, placeholder, value, multiline, onS
       ) : (
         <div className="editable-field-empty">{t("common.notFilled")}</div>
       )}
-      <button className="btn secondary" style={{ marginTop: 8 }} onClick={startEdit}>
+      <button className={`btn${value ? " secondary" : ""}`} style={{ marginTop: 8 }} onClick={startEdit}>
         {value ? t("common.edit") : t("common.fill")}
       </button>
     </div>

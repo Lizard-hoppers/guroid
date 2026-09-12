@@ -160,6 +160,30 @@ export function WorkStatusPicker({ value, onChange }) {
   );
 }
 
+// "Раскрыт ли тариф оплаты" переживает перезагрузку мини-аппа (12.09.2026)
+// — openTelegramLink (крипто-оплата) уводит из приложения, при возврате
+// Telegram может перезагрузить WebView с нуля, и обычный useState(false)
+// стирался бы, снова пряча кнопки оплаты за тизер-карточкой, хотя человек
+// уже начал оплачивать и просто ещё не завершил.
+export function usePersistentReveal(key) {
+  const [value, setValue] = useState(() => {
+    try {
+      return localStorage.getItem(key) === "1";
+    } catch {
+      return false;
+    }
+  });
+  function reveal() {
+    setValue(true);
+    try {
+      localStorage.setItem(key, "1");
+    } catch {
+      // приватный режим / хранилище недоступно — раскрытие просто не переживёт reload
+    }
+  }
+  return [value, reveal];
+}
+
 export function Msg({ type = "error", children }) {
   if (!children) return null;
   return <div className={`msg ${type}`}>{children}</div>;

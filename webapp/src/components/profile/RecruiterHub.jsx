@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivationPreview, EditableField, ImageUploadArea, Msg, RatingPreview, TurnoverCard } from "../Shared.jsx";
+import { ActivationPreview, EditableField, ImageUploadArea, Msg, RatingPreview, TurnoverCard, usePersistentReveal } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import {
   setRecruiterProfileField, setRecruiterPrivacyField, setRecruiterActivityStatus, uploadRecruiterImage,
@@ -244,7 +244,7 @@ export function RecruiterHub({
   // Кнопка карточки-тизера ActivationPreview раскрывает тариф, а не платит
   // сама (11.09.2026) — платёжный выбор (месяц/год, крипта/звёзды) ниже
   // остаётся тем же SubscribeScreen, просто не показан сразу.
-  const [showPlans, setShowPlans] = useState(false);
+  const [showPlans, revealPlans] = usePersistentReveal("guro_reveal_recruiter_plans");
 
   if (!data.is_recruiter_subscribed) {
     return (
@@ -269,7 +269,7 @@ export function RecruiterHub({
           priceLabel={t("activationRecruiter.priceLabel")}
           priceValue={t("activationRecruiter.priceValue")}
           ctaLabel={t("activationRecruiter.cta")}
-          onActivate={() => setShowPlans(true)}
+          onActivate={revealPlans}
         />
         {showPlans && <SubscribeScreen product="recruiter" onSubscribed={onSubscribed} />}
       </div>

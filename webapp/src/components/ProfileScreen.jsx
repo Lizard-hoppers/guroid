@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { getMe, ApiError } from "../api.js";
-import { Spinner, Msg, ActivationPreview } from "./Shared.jsx";
+import { Spinner, Msg, ActivationPreview, usePersistentReveal } from "./Shared.jsx";
 import { SubscribeScreen } from "./SubscribeScreen.jsx";
 import { ProfileHub } from "./profile/ProfileHub.jsx";
 import { RatingSubscreen } from "./profile/RatingSubscreen.jsx";
@@ -88,7 +88,7 @@ export function ProfileScreen({
   // Тизер "купите личную подписку" на вкладке Личный (12.09.2026, макет
   // Figma node 372-5077) — тот же паттерн раскрытия тарифа по кнопке, что
   // уже есть у Рекрутера/Компании (showPlans в их хабах).
-  const [showPersonalPlans, setShowPersonalPlans] = useState(false);
+  const [showPersonalPlans, revealPersonalPlans] = usePersistentReveal("guro_reveal_personal_plans");
 
   function switchWorkspace(next) {
     setWorkspace(next);
@@ -430,7 +430,7 @@ export function ProfileScreen({
           priceLabel={t("activationPersonal.priceLabel")}
           priceValue={t("activationPersonal.priceValue")}
           ctaLabel={t("activationPersonal.cta")}
-          onActivate={() => setShowPersonalPlans(true)}
+          onActivate={revealPersonalPlans}
         />
         {showPersonalPlans && (
           <SubscribeScreen

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivationPreview, EditableField, ImageUploadArea, Msg, TurnoverCard } from "../Shared.jsx";
+import { ActivationPreview, EditableField, ImageUploadArea, Msg, TurnoverCard, usePersistentReveal } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import {
   getCompanyAddresses, setCompanyProfileField, setCompanyPrivacyField, submitCompanyAddress,
@@ -494,7 +494,7 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
   const [tierChoice, setTierChoice] = useState("basic");
   // Кнопка карточки-тизера ActivationPreview раскрывает выбор тарифа,
   // а не платит сама (11.09.2026).
-  const [showPlans, setShowPlans] = useState(false);
+  const [showPlans, revealPlans] = usePersistentReveal("guro_reveal_company_plans");
   // Ошибки/подсказки загрузки лого и обложки выведены из ImageUploadArea
   // (обложка выше .company-header с его margin-top:-30px — если оставить
   // подсказку МЕЖДУ ними, шапка наедет и перекроет текст; лого вообще
@@ -567,7 +567,7 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
           priceLabel={t("activationCompany.priceLabel")}
           priceValue={t("activationCompany.priceValue")}
           ctaLabel={t("activationCompany.cta")}
-          onActivate={() => setShowPlans(true)}
+          onActivate={revealPlans}
         />
         {showPlans && (
           <div>

@@ -8,8 +8,8 @@ export function initTelegram() {
   if (!tg) return;
   tg.ready();
   tg.expand();
-  if (tg.setHeaderColor) tg.setHeaderColor("#071a1c");
-  if (tg.setBackgroundColor) tg.setBackgroundColor("#071a1c");
+  if (tg.setHeaderColor) tg.setHeaderColor("#0a181a");
+  if (tg.setBackgroundColor) tg.setBackgroundColor("#0a181a");
   applySafeAreaInsets();
   tg.onEvent?.("safeAreaChanged", applySafeAreaInsets);
   tg.onEvent?.("contentSafeAreaChanged", applySafeAreaInsets);

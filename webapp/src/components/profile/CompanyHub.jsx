@@ -4,7 +4,7 @@ import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import {
   getCompanyAddresses, setCompanyProfileField, setCompanyPrivacyField, submitCompanyAddress,
   requestCompanyVerification, createCompany, uploadCompanyImage,
-  checkCompanyName, requestJoinCompany, ApiError,
+  checkCompanyName, requestJoinCompany, getPlans, ApiError,
 } from "../../api.js";
 import { SubscribeScreen } from "../SubscribeScreen.jsx";
 import { useLang } from "../../i18n.jsx";
@@ -494,7 +494,23 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
   const [tierChoice, setTierChoice] = useState("basic");
   // Кнопка карточки-тизера ActivationPreview раскрывает выбор тарифа,
   // а не платит сама (11.09.2026).
-  const [showPlans, revealPlans] = usePersistentReveal("guro_reveal_company_plans");
+  const [showPlans, revealPlansRaw] = usePersistentReveal("guro_reveal_company_plans");
+  // Кнопка "не работала" (12.09.2026, тот же баг, что у Личного/Рекрутера)
+  // — раскрывала выбор тарифа за пределами видимой области, без скролла.
+  const [plansRef, setPlansRef] = useState(null);
+  function revealPlans() {
+    revealPlansRaw();
+    requestAnimationFrame(() => plansRef?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+  // Реальная цена тарифа Basic из /api/plans вместо статичного текста —
+  // курс звёзд в доллары не круглый, "$49/мес" разошлось с $48.75.
+  const [basicMonthlyPlan, setBasicMonthlyPlan] = useState(null);
+  useEffect(() => {
+    getPlans({ product: "company_basic" }).then((d) => setBasicMonthlyPlan(d.plans?.monthly)).catch(() => {});
+  }, []);
+  const companyPriceValue = basicMonthlyPlan
+    ? `$${basicMonthlyPlan.crypto_price_usd}${t("activationCompany.priceValue").replace(/^\$[\d.]+/, "")}`
+    : t("activationCompany.priceValue");
   // Ошибки/подсказки загрузки лого и обложки выведены из ImageUploadArea
   // (обложка выше .company-header с его margin-top:-30px — если оставить
   // подсказку МЕЖДУ ними, шапка наедет и перекроет текст; лого вообще
@@ -565,12 +581,12 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
           metaLine={t("activationCompany.metaLine")}
           lockText={t("activationCompany.lockText")}
           priceLabel={t("activationCompany.priceLabel")}
-          priceValue={t("activationCompany.priceValue")}
+          priceValue={companyPriceValue}
           ctaLabel={t("activationCompany.cta")}
           onActivate={revealPlans}
         />
         {showPlans && (
-          <div>
+          <div ref={setPlansRef}>
             <div className="card">
               <div className="vertical-chips">
                 <button

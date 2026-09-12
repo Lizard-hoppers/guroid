@@ -749,6 +749,10 @@ export function ActivationPreview({
   lockText, lockInfoText,
   priceLabel, priceValue,
   ctaLabel, onActivate,
+  // Квадрат+бирюза вместо круга+градиента у обоих аватаров (12.09.2026,
+  // сверка с эталонным ai_studio_code.html) — Рекрутер/Компания передают
+  // true, Личный — нет (там как раз круг+лаймовый градиент, эталон).
+  cyanAvatars = false,
 }) {
   const { t } = useLang();
   // 11.09.2026, макет "GURO ID mobile app design (3)", пункт 9: короткий
@@ -779,7 +783,9 @@ export function ActivationPreview({
       <div className="section-eyebrow" style={{ marginTop: 12 }}>{t("activation.nowLabel")}</div>
       <div className="activation-box">
         <div className="profile-header-card activation-now">
-          <div className="profile-avatar-fallback activation-now-avatar">{nowAvatar}</div>
+          <div className={`profile-avatar-fallback activation-now-avatar${cyanAvatars ? " activation-now-avatar--square" : ""}`}>
+            {nowAvatar}
+          </div>
           <div className="profile-header-info">
             <h2 className="onboarding-mock-placeholder">{nowName}</h2>
             <div className="profile-header-sub onboarding-mock-placeholder">{nowSub}</div>
@@ -791,7 +797,9 @@ export function ActivationPreview({
       <div className="section-eyebrow" style={{ marginTop: 16 }}>{t("activation.exampleLabel")}</div>
       <div className="activation-box activation-box--highlight">
         <div className="profile-header-card">
-          <div className="profile-avatar-fallback">{exampleAvatar}</div>
+          <div className={`profile-avatar-fallback${cyanAvatars ? " activation-example-avatar--square" : ""}`}>
+            {exampleAvatar}
+          </div>
           <div className="profile-header-info">
             <h2>{exampleName}</h2>
             <div className="profile-header-sub">{exampleSub}</div>

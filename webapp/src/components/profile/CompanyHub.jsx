@@ -584,6 +584,7 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
           priceValue={companyPriceValue}
           ctaLabel={t("activationCompany.cta")}
           onActivate={revealPlans}
+          cyanAvatars
         />
         {showPlans && (
           <div ref={setPlansRef}>

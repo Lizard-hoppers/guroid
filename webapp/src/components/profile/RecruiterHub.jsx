@@ -288,6 +288,7 @@ export function RecruiterHub({
           priceValue={priceValue}
           ctaLabel={t("activationRecruiter.cta")}
           onActivate={revealPlans}
+          cyanAvatars
         />
         {showPlans && (
           <div ref={setPlansRef}>

@@ -1505,22 +1505,50 @@ label {
   background: var(--tile);
   border: 1px solid var(--glass-border);
   border-radius: var(--r-tile);
-  padding: 16px;
+  /* Эталон (ai_studio_code.html): "СЕЙЧАС" 16 верт/20 гориз, "ПОСЛЕ
+     АКТИВАЦИИ" 20 со всех сторон — не одинаковый padding у обеих. */
+  padding: 16px 20px;
 }
 
 .activation-box--highlight {
   border-color: var(--gold);
+  padding: 20px;
+}
+
+/* Аватар "ПОСЛЕ АКТИВАЦИИ" — 44x44 у всех трёх вкладок (эталон); форма
+   различается: круг+градиент (Личный, .profile-avatar-fallback как есть)
+   или квадрат+бирюза (Рекрутер/Компания, модификатор ниже). */
+.activation-box--highlight .profile-avatar-fallback {
+  width: 44px;
+  height: 44px;
+  font-size: 15px;
+}
+
+.activation-box--highlight .profile-avatar-fallback.activation-example-avatar--square {
+  border-radius: var(--r-tile);
+  background: var(--tile);
+  border: 1px solid var(--recruiter-cyan);
+  color: var(--recruiter-cyan);
 }
 
 .profile-avatar-fallback.activation-now-avatar {
+  /* Эталон: 44x44, пунктирная рамка — не 56x56 без рамки. */
+  width: 44px;
+  height: 44px;
   background: var(--tile);
+  border: 1px dashed var(--glass-border);
   color: var(--text-dim);
+}
+
+.profile-avatar-fallback.activation-now-avatar--square {
+  border-radius: var(--r-tile);
 }
 
 /* Та же причина, что у activation-now-avatar выше — .rating-preview-
    circle объявлен ниже в файле и выигрывал background/border/color. */
 .rating-preview-circle.activation-badge-dim {
-  opacity: 0.5;
+  /* Эталон: пунктирная рамка, без затемнения через opacity. */
+  border-style: dashed;
   border-color: var(--glass-border);
   color: var(--text-dim);
   background: transparent;

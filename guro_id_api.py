@@ -95,24 +95,6 @@ def _schedule_tag_sync(settings: Settings, storage: GuroStorage, user_id: int, *
     task.add_done_callback(_BACKGROUND_TASKS.discard)
 
 
-FIRST_DAY_DISCOUNT_PCT = 20
-
-
-def _first_day_discount_active(main_storage: Storage, user_id: int) -> bool:
-    """Скидка -20% на МЕСЯЧНУЮ подписку GURO ID в день регистрации
-    (11.09.2026, «Шаг 4. Подписка» дизайн-предложения, размер подтверждён
-    владельцем). Завязана на profiles.created_at, а не отдельный флаг —
-    сама перестаёт действовать назавтра, ничего не нужно сбрасывать.
-    Работает одинаково для анкеты из бота и анкеты из приложения: обе
-    пишут в одну таблицу profiles, различается только источник строки.
-    Год скидку не получает — у него уже есть своя (-30%, stars_price_full).
-    """
-    profile = main_storage.get_profile_by_telegram_id(user_id)
-    if profile is None:
-        return False
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return (profile["created_at"] or "")[:10] == today
-
 
 def _auth(request: web.Request, settings: Settings) -> dict:
     """Достаёт и валидирует Telegram WebApp initData из заголовка
@@ -3030,29 +3012,6 @@ async def handle_get_plans(request: web.Request) -> web.Response:
         # цена и «экономия» на карточке плана тоже в долларах.
         if cfg.get("stars_price_full"):
             plans[key]["crypto_price_usd_full"] = round(cfg["stars_price_full"] * GC.STARS_TO_USD_RATE, 2)
-    # Скидка первого дня (11.09.2026) — только личная подписка, только
-    # месяц. _auth() дёргаем ТОЛЬКО для guro_id, чтобы не менять поведение
-    # тарифов рекрутера/компании (они как были без обязательной проверки
-    # initData, так и остались) — фронт и так шлёт заголовок на каждый
-    # запрос, лишней задержки это не добавляет.
-    if product == "guro_id" and "monthly" in plans:
-        # /api/plans остаётся публичным (без Authorization) — тест suite
-        # это явно проверяет, и TariffsScreen может звать его до готовности
-        # initData. Без валидной подписи просто не знаем, чей это день
-        # регистрации, и скидку не показываем — не 401.
-        try:
-            user = _auth(request, settings)
-        except web.HTTPUnauthorized:
-            user = None
-        if user and _first_day_discount_active(request.app["main_storage"], user["id"]):
-            monthly = plans["monthly"]
-            monthly["discount_pct"] = FIRST_DAY_DISCOUNT_PCT
-            monthly["discount_stars_price"] = round(
-                monthly["stars_price"] * (100 - FIRST_DAY_DISCOUNT_PCT) / 100
-            )
-            monthly["discount_crypto_price_usd"] = round(
-                monthly["crypto_price_usd"] * (100 - FIRST_DAY_DISCOUNT_PCT) / 100, 2
-            )
     return web.json_response({
         "plans": plans,
         "crypto_enabled": bool(settings.cryptobot_api_token or settings.cryptobot_api_token_new),
@@ -3069,11 +3028,7 @@ async def handle_subscribe(request: web.Request) -> web.Response:
     product, plan, cfg = plan_triplet
     title = _PRODUCT_TITLE[product]
 
-    # Скидка первого дня (11.09.2026) — см. _first_day_discount_active.
     stars_price = cfg["stars_price"]
-    if product == "guro_id" and plan == "monthly" and \
-            _first_day_discount_active(request.app["main_storage"], user["id"]):
-        stars_price = round(stars_price * (100 - FIRST_DAY_DISCOUNT_PCT) / 100)
 
     bot = Bot(token=settings.bot_token)
     async with bot:
@@ -3105,14 +3060,7 @@ async def handle_subscribe_crypto(request: web.Request) -> web.Response:
     product, plan, cfg = plan_triplet
     title = _PRODUCT_TITLE[product]
 
-    # Скидка первого дня (11.09.2026) — см. _first_day_discount_active.
-    # Считаем от УЖЕ дисконтированной звёздной цены, чтобы доллар и звёзды
-    # на одном плане не расходились по разным формулам округления.
-    stars_price = cfg["stars_price"]
-    if product == "guro_id" and plan == "monthly" and \
-            _first_day_discount_active(request.app["main_storage"], user["id"]):
-        stars_price = round(stars_price * (100 - FIRST_DAY_DISCOUNT_PCT) / 100)
-    amount = round(stars_price * GC.STARS_TO_USD_RATE, 2)
+    amount = round(cfg["stars_price"] * GC.STARS_TO_USD_RATE, 2)
 
     try:
         invoice = await GCR.create_invoice(

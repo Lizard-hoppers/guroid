@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivationPreview, EditableField, ImageUploadArea, Msg, RatingPreview, TurnoverCard, usePersistentReveal } from "../Shared.jsx";
 import { PrivacyToggles } from "../PrivacyToggles.jsx";
 import {
   setRecruiterProfileField, setRecruiterPrivacyField, setRecruiterActivityStatus, uploadRecruiterImage,
+  getPlans,
 } from "../../api.js";
 import { SubscribeScreen } from "../SubscribeScreen.jsx";
 import { useLang } from "../../i18n.jsx";
@@ -244,7 +245,24 @@ export function RecruiterHub({
   // Кнопка карточки-тизера ActivationPreview раскрывает тариф, а не платит
   // сама (11.09.2026) — платёжный выбор (месяц/год, крипта/звёзды) ниже
   // остаётся тем же SubscribeScreen, просто не показан сразу.
-  const [showPlans, revealPlans] = usePersistentReveal("guro_reveal_recruiter_plans");
+  const [showPlans, revealPlansRaw] = usePersistentReveal("guro_reveal_recruiter_plans");
+  // Кнопка "не работала" (12.09.2026, репорт владельца) — раскрывала
+  // SubscribeScreen за пределами видимой области, без скролла к нему.
+  const [plansRef, setPlansRef] = useState(null);
+  function revealPlans() {
+    revealPlansRaw();
+    requestAnimationFrame(() => plansRef?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+  // Реальная цена из /api/plans вместо статичного текста i18n — курс
+  // звёзд в доллары не круглый, "$19/мес" в тексте разошлось с реальной
+  // ценой в крипте ($18.75).
+  const [monthlyPlan, setMonthlyPlan] = useState(null);
+  useEffect(() => {
+    getPlans({ product: "recruiter" }).then((d) => setMonthlyPlan(d.plans?.monthly)).catch(() => {});
+  }, []);
+  const priceValue = monthlyPlan
+    ? `$${monthlyPlan.crypto_price_usd}${t("activationRecruiter.priceValue").replace(/^\$[\d.]+/, "")}`
+    : t("activationRecruiter.priceValue");
 
   if (!data.is_recruiter_subscribed) {
     return (
@@ -267,11 +285,15 @@ export function RecruiterHub({
           metaLine={t("activationRecruiter.metaLine")}
           lockText={t("activationRecruiter.lockText")}
           priceLabel={t("activationRecruiter.priceLabel")}
-          priceValue={t("activationRecruiter.priceValue")}
+          priceValue={priceValue}
           ctaLabel={t("activationRecruiter.cta")}
           onActivate={revealPlans}
         />
-        {showPlans && <SubscribeScreen product="recruiter" onSubscribed={onSubscribed} />}
+        {showPlans && (
+          <div ref={setPlansRef}>
+            <SubscribeScreen product="recruiter" onSubscribed={onSubscribed} />
+          </div>
+        )}
       </div>
     );
   }

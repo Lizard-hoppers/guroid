@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getMe, ApiError } from "../api.js";
+import { getMe, getPlans, ApiError } from "../api.js";
 import { Spinner, Msg, ActivationPreview, usePersistentReveal } from "./Shared.jsx";
 import { SubscribeScreen } from "./SubscribeScreen.jsx";
 import { ProfileHub } from "./profile/ProfileHub.jsx";
@@ -60,7 +60,7 @@ export function ProfileScreen({
   hireConfirmPrefill, onConsumeHireConfirmPrefill,
   workspace, onWorkspaceChange: setWorkspace,
 }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [state, setState] = useState({ loading: true, data: null, error: null });
   // Перечитать getMe() после регистрации в приложении (11.09.2026,
   // CreateProfileFlow.onDone) — эффект ниже с [] зависимостями исполняется
@@ -88,7 +88,27 @@ export function ProfileScreen({
   // Тизер "купите личную подписку" на вкладке Личный (12.09.2026, макет
   // Figma node 372-5077) — тот же паттерн раскрытия тарифа по кнопке, что
   // уже есть у Рекрутера/Компании (showPlans в их хабах).
-  const [showPersonalPlans, revealPersonalPlans] = usePersistentReveal("guro_reveal_personal_plans");
+  const [showPersonalPlans, revealPersonalPlansRaw] = usePersistentReveal("guro_reveal_personal_plans");
+  // Кнопка тизера "не работала" (12.09.2026, репорт владельца) — на самом
+  // деле раскрывала SubscribeScreen НИЖЕ, просто он появлялся за пределами
+  // видимой области без скролла к нему, выглядело как будто ничего не
+  // произошло. Скроллим к нему сами.
+  const [personalPlansRef, setPersonalPlansRef] = useState(null);
+  function revealPersonalPlans() {
+    revealPersonalPlansRaw();
+    requestAnimationFrame(() => personalPlansRef?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+  // Реальная (со скидкой первого дня, если она сегодня действует) цена
+  // личной подписки — тизер раньше показывал статичный текст "$6/мес" из
+  // i18n, а активированная у владельца в день регистрации скидка -20%
+  // делает реальную цену оплаты $4.8: цифры расходились.
+  const [personalMonthlyPlan, setPersonalMonthlyPlan] = useState(null);
+  useEffect(() => {
+    getPlans({ product: "guro_id" }).then((d) => setPersonalMonthlyPlan(d.plans?.monthly)).catch(() => {});
+  }, []);
+  const personalPriceValue = personalMonthlyPlan?.discount_pct
+    ? `$${personalMonthlyPlan.discount_crypto_price_usd}${lang === "en" ? " / mo" : " / мес"}`
+    : t("activationPersonal.priceValue");
 
   function switchWorkspace(next) {
     setWorkspace(next);
@@ -428,15 +448,17 @@ export function ProfileScreen({
           lockText={t("activationPersonal.lockText")}
           lockInfoText={t("activationPersonal.lockInfo")}
           priceLabel={t("activationPersonal.priceLabel")}
-          priceValue={t("activationPersonal.priceValue")}
+          priceValue={personalPriceValue}
           ctaLabel={t("activationPersonal.cta")}
           onActivate={revealPersonalPlans}
         />
         {showPersonalPlans && (
-          <SubscribeScreen
-            product="guro_id"
-            onSubscribed={() => setState((s) => ({ ...s, data: { ...s.data, is_subscribed: true } }))}
-          />
+          <div ref={setPersonalPlansRef}>
+            <SubscribeScreen
+              product="guro_id"
+              onSubscribed={() => setState((s) => ({ ...s, data: { ...s.data, is_subscribed: true } }))}
+            />
+          </div>
         )}
       </div>
     );

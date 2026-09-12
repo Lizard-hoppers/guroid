@@ -5087,45 +5087,22 @@ async def _run_guro_id_api_sim():
                 check(row["profession"] == real_profession,
                       f"анкета из приложения хранит profession меткой, как бот: {row['profession']!r}")
 
-                # --- скидка первого дня (11.09.2026) ---------------------------
+                # Скидка первого дня (11.09.2026) была снята владельцем 12.09.2026
+                # ("4.8 мало, сделай 6 долларов") — цена GURO ID всегда $6/мес,
+                # без исключений; регрессия ниже проверяет именно отсутствие скидки.
                 resp = await client.get("/api/plans?product=guro_id", headers=auth_700)
                 check(resp.status == 200, "/api/plans с авторизацией -> 200")
                 body = await resp.json()
                 monthly = body["plans"]["monthly"]
-                check(monthly.get("discount_pct") == 20, f"анкета создана сегодня -> скидка 20%: {monthly}")
-                check(monthly["discount_stars_price"] == 320, f"400 - 20% = 320 звёзд: {monthly}")
-                check(monthly["discount_crypto_price_usd"] == 4.8, f"$6 - 20% = $4.8: {monthly}")
-                check("discount_pct" not in body["plans"]["yearly"],
-                      "у годового тарифа своя скидка (-30%), первого дня для него нет")
-
-                # без Authorization эндпойнт остаётся публичным (регрессия)
-                resp = await client.get("/api/plans")
-                check(resp.status == 200, "/api/plans без Authorization по-прежнему 200 (скидка её не закрыла)")
-                body = await resp.json()
-                check("discount_pct" not in body["plans"]["monthly"],
-                      "без авторизации скидку показать некому -> полей скидки нет")
-
-                # цена в реальном инвойсе Stars — УЖЕ со скидкой
-                _FakeTGBot.invoice_calls.clear()
-                resp = await client.post("/api/subscribe", headers=auth_700, json={"plan": "monthly"})
-                check(resp.status == 200, "/api/subscribe (monthly, скидочный день) -> 200")
-                charged = _FakeTGBot.invoice_calls[-1]["prices"][0].amount
-                check(charged == 320, f"инвойс выставлен на дисконтированную сумму, не на 400: {charged}")
-
-                # у анкеты со вчерашним created_at скидки уже нет
-                st._conn.execute(
-                    "UPDATE profiles SET created_at = datetime('now', '-1 day') WHERE user_id = 700"
-                )
-                st._conn.commit()
-                resp = await client.get("/api/plans?product=guro_id", headers=auth_700)
-                body = await resp.json()
-                check("discount_pct" not in body["plans"]["monthly"],
-                      "анкета создана вчера -> скидки первого дня уже нет")
+                check("discount_pct" not in monthly,
+                      f"скидка первого дня снята -> полей скидки нет даже в день регистрации: {monthly}")
+                check(monthly["crypto_price_usd"] == 6.0, f"цена GURO ID всегда $6: {monthly}")
 
                 _FakeTGBot.invoice_calls.clear()
                 resp = await client.post("/api/subscribe", headers=auth_700, json={"plan": "monthly"})
+                check(resp.status == 200, "/api/subscribe (monthly) -> 200")
                 charged = _FakeTGBot.invoice_calls[-1]["prices"][0].amount
-                check(charged == 400, f"вчерашняя анкета -> инвойс на полную цену: {charged}")
+                check(charged == 400, f"инвойс всегда на полную сумму 400 звёзд, скидки нет: {charged}")
 
                 # --- баг-фикс 11.09.2026: форма ответа POST /api/anketa --------
                 # EditableField (Shared.jsx, общий для CV/сайта/рекрутера/компании/

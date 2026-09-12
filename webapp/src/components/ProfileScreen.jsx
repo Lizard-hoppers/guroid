@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getMe, ApiError } from "../api.js";
-import { Spinner, Msg } from "./Shared.jsx";
+import { Spinner, Msg, ActivationPreview } from "./Shared.jsx";
+import { SubscribeScreen } from "./SubscribeScreen.jsx";
 import { ProfileHub } from "./profile/ProfileHub.jsx";
 import { RatingSubscreen } from "./profile/RatingSubscreen.jsx";
 import { CvSubscreen } from "./profile/CvSubscreen.jsx";
@@ -84,6 +85,10 @@ export function ProfileScreen({
   // раньше), либо из отклика на вакансию (username кандидата + вертикаль/
   // грейд/должность, см. goToHireConfirm/ConfirmScreen.jsx).
   const [confirmPrefill, setConfirmPrefill] = useState(null);
+  // Тизер "купите личную подписку" на вкладке Личный (12.09.2026, макет
+  // Figma node 372-5077) — тот же паттерн раскрытия тарифа по кнопке, что
+  // уже есть у Рекрутера/Компании (showPlans в их хабах).
+  const [showPersonalPlans, setShowPersonalPlans] = useState(false);
 
   function switchWorkspace(next) {
     setWorkspace(next);
@@ -393,6 +398,47 @@ export function ProfileScreen({
         onConsumeInitialThread={onConsumeMessageTarget}
         onBack={() => setSub(null)}
       />
+    );
+  }
+
+  // Не подписан -> та же карточка-тизер, что видит Рекрутер/Компания без
+  // своей подписки, вместо реального профиля с рейтингом (12.08.2026 —
+  // 3-way workspace switch — эта ветка была единственной без гейта:
+  // Личный всегда показывал реальные данные независимо от is_subscribed).
+  if (!p.is_subscribed) {
+    return (
+      <div>
+        <WorkspaceSwitch workspace={workspace} onChange={switchWorkspace} />
+        <ActivationPreview
+          title={t("activationPersonal.title")}
+          nowAvatar="?"
+          nowName={t("activationPersonal.nowName")}
+          nowSub={t("activationPersonal.nowSub")}
+          nowBadge="0"
+          aboutText={t("activationPersonal.about")}
+          exampleAvatar="А"
+          exampleName={t("activationPersonal.exampleName")}
+          exampleSub={t("activationPersonal.exampleSub")}
+          exampleBadge={175}
+          stat1Label={t("activationPersonal.stat1Label")}
+          stat1Value="$2 790"
+          stat2Label={t("activationPersonal.stat2Label")}
+          stat2Value="$5 000"
+          metaLine={t("activationPersonal.metaLine")}
+          lockText={t("activationPersonal.lockText")}
+          lockInfoText={t("activationPersonal.lockInfo")}
+          priceLabel={t("activationPersonal.priceLabel")}
+          priceValue={t("activationPersonal.priceValue")}
+          ctaLabel={t("activationPersonal.cta")}
+          onActivate={() => setShowPersonalPlans(true)}
+        />
+        {showPersonalPlans && (
+          <SubscribeScreen
+            product="guro_id"
+            onSubscribed={() => setState((s) => ({ ...s, data: { ...s.data, is_subscribed: true } }))}
+          />
+        )}
+      </div>
     );
   }
 

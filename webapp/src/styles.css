@@ -4031,7 +4031,7 @@ select {
 
 /* Вакансия от лица "Компании" — премиальное оформление (раздел 4 ТЗ). */
 .vacancy-card.vacancy-card-company {
-  border-left: 3px solid var(--recruiter-cyan);
+  border-left: 3px solid var(--gold);
 }
 
 .vacancy-official-badge {
@@ -4095,17 +4095,24 @@ select {
 .vacancy-poster-avatar {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  /* Круг у рекрутера-одиночки, скруглённый квадрат (лого-слот) — у
+     компании, см. модификатор ниже. */
+  border-radius: 50%;
+  border: 1px solid var(--recruiter-cyan);
   flex-shrink: 0;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #1e4048;
-  color: var(--text);
+  color: var(--recruiter-cyan);
   font-family: Manrope, sans-serif;
   font-weight: 700;
   font-size: 13px;
+}
+
+.vacancy-poster-avatar--company {
+  border-radius: 8px;
 }
 
 .vacancy-poster-avatar img {

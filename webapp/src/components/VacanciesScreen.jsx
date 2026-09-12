@@ -768,7 +768,7 @@ function VacancyCard({ v, onOpen }) {
       )}
       {salaryText && <div className="vacancy-salary">{salaryText}</div>}
       <div className="vacancy-poster-row">
-        <div className="vacancy-poster-avatar">
+        <div className={`vacancy-poster-avatar${isCompany ? " vacancy-poster-avatar--company" : ""}`}>
           {v.poster_logo_url ? <img src={v.poster_logo_url} alt="" /> : initialOf(posterName)}
         </div>
         <div className="vacancy-poster-info">

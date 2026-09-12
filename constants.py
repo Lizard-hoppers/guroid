@@ -86,7 +86,6 @@ WELCOME_TEXT = (
     "• быстрее находить релевантные контакты внутри комьюнити\n"
     "• показывать вам людей и возможности, которые действительно подходят вашему профилю\n"
     "• улучшать качество нетворкинга внутри сообщества</blockquote>\n\n"
-    "<tg-emoji emoji-id=\"5399817885952520170\">🎁</tg-emoji> Доступ в сообщество <b>бесплатный</b>.\n\n"
     "Для получения доступа ответьте на несколько коротких вопросов.\n\n"
     "<tg-emoji emoji-id=\"5330271224285115429\">⌛</tg-emoji> Заполнение анкеты займёт менее 1 минуты."
 )
@@ -257,7 +256,6 @@ WELCOME_TEXT_EN = (
     "• find relevant contacts inside the community faster\n"
     "• show you people and opportunities that truly match your profile\n"
     "• improve the quality of networking in the community</blockquote>\n\n"
-    "<tg-emoji emoji-id=\"5399817885952520170\">🎁</tg-emoji> Access to the community is <b>free</b>.\n\n"
     "To get access, please answer a few short questions.\n\n"
     "<tg-emoji emoji-id=\"5330271224285115429\">⌛</tg-emoji> It takes less than 1 minute."
 )

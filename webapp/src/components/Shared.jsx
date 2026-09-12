@@ -717,7 +717,7 @@ export function ActivationPreview({
   exampleAvatar, exampleName, exampleSub, exampleBadge,
   stat1Label, stat1Value, stat2Label, stat2Value,
   metaLine,
-  lockText,
+  lockText, lockInfoText,
   priceLabel, priceValue,
   ctaLabel, onActivate,
 }) {
@@ -728,6 +728,10 @@ export function ActivationPreview({
   // а не сбоку, как на широком холсте презентации — там сбоку просто было
   // место, а не отдельное требование к геометрии.
   const [aboutOpen, setAboutOpen] = useState(false);
+  // Приватность-подсказка (12.09.2026, макет Figma node 372-5077) —
+  // отдельная от aboutOpen, только на вкладке Личный (lockInfoText не
+  // передаётся у Рекрутера/Компании -> кнопка там не рендерится вообще).
+  const [lockInfoOpen, setLockInfoOpen] = useState(false);
   return (
     <div className="card activation-preview">
       <div className="activation-title-row">
@@ -777,7 +781,18 @@ export function ActivationPreview({
       <div className="activation-lock">
         <IconLock />
         <span>{lockText}</span>
+        {lockInfoText && (
+          <button
+            type="button"
+            className="activation-info-btn"
+            aria-label={t("activation.infoAria")}
+            onClick={() => setLockInfoOpen((v) => !v)}
+          >
+            <IconInfo size={16} />
+          </button>
+        )}
       </div>
+      {lockInfoOpen && lockInfoText && <div className="activation-bubble">{lockInfoText}</div>}
 
       <div className="activation-price-row">
         <span className="section-eyebrow">{priceLabel}</span>

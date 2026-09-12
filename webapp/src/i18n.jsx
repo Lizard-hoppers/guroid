@@ -177,6 +177,10 @@ const STRINGS = {
   "activationPersonal.stat1Label": { ru: "ПОЛУЧЕНО", en: "RECEIVED" },
   "activationPersonal.stat2Label": { ru: "ВЫПЛАЧЕНО ПАРТНЁРАМ", en: "PAID TO PARTNERS" },
   "activationPersonal.metaLine": { ru: "14 сделок · 14 партнёрств", en: "14 deals · 14 partnerships" },
+  "activationPersonal.lockInfo": {
+    ru: "Приватностью управляете вы: можно скрыть имя, компанию и контакты — и при этом зафиксировать сам факт сотрудничества.",
+    en: "You control your privacy: you can hide the name, company and contacts — while still recording the fact of the partnership.",
+  },
   "activationPersonal.lockText": {
     ru: "Никто не узнает, с кем была сделка: имя контрагента и детали скрыты",
     en: "No one will know who the deal was with: counterparty name and details stay hidden",

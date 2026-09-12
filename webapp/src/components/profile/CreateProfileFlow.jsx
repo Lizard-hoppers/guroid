@@ -107,6 +107,7 @@ function ValueStep({ onStart }) {
       stat2Value="$5 000"
       metaLine={t("activationPersonal.metaLine")}
       lockText={t("activationPersonal.lockText")}
+      lockInfoText={t("activationPersonal.lockInfo")}
       priceLabel={t("activationPersonal.priceLabel")}
       priceValue={t("activationPersonal.priceValue")}
       ctaLabel={t("activationPersonal.cta")}

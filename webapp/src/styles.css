@@ -1021,6 +1021,8 @@ label {
   font-size: 10px;
   font-weight: 500;
   line-height: 1;
+  /* 12.09.2026, эталон GuroTabs.dc.html — трекинг +3%, раньше не было. */
+  letter-spacing: 0.03em;
   transition: color 0.2s ease;
   /* Ровно та же ширина, что у самого таба (min-width:0 выше), плюс защита
      на случай совсем узких экранов — длинное слово аккуратно ужимается по

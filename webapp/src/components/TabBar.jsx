@@ -4,20 +4,24 @@ import {
 } from "framer-motion";
 import { useLang } from "../i18n.jsx";
 
+// 12.09.2026 — геометрия сверена с эталонным исполняемым компонентом
+// GuroTabs.dc.html: viewBox 20 (не 24), обводка 1.5 (не 1.8/1.9 —
+// значение для этого конкретного компонента переопределено отдельно от
+// общего правила раздела 6). Пропорции круга/дуги — оттуда же, не "на глаз".
 function IconUser(props) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="tab-icon" {...props}>
-      <circle cx="12" cy="8" r="3.6" />
-      <path d="M4.5 20c1.2-4 4.2-6 7.5-6s6.3 2 7.5 6" strokeLinecap="round" />
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="tab-icon" {...props}>
+      <circle cx="10" cy="7" r="3.1" />
+      <path d="M4.2 16.6c1.4-2.9 10.2-2.9 11.6 0" strokeLinecap="round" />
     </svg>
   );
 }
 
 function IconSearch(props) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="tab-icon" {...props}>
-      <circle cx="11" cy="11" r="6.5" />
-      <path d="M20 20l-4.3-4.3" strokeLinecap="round" />
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="tab-icon" {...props}>
+      <circle cx="9" cy="9" r="5" />
+      <path d="M12.8 12.8 17 17" strokeLinecap="round" />
     </svg>
   );
 }
@@ -28,26 +32,32 @@ function IconSearch(props) {
 // Прежнее рукопожатие снято — после замены его никто не использовал.
 function IconConfirm(props) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="tab-icon" {...props}>
-      <path d="M20 6 9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="tab-icon" {...props}>
+      <path d="M3.5 10.5 8 15l8.5-9.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
+// 12.09.2026 — эталон рисует звезду ЛИНИЕЙ (stroke, без заливки), не
+// закрашенной фигурой. Прежняя fill="currentColor" версия нарушала
+// правило раздела 6 "только линейные SVG, без заливки" — единственная
+// заливная иконка во всём приложении, просто никогда не сверялась с
+// правилом, потому что живёт отдельно от общего набора в Icons.jsx.
 function IconStar(props) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="tab-icon" {...props}>
-      <path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.6 6.1 20.6l1.3-6.6L2.5 9.4l6.6-.8L12 2.5z" />
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="tab-icon" {...props}>
+      <path d="M10 2.6l2.29 4.9 5.11.62-3.75 3.6.98 5.28L10 14.44l-4.63 2.56.98-5.28L2.6 8.12l5.11-.62z" />
     </svg>
   );
 }
 
+// Без средней горизонтальной черты-разделителя — у эталона её нет,
+// раньше была добавлена от себя.
 function IconBriefcase(props) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="tab-icon" {...props}>
-      <rect x="3.5" y="7.5" width="17" height="12" rx="2" />
-      <path d="M8.5 7.5V6a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M3.5 12.5h17" strokeLinecap="round" />
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="tab-icon" {...props}>
+      <rect x="2.5" y="6" width="15" height="10.5" rx="2.2" />
+      <path d="M7.5 6V4.5h5V6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

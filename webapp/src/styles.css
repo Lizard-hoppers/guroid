@@ -568,13 +568,15 @@ h3 {
   margin: 16px 0;
 }
 
-/* Плитка метрики на карточке контрагента ("03 · Карточка контрагента"):
-   тёмная заливка, голубая рамка, лаймовое число. */
+/* Плитка метрики на карточке контрагента (макет "04-kontragent" —
+   сверка 12.09.2026, GURO ID mobile app design (2)): тёмная заливка без
+   рамки; лаймовым — только "достиженческое" значение (Рейтинг), счётчики
+   (Партнёрств/Стаж) — нейтральным белым. Было: рамка на всех плитках +
+   лайм на всех трёх числах сразу — не так в макете. */
 .metric {
   flex: 1;
   text-align: center;
   background: #0a1912;
-  border: 1px solid var(--recruiter-cyan);
   border-radius: 14px;
   padding: 12px 8px;
 }
@@ -583,6 +585,10 @@ h3 {
   font-family: Manrope, sans-serif;
   font-size: 22px;
   font-weight: 700;
+  color: var(--text);
+}
+
+.metric .value--accent {
   color: var(--gold);
 }
 

@@ -193,10 +193,10 @@ export function Spinner({ children }) {
   return <div className="spinner">{children}</div>;
 }
 
-function Metric({ label, value }) {
+function Metric({ label, value, accent }) {
   return (
     <div className="metric">
-      <div className="value">
+      <div className={`value${accent ? " value--accent" : ""}`}>
         {value === null || value === undefined ? <IconLock /> : value}
       </div>
       <div className="label">{label}</div>
@@ -209,7 +209,7 @@ export function MetricsRow({ reputation, partnerships, daysInCommunity, showVisi
   return (
     <>
       <div className="metrics-row">
-        <Metric label={t("metric.rating")} value={reputation} />
+        <Metric label={t("metric.rating")} value={reputation} accent />
         <Metric label={t("metric.partnerships")} value={partnerships} />
         <Metric label={t("metric.daysInCommunity")} value={daysInCommunity} />
       </div>

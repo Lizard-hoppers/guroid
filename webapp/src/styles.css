@@ -3283,6 +3283,14 @@ select {
   font-size: 12px;
 }
 
+/* "Успешно" — рекомендуемое действие, сплошная лаймовая заливка (макет
+   "07-ocenka"); "Нюансы"/"Проблема" остаются контурными. */
+.rate-widget-buttons button.rate-widget-btn--success {
+  border-color: var(--gold);
+  background: var(--gold);
+  color: #171708;
+}
+
 .rate-widget textarea {
   width: 100%;
   margin-bottom: 8px;

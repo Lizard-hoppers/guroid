@@ -369,8 +369,13 @@ function RateWidget({ partnershipId, onRated, onCancel }) {
     <div className="rate-widget">
       <div className="partner-meta">{t("rating.ratePrompt")}</div>
       <div className="rate-widget-buttons">
-        <button type="button" disabled={busy} onClick={() => submit("success")}>
-          <IconCheck style={{ color: "var(--gold)" }} /> {t("rating.verdict.success")}
+        <button
+          type="button"
+          className="rate-widget-btn--success"
+          disabled={busy}
+          onClick={() => submit("success")}
+        >
+          <IconCheck style={{ color: "#171708" }} /> {t("rating.verdict.success")}
         </button>
         <button type="button" disabled={busy} onClick={() => submit("nuance")}>
           <IconWarning style={{ color: "var(--amber)" }} /> {t("rating.verdict.nuance")}

@@ -420,6 +420,7 @@ export function ConfirmScreen({ forcedType, prefill, asCompany, onBack }) {
         <label className="checkbox-row">
           <input
             type="checkbox"
+            className="input-danger"
             checked={form.isFlaggedFraud}
             onChange={(e) => set("isFlaggedFraud", e.target.checked)}
           />

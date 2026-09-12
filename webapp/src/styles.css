@@ -845,6 +845,12 @@ textarea::placeholder {
   cursor: default;
 }
 
+/* Антифрод-флаг "проблемная сделка" (06-podtverdit.png) — красная
+   обводка, отличает от обычных чекбоксов формы. */
+.checkbox-row input[type="checkbox"].input-danger {
+  border-color: var(--danger);
+}
+
 label {
   display: block;
   /* Раздел 5: подпись поля 13/1.3 · 600 · #FFFFFF, отступ до поля 8. */

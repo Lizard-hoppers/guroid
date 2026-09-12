@@ -1589,7 +1589,7 @@ label {
 
 .tariff-price-yearly {
   font-size: 12px;
-  color: var(--recruiter-cyan);
+  color: var(--text-muted);
 }
 
 /* В макете лимиты — плитки с зазором, без разделительных линий. */

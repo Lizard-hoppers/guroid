@@ -1477,6 +1477,21 @@ label {
    у обоих одинаковая специфичность одного класса, а выигрывает тот,
    кто ниже, — из-за этого "СЕЙЧАС"-аватар показывал яркий градиент
    вместо приглушённого (баг, репорт владельца 12.09.2026). */
+/* Две обрамлённые плитки макета (12.09.2026, Figma node 372-5077):
+   "СЕЙЧАС" — приглушённая серая рамка, "ПОСЛЕ АКТИВАЦИИ" — лаймовая.
+   Раньше обе секции шли без своего фона/рамки внутри общей карточки —
+   не было отдельных плиток вовсе. */
+.activation-box {
+  background: var(--tile);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-tile);
+  padding: 16px;
+}
+
+.activation-box--highlight {
+  border-color: var(--gold);
+}
+
 .profile-avatar-fallback.activation-now-avatar {
   background: var(--tile);
   color: var(--text-dim);

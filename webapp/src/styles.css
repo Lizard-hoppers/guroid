@@ -1504,7 +1504,10 @@ label {
 .activation-box {
   background: var(--tile);
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-tile);
+  /* Эталон (ai_studio_code.html): 16px, как у обычной карточки (--r-card),
+     а не 12px тайла (--r-tile) — были слишком острые углы (репорт
+     владельца 13.09.2026). */
+  border-radius: var(--r-card);
   /* Эталон (ai_studio_code.html): "СЕЙЧАС" 16 верт/20 гориз, "ПОСЛЕ
      АКТИВАЦИИ" 20 со всех сторон — не одинаковый padding у обеих. */
   padding: 16px 20px;

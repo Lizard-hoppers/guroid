@@ -766,7 +766,7 @@ export function ActivationPreview({
   // передаётся у Рекрутера/Компании -> кнопка там не рендерится вообще).
   const [lockInfoOpen, setLockInfoOpen] = useState(false);
   return (
-    <div className="card activation-preview">
+    <div className="activation-preview">
       <div className="activation-title-row">
         <h3>{title}</h3>
         <button
@@ -780,7 +780,7 @@ export function ActivationPreview({
       </div>
       {aboutOpen && <div className="activation-bubble">{aboutText}</div>}
 
-      <div className="section-eyebrow" style={{ marginTop: 12 }}>{t("activation.nowLabel")}</div>
+      <div className="section-eyebrow" style={{ marginTop: 16, marginBottom: 8 }}>{t("activation.nowLabel")}</div>
       <div className="activation-box">
         <div className="profile-header-card activation-now">
           <div className={`profile-avatar-fallback activation-now-avatar${cyanAvatars ? " activation-now-avatar--square" : ""}`}>
@@ -794,7 +794,7 @@ export function ActivationPreview({
         </div>
       </div>
 
-      <div className="section-eyebrow" style={{ marginTop: 16 }}>{t("activation.exampleLabel")}</div>
+      <div className="section-eyebrow" style={{ marginTop: 16, marginBottom: 8 }}>{t("activation.exampleLabel")}</div>
       <div className="activation-box activation-box--highlight">
         <div className="profile-header-card">
           <div className={`profile-avatar-fallback${cyanAvatars ? " activation-example-avatar--square" : ""}`}>
@@ -810,7 +810,7 @@ export function ActivationPreview({
           реальные метрики в Характеристике Рекрутера/Компании (число
           лаймовым НАД подписью). turnover-* тут не подходил — это класс
           другого компонента (TurnoverCard), где порядок обратный. */}
-      <div className="recruiter-metrics-grid" style={{ marginTop: 12 }}>
+      <div className="recruiter-metrics-grid" style={{ marginTop: 16 }}>
         <div className="recruiter-metric">
           <div className="recruiter-metric-value">{stat1Value}</div>
           <div className="recruiter-metric-label">{stat1Label}</div>

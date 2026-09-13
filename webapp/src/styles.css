@@ -1436,6 +1436,10 @@ label {
 
 /* --- Карточка "активации" кабинета (11.09.2026) --- */
 
+.activation-preview {
+  margin-bottom: 12px;
+}
+
 .activation-title-row {
   display: flex;
   align-items: center;
@@ -1502,20 +1506,19 @@ label {
    Раньше обе секции шли без своего фона/рамки внутри общей карточки —
    не было отдельных плиток вовсе. */
 .activation-box {
-  background: var(--tile);
+  /* Эталон ("GURO ID · Типография экранов", 13.09.2026): фон #0B2024 —
+     тот же --bg-mid, что у обычной карточки, а не --tile (#122E33,
+     плитка метрики) — были не тем токеном, темнее и "плоше", чем надо. */
+  background: var(--bg-mid);
   border: 1px solid var(--glass-border);
-  /* Эталон (ai_studio_code.html): 16px, как у обычной карточки (--r-card),
-     а не 12px тайла (--r-tile) — были слишком острые углы (репорт
-     владельца 13.09.2026). */
   border-radius: var(--r-card);
-  /* Эталон (ai_studio_code.html): "СЕЙЧАС" 16 верт/20 гориз, "ПОСЛЕ
-     АКТИВАЦИИ" 20 со всех сторон — не одинаковый padding у обеих. */
-  padding: 16px 20px;
+  /* Эталон: у "СЕЙЧАС" и "ПОСЛЕ АКТИВАЦИИ" одинаковый padding 20 со
+     всех сторон на всех трёх вкладках — не 16/20, как считалось раньше. */
+  padding: 20px;
 }
 
 .activation-box--highlight {
   border-color: var(--gold);
-  padding: 20px;
 }
 
 /* Аватар "ПОСЛЕ АКТИВАЦИИ" — 44x44 у всех трёх вкладок (эталон); форма
@@ -1558,18 +1561,27 @@ label {
 }
 
 .activation-meta {
-  margin-top: 8px;
+  /* Эталон: тот же отступ 16, что у метрик над этой строкой — раньше было
+     8, из-за чего строка тегов "липла" к плиткам (репорт владельца
+     13.09.2026, "между модулями мало"). */
+  margin-top: 16px;
   font-size: 12px;
   color: var(--text-muted);
 }
 
 .activation-lock {
+  /* Эталон ("GURO ID · Типография экранов", 13.09.2026): своя плитка
+     (фон/рамка/радиус/паддинг), как "Сейчас"/"После активации" — не
+     текстовая строка под чертой-разделителем (репорт владельца
+     13.09.2026, "рамка не такая"/"не равномерно"). */
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-mid);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-card);
+  padding: 16px 20px;
   margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--divider);
   font-size: 12px;
   color: var(--text-dim);
   line-height: 1.5;

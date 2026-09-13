@@ -553,13 +553,15 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
     }
   }
 
-  // no_company (27.08.2026, ТЗ "Роли и управление командой") — юзер не
-  // Владелец и не Админ ни в одной компании: либо создаёт свою, либо
-  // находит чужую (доска вакансий/поиск) и подаёт заявку с её карточки.
-  if (data.no_company) {
-    return <CreateCompanyCard onCreated={onCreated} />;
-  }
-
+  // Тизер-превью (ActivationPreview) показываем ВСЕГДА, если нет активной
+  // подписки компании — включая случай no_company (27.08.2026, ТЗ "Роли и
+  // управление командой"). Раньше no_company отдавался раньше и целиком
+  // подменял тизер формой создания компании — новый пользователь тапал на
+  // "Компания" и видел только форму "Введите название", ни разу не увидев,
+  // как это будет выглядеть после активации (репорт владельца 13.09.2026).
+  // Теперь форма/присоединение к компании — это то, что раскрывается по
+  // кнопке тизера (revealPlans), как и выбор тарифа у того, у кого компания
+  // уже есть.
   if (!data.is_company_subscribed) {
     return (
       <div>
@@ -588,28 +590,34 @@ export function CompanyHub({ data, onFieldSaved, onPrivacyChange, onSubscribed, 
         />
         {showPlans && (
           <div ref={setPlansRef}>
-            <div className="card">
-              <div className="vertical-chips">
-                <button
-                  type="button"
-                  className={`vertical-chip${tierChoice === "basic" ? " is-selected" : ""}`}
-                  onClick={() => setTierChoice("basic")}
-                >
-                  {t("company.tier.basic")}
-                </button>
-                <button
-                  type="button"
-                  className={`vertical-chip${tierChoice === "pro" ? " is-selected" : ""}`}
-                  onClick={() => setTierChoice("pro")}
-                >
-                  {t("company.tier.pro")}
-                </button>
-              </div>
-              <p className="partner-meta" style={{ marginTop: 8 }}>
-                {tierChoice === "pro" ? t("company.tier.proHint") : t("company.tier.basicHint")}
-              </p>
-            </div>
-            <SubscribeScreen product={tierChoice === "pro" ? "company_pro" : "company_basic"} onSubscribed={onSubscribed} />
+            {data.no_company ? (
+              <CreateCompanyCard onCreated={onCreated} />
+            ) : (
+              <>
+                <div className="card">
+                  <div className="vertical-chips">
+                    <button
+                      type="button"
+                      className={`vertical-chip${tierChoice === "basic" ? " is-selected" : ""}`}
+                      onClick={() => setTierChoice("basic")}
+                    >
+                      {t("company.tier.basic")}
+                    </button>
+                    <button
+                      type="button"
+                      className={`vertical-chip${tierChoice === "pro" ? " is-selected" : ""}`}
+                      onClick={() => setTierChoice("pro")}
+                    >
+                      {t("company.tier.pro")}
+                    </button>
+                  </div>
+                  <p className="partner-meta" style={{ marginTop: 8 }}>
+                    {tierChoice === "pro" ? t("company.tier.proHint") : t("company.tier.basicHint")}
+                  </p>
+                </div>
+                <SubscribeScreen product={tierChoice === "pro" ? "company_pro" : "company_basic"} onSubscribed={onSubscribed} />
+              </>
+            )}
           </div>
         )}
       </div>
